@@ -378,6 +378,6 @@ class Fenetre(Adw.ApplicationWindow):
             version=VERSION, developer_name="Katakomba",
             comments=_("Tout le trafic de la machine passe par un VPN, "
                        "lui-même encapsulé dans Tor.") + "\n\nSVB TERRA LIBERI",
-            license_type=Gtk.License.MIT_X11)
+            license_type=Gtk.License.GPL_3_0)
         d.present(self)
 
