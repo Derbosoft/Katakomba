@@ -47,6 +47,13 @@ class RepairCompletenessTest(unittest.TestCase):
         self.assertIn("KATAKOMBA_KS6_FWD", REPAIR)
         self.assertRegex(REPAIR, r"while ip6tables -D FORWARD -j \"?\$\{?KS6_FWD_CHAIN")
 
+    def test_blocage_hors_tunnel(self):
+        """Sans tunnel, un blocage resté en place couperait tout."""
+        for chaine in ("KATAKOMBA_KILL", "KATAKOMBA_KILL_FWD", "KATAKOMBA_KILL6",
+                       "KATAKOMBA_KILL6_FWD"):
+            self.assertRegex(REPAIR, rf"{chaine}[\" ]")
+        self.assertIn('while $1 -D "$2" -j "$3"', REPAIR)
+
     def test_chaine_lan_et_nat(self):
         self.assertIn("KATAKOMBA_LAN_FWD", REPAIR)
         self.assertIn("MASQUERADE", REPAIR,
@@ -120,6 +127,16 @@ class InstallServiceUnitTest(unittest.TestCase):
         cleanup = INSTALL[INSTALL.index("CLEANUP_EOF"):]
         self.assertIn("-o tun0 -j MASQUERADE", cleanup)
         self.assertIn("-o tun1 -j MASQUERADE", cleanup)
+
+    def test_cleanup_leve_le_blocage_hors_tunnel(self):
+        """Lancé après chaque arrêt du service : la connexion normale revient."""
+        cleanup = INSTALL[INSTALL.index("CLEANUP_EOF"):]
+        cleanup = cleanup[:cleanup.index("CLEANUP_EOF", 20)]
+        for chaine in ("KATAKOMBA_KILL", "KATAKOMBA_KILL_FWD", "KATAKOMBA_KILL6",
+                       "KATAKOMBA_KILL6_FWD"):
+            self.assertRegex(cleanup, rf"{chaine}[\" ]")
+        self.assertIn('while $1 -D "$2" -j "$3"', cleanup)
+        self.assertIn('$1 -X "$3"', cleanup)
 
     def test_cleanup_purge_en_boucle(self):
         """Des crashs répétés peuvent empiler plusieurs jumps identiques."""

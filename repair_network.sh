@@ -39,7 +39,15 @@ echo "[2/8] Arrêt des processus OpenVPN/Tor restants..."
 pkill -f -- "^openvpn .*--auth-user-pass [^ ]*katakomba/auth\.tmp" 2>/dev/null || true
 pkill -f -- "^tor .*katakomba/tor(rc|_data)" 2>/dev/null || true
 
-echo "[3/8] Nettoyage règles iptables IPv6 (KATAKOMBA_KS6, KATAKOMBA_KS6_FWD)..."
+echo "[3/8] Nettoyage du blocage hors tunnel et des règles IPv6..."
+# Blocage hors tunnel (KATAKOMBA_KILL*) : sans tunnel, il couperait tout.
+for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
+         "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD"; do
+  set -- $c
+  while $1 -D "$2" -j "$3" 2>/dev/null; do :; done
+  $1 -F "$3" 2>/dev/null || true
+  $1 -X "$3" 2>/dev/null || true
+done
 while ip6tables -D OUTPUT  -j "${KS6_CHAIN}" 2>/dev/null; do :; done
 ip6tables -F "${KS6_CHAIN}" 2>/dev/null || true
 ip6tables -X "${KS6_CHAIN}" 2>/dev/null || true

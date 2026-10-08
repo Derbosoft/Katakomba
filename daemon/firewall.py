@@ -1,20 +1,161 @@
 """
-Pare-feu : blocage IPv6 iptables/ip6tables, partage LAN.
+Pare-feu : blocage hors tunnel (kill switch), blocage IPv6, partage LAN.
 """
 
 import ipaddress
+import pwd
 import shutil
 import subprocess
 import threading
 
 from .core import (
     _run,
-    KS6_CHAIN, KS6_FWD_CHAIN, KS_LAN_CHAIN,
-    LAN_DNSMASQ_PID,
+    KILL_CHAINS, KS6_CHAIN, KS6_FWD_CHAIN, KS_LAN_CHAIN,
+    LAN_DNSMASQ_PID, TOR_USER,
 )
+
+# Destinations locales joignables hors tunnel : réseaux privés, lien local,
+# multicast, diffusion.  Imprimante, NAS, routeur, DHCP, découverte mDNS : les
+# couper rendrait la machine inutilisable sans rien protéger, ce trafic ne
+# quittant pas le réseau local.  (Même choix que les clients VPN du commerce
+# avec « partage du réseau local ».)
+LOCAL_V4 = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16",
+            "224.0.0.0/4", "255.255.255.255/32")
+LOCAL_V6 = ("fe80::/10", "fc00::/7", "ff00::/8")
+# Découverte de voisins et de routeurs IPv6 : sans elle, plus d'IPv6 local.
+NDP_TYPES = ("router-solicitation", "router-advertisement",
+             "neighbour-solicitation", "neighbour-advertisement")
 
 
 class FirewallMixin:
+
+    # ── Blocage hors tunnel (kill switch) ─────────────────────────────────────
+    #
+    # Sans lui, chaque reconnexion (circuit trop lent, relance d'OpenVPN,
+    # redémarrage complet, bascule de compte) laissait quelques secondes à
+    # quelques minutes pendant lesquelles le trafic sortait par la connexion
+    # normale, avec l'adresse réelle.
+    #
+    # Principe : en sortie, seuls passent le tunnel (tun+), la boucle locale,
+    # Tor lui-même — reconnu à son utilisateur, debian-tor, ce qui couvre ses
+    # relais sans avoir à les connaître — et le réseau local.  OpenVPN ne
+    # parle qu'à Tor (127.0.0.1:9050) puis au tunnel : il n'a besoin de rien
+    # d'autre, y compris pour résoudre le nom du serveur VPN, transmis tel
+    # quel au proxy SOCKS.
+    #
+    # Les chaînes vivent tant que le service tourne : posées avant le
+    # démarrage de Tor, gardées pendant toutes les reconnexions et les
+    # redémarrages complets, retirées à l'arrêt du service.
+
+    def _kill_switch_destinations(self, v6: bool) -> list:
+        """Destinations voulues hors tunnel : DNS local (split DNS) et
+        exclusions, de la famille d'adresses demandée."""
+        nets = []
+        for entry in [self.config.get("local_dns", "")] + \
+                list(self.config.get("excluded_ips", [])):
+            try:
+                net = ipaddress.ip_network(str(entry).strip(), strict=False)
+            except ValueError:
+                continue
+            if (net.version == 6) == v6 and str(net) not in nets:
+                nets.append(str(net))
+        return nets
+
+    def _kill_switch_rules(self, v6: bool, forward: bool, tor_uid: int) -> list:
+        """Règles d'une chaîne, dans l'ordre : arguments après « -A chaîne ».
+
+        L'ordre fait la sûreté : le refus du DNS précède l'ouverture du
+        réseau local (sinon les requêtes partiraient vers le routeur, donc
+        vers le FAI), et le REJECT final vient en dernier.
+
+        REJECT plutôt que DROP, et « tcp-reset » pour TCP : une application
+        bloquée échoue aussitôt au lieu d'attendre l'expiration.  En IPv6,
+        l'ICMP « port injoignable » renvoyé à une connexion locale ne
+        l'interrompt pas (vérifié) : seul le reset le fait."""
+        regles = []
+        if not forward:
+            regles.append(["-o", "lo", "-j", "RETURN"])
+        regles.append(["-o", "tun+", "-j", "RETURN"])
+        if not forward:
+            regles.append(["-m", "owner", "--uid-owner", str(tor_uid), "-j", "RETURN"])
+        # Réponses aux connexions ENTRANTES (SSH depuis le LAN ou un VPN
+        # d'administration) : --ctdir REPLY, jamais un simple ESTABLISHED,
+        # qui laisserait continuer une connexion sortante ouverte à découvert.
+        regles.append(["-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED",
+                       "--ctdir", "REPLY", "-j", "RETURN"])
+        if v6:
+            regles += [["-p", "ipv6-icmp", "--icmpv6-type", t, "-j", "RETURN"]
+                       for t in NDP_TYPES]
+        elif not forward:
+            # Renouvellement du bail DHCP : sans lui, la machine perdrait son
+            # adresse au bout du bail.
+            regles.append(["-p", "udp", "--sport", "68", "--dport", "67", "-j", "RETURN"])
+        regles += [["-d", net, "-j", "RETURN"]
+                   for net in self._kill_switch_destinations(v6)]
+        regles += [["-p", "udp", "--dport", "53", "-j", "REJECT"],
+                   ["-p", "tcp", "--dport", "53", "-j", "REJECT", "--reject-with", "tcp-reset"]]
+        regles += [["-d", net, "-j", "RETURN"] for net in (LOCAL_V6 if v6 else LOCAL_V4)]
+        regles += [["-p", "tcp", "-j", "REJECT", "--reject-with", "tcp-reset"],
+                   ["-j", "REJECT"]]
+        return regles
+
+    def _kill_switch_on(self) -> bool:
+        """Pose le blocage hors tunnel, en tout ou rien : toutes les chaînes
+        sont construites avant d'être branchées.  Une chaîne branchée à
+        moitié pourrait bloquer Tor — et donc toute connexion — sans rien
+        protéger de plus."""
+        if self._kill_active:
+            return True
+        if not self.config.get("kill_switch", True):
+            self._log("Blocage hors tunnel désactivé dans les réglages : pendant "
+                      "une reconnexion, le trafic peut sortir à découvert.", "WARN")
+            return False
+        try:
+            tor_uid = pwd.getpwnam(TOR_USER).pw_uid
+        except KeyError:
+            self._log(f"Blocage hors tunnel INACTIF : utilisateur {TOR_USER} absent, "
+                      "impossible de laisser passer Tor seul. Il est créé par le "
+                      "paquet tor : sudo apt install --reinstall tor", "ERROR")
+            return False
+        for tool, _parent, chain, v6, forward in KILL_CHAINS:
+            _run(tool, "-N", chain)
+            _run(tool, "-F", chain)
+            for regle in self._kill_switch_rules(v6, forward, tor_uid):
+                r = _run(tool, "-A", chain, *regle)
+                if r.returncode != 0:
+                    self._log(f"Blocage hors tunnel INACTIF : {tool} refuse "
+                              f"« {' '.join(regle)} » "
+                              f"({r.stderr.decode(errors='ignore').strip()}).", "ERROR")
+                    self._kill_switch_off(force=True)
+                    return False
+        for tool, parent, chain, _v6, _fwd in KILL_CHAINS:
+            if _run(tool, "-C", parent, "-j", chain).returncode == 0:
+                continue
+            if _run(tool, "-I", parent, "-j", chain).returncode != 0:
+                self._log(f"Blocage hors tunnel INACTIF : branchement de {chain} "
+                          f"sur {parent} impossible.", "ERROR")
+                self._kill_switch_off(force=True)
+                return False
+        self._kill_active = True
+        self._log("Blocage hors tunnel actif : seuls le tunnel, Tor et le réseau "
+                  "local peuvent sortir.", "OK")
+        return True
+
+    def _kill_switch_off(self, force: bool = False):
+        """Retire le blocage.  force : nettoie même s'il n'a pas abouti."""
+        if not (self._kill_active or force):
+            return
+        for tool, parent, chain, _v6, _fwd in KILL_CHAINS:
+            # Jumps d'abord : une chaîne vidée mais encore branchée ne
+            # bloquerait rien, mais ne pourrait pas être supprimée.
+            for _ in range(25):
+                if _run(tool, "-D", parent, "-j", chain).returncode != 0:
+                    break
+            _run(tool, "-F", chain)
+            _run(tool, "-X", chain)
+        if self._kill_active:
+            self._log("Blocage hors tunnel levé.", "OK")
+        self._kill_active = False
 
     # ── Blocage IPv6 ──────────────────────────────────────────────────────────
 

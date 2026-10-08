@@ -302,6 +302,17 @@ class ApplyVpnDnsTest(unittest.TestCase):
         self.assertTrue(d.has_log("Aucun DNS poussé par le VPN", "WARN"))
         self.assertEqual(rec.calls, [])
 
+    def test_aucun_dns_pousse_sous_blocage_est_une_erreur(self):
+        """Le DNS du routeur est refusé par le blocage : la panne doit être
+        nommée dans le journal, pas seulement redoutée."""
+        d = FakeDaemon(_kill_active=True)
+        d._vpn_dns_ips, d._tun_iface = [], "tun0"
+        rec = Recorder()
+        with patched_subprocess(m_dns, rec):
+            d._apply_vpn_dns()
+        self.assertTrue(d.has_log("plus aucun nom ne se résout", "ERROR"))
+        self.assertEqual(rec.calls, [])
+
     def test_echec_resolvectl_signale_et_stoppe(self):
         d, rec = self._apply(["10.20.20.1"], rc=1)
         self.assertTrue(d.has_log("resolvectl dns tun0", "ERROR"))

@@ -172,6 +172,24 @@ class DefaultConfigIntegrityTest(unittest.TestCase):
         self.assertEqual(DEFAULT_CONFIG["circuit_max_retries"], 3)
 
 
+    def test_blocage_hors_tunnel_actif_par_defaut(self):
+        self.assertTrue(DEFAULT_CONFIG["kill_switch"])
+
+
+class TuileIpv6Test(unittest.TestCase):
+
+    def _ipv6(self, st):
+        return next(t for t in modele.tuiles("active", st) if t["cle"] == "ipv6")
+
+    def test_bloque_par_le_blocage_hors_tunnel(self):
+        """Le blocage hors tunnel arrête aussi l'IPv6 : pas de fausse alerte."""
+        self.assertEqual(self._ipv6({"tunnel_up": True, "kill_switch": True})["valeur"],
+                         modele._("Bloqué"))
+
+    def test_autorise_sans_aucun_blocage(self):
+        self.assertEqual(self._ipv6({"tunnel_up": True})["valeur"], modele._("Autorisé"))
+
+
 class ModeAvanceTest(unittest.TestCase):
 
     def cfg(self, **v):

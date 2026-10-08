@@ -202,7 +202,9 @@ class CleanupStaleRulesTest(unittest.TestCase):
 
     def test_supprime_les_trois_chaines(self):
         _, r = self._run()
-        for chaine in ("KATAKOMBA_KS6", "KATAKOMBA_KS6_FWD", "KATAKOMBA_LAN_FWD"):
+        for chaine in ("KATAKOMBA_KS6", "KATAKOMBA_KS6_FWD", "KATAKOMBA_LAN_FWD",
+                       "KATAKOMBA_KILL", "KATAKOMBA_KILL_FWD", "KATAKOMBA_KILL6",
+                       "KATAKOMBA_KILL6_FWD"):
             self.assertTrue(r.ran("-F", chaine), f"{chaine} non vidée")
             self.assertTrue(r.ran("-X", chaine), f"{chaine} non supprimée")
 
@@ -233,6 +235,28 @@ class CleanupStaleRulesTest(unittest.TestCase):
         self.assertEqual(r.count("-t nat -D POSTROUTING"), 0)
 
 
+class RunOrderTest(unittest.TestCase):
+
+    def test_blocage_pose_avant_tor(self):
+        """Rien ne doit sortir à découvert, même pendant le bootstrap de Tor."""
+        from tests.helpers import provider
+        d = FakeDaemon(config={"providers": [provider("vpn-a")]})
+        ordre = []
+        for nom in ("_check_dns_stack", "cleanup_stale_rules", "_kill_switch_on",
+                    "_start_status_server"):
+            setattr(d, nom, (lambda n: lambda: ordre.append(n))(nom))
+        d._start_services = lambda: ordre.append("_start_services") or False
+        saved = m_core._ensure_private_dir
+        m_core._ensure_private_dir = lambda *a, **k: None
+        try:
+            with self.assertRaises(SystemExit):
+                d.run()
+        finally:
+            m_core._ensure_private_dir = saved
+        self.assertLess(ordre.index("cleanup_stale_rules"), ordre.index("_kill_switch_on"))
+        self.assertLess(ordre.index("_kill_switch_on"), ordre.index("_start_services"))
+
+
 class HandleSignalTest(unittest.TestCase):
     """L'arrêt propre doit tout défaire, dans le bon ordre, et sortir en 0."""
 
@@ -241,7 +265,8 @@ class HandleSignalTest(unittest.TestCase):
         d.appels = []
         for nom in ("_stop_openvpn", "_stop_tor", "_revert_vpn_dns",
                     "_cleanup_tor_routes", "_teardown_lan_sharing",
-                    "_ipv6_block_off", "_remove_dns_split", "_stop_status_server"):
+                    "_ipv6_block_off", "_remove_dns_split", "_stop_status_server",
+                    "_kill_switch_off"):
             setattr(d, nom, (lambda n: lambda: d.appels.append(n))(nom))
         return d
 
@@ -261,8 +286,11 @@ class HandleSignalTest(unittest.TestCase):
         self.assertFalse(existe_encore, "auth.tmp laissé sur le disque")
         for nom in ("_stop_openvpn", "_stop_tor", "_revert_vpn_dns",
                     "_cleanup_tor_routes", "_teardown_lan_sharing",
-                    "_ipv6_block_off", "_remove_dns_split", "_stop_status_server"):
+                    "_ipv6_block_off", "_remove_dns_split", "_stop_status_server",
+                    "_kill_switch_off"):
             self.assertIn(nom, d.appels, f"{nom} non appelé à l'arrêt")
+        # Blocage levé seulement une fois le tunnel et Tor arrêtés.
+        self.assertGreater(d.appels.index("_kill_switch_off"), d.appels.index("_stop_tor"))
 
     def test_drapeaux_armes_avant_l_arret(self):
         d = self._daemon()

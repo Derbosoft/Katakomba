@@ -1,18 +1,18 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.7.2
+# Katakomba — v3.8.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.7.2-blue)
+![Version](https://img.shields.io/badge/Version-3.8.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
 
 > [English documentation](README.md)
 
-Daemon + interface graphique pour router **tout le trafic réseau via OpenVPN tunnelé dans Tor** sur Ubuntu/Debian. Le daemon tourne en arrière-plan en tant que service systemd et gère automatiquement Tor, OpenVPN, le blocage IPv6, le partage LAN et la surveillance de connectivité.
+Daemon + interface graphique pour router **tout le trafic réseau via OpenVPN tunnelé dans Tor** sur Ubuntu/Debian. Le daemon tourne en arrière-plan en tant que service systemd et gère automatiquement Tor, OpenVPN, le blocage hors tunnel (kill switch), le blocage IPv6, le partage LAN et la surveillance de connectivité.
 
 *Katakomba s'appelait auparavant « Tor-VPN Manager » : une installation existante est migrée automatiquement (voir [Migration depuis Tor-VPN Manager](#migration-depuis-tor-vpn-manager)).*
 
@@ -66,7 +66,7 @@ Utilisateur
                                          ├── OpenVPN ──► SOCKS5 127.0.0.1:9050 ──► Tor ──► Internet
                                          │              (tunX, redirect-gateway)
                                          │
-                                         ├── iptables  (IPv6 block, LAN sharing)
+                                         ├── iptables  (kill switch, IPv6 block, LAN sharing)
                                          │
                                          └── Watchdog  (connectivité)
 
@@ -430,6 +430,7 @@ CIDRs et IPs qui contournent le tunnel et passent par la passerelle locale. Le d
 | **Continuer en arrière-plan** | activé | Fermer la fenêtre la cache ; l'interface veille sur la connexion |
 | **Prévenir en cas de coupure** | activé | Notifications du bureau (voir [Arrière-plan et notifications](#arrière-plan-et-notifications)) |
 | **Lancer à l'ouverture de session** | désactivé | `~/.config/autostart/org.katakomba.Katakomba.desktop`, fenêtre cachée |
+| **Bloquer tout trafic hors du tunnel** | activé | Kill switch : rien ne sort par votre connexion normale, même pendant une reconnexion (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)) |
 | **Bloquer IPv6 pendant la connexion** | désactivé | DROP ip6tables sur OUTPUT + FORWARD |
 | **Mesurer le débit à la connexion** *(avancé)* | activé | Re-tire un circuit s'il est trop lent |
 | **Débit minimum** *(avancé)* | 250 KB/s | Seuil de re-tirage (≈ 2 Mbps ; l'équivalent en Mbps est affiché sous le champ) |
@@ -554,6 +555,7 @@ Ce que chaque contrôle attrape :
 | DNS du tunnel | serveur, `~.` ou `default-route` manquant → requêtes publiques hors tunnel |
 | Chemin des requêtes DNS | résolution trop rapide pour passer par Tor → fuite probable |
 | Qualité du circuit | mesure de plus de 6 h → le circuit a pu se dégrader depuis |
+| Blocage hors tunnel | activé dans les réglages mais absent → le trafic peut sortir pendant les reconnexions |
 | Sortie Internet | pas de réponse via le tunnel, ou adresse privée |
 
 **Reconnexion en cours.** Quand le daemon reconstruit volontairement le tunnel (circuit trop lent remplacé, OpenVPN relancé après une perte de connectivité, redémarrage complet, compte refusé), le tunnel est absent quelques secondes par construction. `doctor` affiche alors la raison au lieu de faux KO, reporte les contrôles du tunnel et ne conseille **pas** de redémarrer, ce qui interromprait la reconnexion :
@@ -578,10 +580,11 @@ Code de sortie **0** si aucun KO, **1** sinon, **2** pendant une reconnexion si 
 
 ```
 1.  Nettoyage des règles iptables orphelines (session précédente)
-2.  Démarrage de Tor en subprocess (avec torrc si présent)
-3.  Attente du bootstrap Tor 100% (timeout 240s max)
-4.  Démarrage de la boucle OpenVPN dans un thread dédié
-5.  Démarrage de la boucle de monitoring dans le thread principal
+2.  Pose du blocage hors tunnel (avant Tor : rien ne sort à découvert, même pendant le bootstrap)
+3.  Démarrage de Tor en subprocess (avec torrc si présent)
+4.  Attente du bootstrap Tor 100% (timeout 240s max)
+5.  Démarrage de la boucle OpenVPN dans un thread dédié
+6.  Démarrage de la boucle de monitoring dans le thread principal
 ```
 
 ### Gestion de Tor
@@ -674,6 +677,39 @@ Quand `Initialization Sequence Completed` est détecté — y compris sous la fo
 ## Chaînes iptables
 
 Le daemon crée des **chaînes nommées dédiées** pour un nettoyage propre sans interférer avec d'autres règles.
+
+### Blocage hors tunnel (kill switch) — `KATAKOMBA_KILL*` (v3.8.0)
+
+Sans lui, chaque reconnexion (circuit trop lent remplacé, relance d'OpenVPN, redémarrage complet, bascule de compte) laissait une fenêtre, de quelques secondes à quelques minutes, pendant laquelle le trafic sortait par la connexion normale, avec l'adresse réelle.
+
+Tant que le service tourne, le trafic sortant ne peut passer que par :
+
+| Autorisé | Pourquoi |
+|---|---|
+| Le tunnel (`tun+`) et la boucle locale | Trafic normal. OpenVPN ne parle qu'à Tor sur `127.0.0.1:9050`, et lui transmet le nom du serveur VPN sans le résoudre |
+| Tor lui-même, reconnu à son utilisateur `debian-tor` | Joint ses relais sans que le daemon ait à les connaître, bootstrap et redémarrages complets compris |
+| Les réseaux locaux : `10/8`, `172.16/12`, `192.168/16`, lien local, multicast, diffusion ; `fe80::/10`, `fc00::/7`, `ff00::/8` | Imprimante, NAS, routeur, mDNS : ce trafic ne quitte pas le réseau local |
+| Le serveur DNS local (split DNS) et les réseaux exclus | Choisis par vous pour contourner le tunnel |
+| Le renouvellement du bail DHCP, la découverte de voisins IPv6 | Sans eux, la machine perdrait son adresse |
+| Les réponses aux connexions **entrantes** (`--ctdir REPLY`) | Une session SSH depuis le LAN ou un VPN d'administration survit. Un simple `ESTABLISHED` laisserait continuer une connexion sortante ouverte avant le blocage |
+
+Tout le reste est refusé sur-le-champ (reset TCP) : une application échoue aussitôt au lieu de rester bloquée. **Le DNS est refusé même vers le réseau local**, sauf vers le serveur DNS local configuré : le routeur transmettrait les requêtes à votre FAI. Les chaînes `_FWD` appliquent les mêmes règles au trafic routé (machines virtuelles, conteneurs), et les chaînes `KILL6` à l'IPv6.
+
+**Cycle de vie.**
+- Posé **avant le démarrage de Tor**, en tout ou rien : les quatre chaînes sont entièrement construites avant d'être branchées. Si une règle est refusée, rien n'est branché, le journal dit pourquoi et `katakomba doctor` signale un KO.
+- Gardé pendant toutes les reconnexions et les redémarrages complets.
+- Levé à l'arrêt du service (`katakomba stop`, *Se déconnecter*) : la connexion normale revient. `repair_network.sh` le lève aussi.
+
+**Limites.**
+- Si le daemon plante, le nettoyage de systemd lève le blocage jusqu'à la relance du service, 20 s plus tard.
+- Avec la *Reconnexion automatique* désactivée, un tunnel tombé laisse la machine hors ligne jusqu'à la déconnexion.
+- Les autres VPN de la machine continuent de fonctionner quand leur réseau est dans une plage privée (WireGuard en `10.x`, par exemple). Un réseau Tailscale (`100.64.0.0/10`) est bloqué : désactivez le blocage si vous en avez besoin.
+- Si votre fournisseur VPN ne pousse aucun serveur DNS, le DNS du système (en général votre routeur) est refusé : plus aucun nom ne se résout. Le journal le signale ; configurez un DNS local (page *Exclusions*) ou désactivez le blocage.
+- Il faut l'utilisateur `debian-tor`, créé par le paquet `tor`. Sans lui, le blocage ne pourrait pas laisser passer Tor seul : il n'est pas posé, et le journal signale une erreur.
+
+Désactivable dans **Réglages → Sécurité → Bloquer tout trafic hors du tunnel** (`kill_switch` dans `config.json`).
+
+Les règles ont été vérifiées sur un vrai noyau, dans un espace réseau isolé : Internet direct, DNS vers le routeur et IPv6 direct bloqués ; tunnel, Tor, réseau local, DNS local, exclusions et IPv6 de lien local autorisés ; tout retiré à l'arrêt.
 
 ### Blocage IPv6 — `KATAKOMBA_KS6` / `KATAKOMBA_KS6_FWD`
 
@@ -908,7 +944,8 @@ katakomba doctor
 4. Démontage partage LAN + arrêt dnsmasq
 5. Suppression chaînes ip6tables
 6. Suppression drop-in DNS split
-7. Suppression auth.tmp
+7. Levée du blocage hors tunnel (la connexion normale revient)
+8. Suppression auth.tmp
 ```
 
 ---
@@ -1054,6 +1091,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
   ],
   "auto_reconnect": true,
   "random_account": true,
+  "kill_switch": true,
   "block_ipv6": false,
   "excluded_ips": ["192.168.1.0/24", "192.168.50.0/24"],
   "excluded_domains": [".lan"],
@@ -1078,6 +1116,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 | `excluded_ips` | liste | CIDRs/IPs passant par la passerelle locale |
 | `excluded_domains` | liste | Domaines routés vers le DNS local |
 | `local_dns` | string | IP du serveur DNS local |
+| `kill_switch` | bool | Bloque tout trafic hors du tunnel tant que le service tourne (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)) |
 | `random_account` | bool | Ordre des comptes tiré au hasard chez chaque fournisseur (l'ordre des fournisseurs reste la priorité de la liste) |
 | `circuit_check` | bool | Mesure du débit à la connexion + re-tirage si circuit lent |
 | `circuit_min_kbs` | int | Seuil en KB/s (250 ≈ 2 Mbps ; 0 = désactivé) |
@@ -1087,7 +1126,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **629 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **654 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout
@@ -1135,6 +1174,8 @@ python3 outils/traductions.py verifier        # manques, {champs} incohérents (
 
 **Credentials VPN :** stockés en base64 dans `config.json`. C'est de l'obfuscation, **pas du chiffrement**. Le fichier est en mode `660 root:katakomba`, dans un répertoire `2770 root:katakomba`.
 
+**Blocage hors tunnel :** tant que le service tourne, rien ne sort hors du tunnel, sauf Tor et le réseau local, reconnexions comprises (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)).
+
 **auth.tmp :** créé directement en mode `600` (jamais exposé à l'umask) juste avant de lancer OpenVPN, dans `/run/katakomba` (root seul), sans jamais suivre de lien symbolique ; supprimé dans le bloc `finally` dès qu'OpenVPN a lu le fichier.
 
 **torrc :** mode `660 root:katakomba`, validé par liste blanche avant chaque démarrage de Tor.
@@ -1173,7 +1214,7 @@ La première connexion prend 1 à 3 minutes, le temps que Tor rejoigne son rése
 **À savoir avant de commencer**
 - **Débit** : Tor + VPN donne quelques Mbps, bien pour naviguer, moins pour de la vidéo en haute définition.
 - **Fournisseur** : il doit proposer OpenVPN en **TCP**, Tor ne transporte que du TCP. Testés : iVPN, ProtonVPN.
-- **Protection pendant une coupure** : le programme ne bloque pas le trafic quand le tunnel tombe. Pendant les quelques secondes d'une reconnexion, le trafic peut sortir par votre connexion normale, sauf si un pare-feu en amont l'en empêche.
+- **Protection pendant une coupure** : le blocage hors tunnel, actif par défaut, empêche le trafic de sortir par votre connexion normale tant que le tunnel est absent, reconnexions comprises. Se déconnecter rend la connexion normale.
 - **Mode avancé** (menu principal ☰) : exclusions, DNS local, partage LAN, réglages de Tor et de la qualité du circuit. Inutile pour un usage courant.
 
 **Vérifier** : `katakomba status` (état) et `katakomba doctor` (diagnostic complet, sans root).

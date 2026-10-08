@@ -439,6 +439,14 @@ mkdir -p "$(dirname "$CLEANUP_SCRIPT")"
 cat > "$CLEANUP_SCRIPT" << 'CLEANUP_EOF'
 #!/bin/bash
 # Suppression en boucle : des crashs répétés peuvent empiler plusieurs jumps
+# Blocage hors tunnel : le service s'arrête, la connexion normale revient.
+for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
+         "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD"; do
+    set -- $c
+    while $1 -D "$2" -j "$3" 2>/dev/null; do :; done
+    $1 -F "$3" 2>/dev/null
+    $1 -X "$3" 2>/dev/null
+done
 while ip6tables -D OUTPUT  -j KATAKOMBA_KS6     2>/dev/null; do :; done
 ip6tables -F KATAKOMBA_KS6                 2>/dev/null
 ip6tables -X KATAKOMBA_KS6                 2>/dev/null

@@ -10,8 +10,8 @@ Only the latest release receives fixes.
 
 | Version | Supported |
 |---------|-----------|
-| 3.7.x   | ✅ |
-| < 3.7   | ❌ |
+| 3.8.x   | ✅ |
+| < 3.8   | ❌ |
 
 ## Reporting a vulnerability
 
@@ -33,7 +33,7 @@ Especially relevant:
 - an `.ovpn` or torrc directive that bypasses the allowlists (`validation.py`);
 - credentials written to the journal, the status socket or a world-readable file.
 
-Out of scope: the known, documented limits (no traffic blocking during a reconnection, base64 obfuscation of credentials in `config.json`). See the [Security section of the README](README.md#security).
+Out of scope: the known, documented limits (the kill switch is lifted while the service is stopped or being relaunched after a crash, base64 obfuscation of credentials in `config.json`). See the [Security section of the README](README.md#security).
 
 ---
 
@@ -46,4 +46,4 @@ Katakomba tourne en root et manipule des identifiants VPN : les signalements de 
 
 Indiquez la version (`katakomba status`), la distribution, les étapes pour reproduire et l'impact. Retirez vos identifiants VPN, vos adresses IP réelles et les fichiers `.ovpn` de votre fournisseur.
 
-Seule la dernière version reçoit des correctifs. Les limites connues et documentées (pas de blocage du trafic pendant une reconnexion, identifiants en base64 dans `config.json`) ne sont pas des vulnérabilités : voir la section [Sécurité du README](README.fr.md#sécurité).
+Seule la dernière version reçoit des correctifs. Les limites connues et documentées (blocage hors tunnel levé quand le service est arrêté ou en cours de relance après un plantage, identifiants en base64 dans `config.json`) ne sont pas des vulnérabilités : voir la section [Sécurité du README](README.fr.md#sécurité).

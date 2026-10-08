@@ -154,6 +154,7 @@ try:
         print("  Circuit    : non mesuré")
     if d["lan_sharing"]:  print("  Partage LAN: actif")
     if d["ipv6_blocked"]: print("  IPv6       : bloqué")
+    if d.get("kill_switch"): print("  Hors tunnel: bloqué")
 except Exception:
     pass
 PYEOF
@@ -470,11 +471,24 @@ else:
         uplink=uplink, ms=f"{lat_locale * 1000:.0f}") if lat_locale is not None else ""
     note(OK, _("Chemin des requêtes DNS"), f"{lat_defaut * 1000:.0f} ms{ref}")
 
-# ── 5. IPv6 ───────────────────────────────────────────────────────────────────
+# ── 5. IPv6 et blocage hors tunnel ────────────────────────────────────────────
 if st.get("ipv6_blocked"):
     note(OK, _("IPv6"), _("bloqué"))
+elif st.get("kill_switch"):
+    note(OK, _("IPv6"), _("bloqué hors tunnel"))
 else:
     note(WARN, _("IPv6"), _("non bloqué (option désactivée dans les paramètres)"))
+# Absent d'un daemon plus ancien : rien à vérifier.
+if st.get("kill_switch"):
+    note(OK, _("Blocage hors tunnel"),
+         _("actif — seuls le tunnel, Tor et le réseau local sortent"))
+elif st.get("kill_switch_config"):
+    note(KO, _("Blocage hors tunnel"),
+         _("activé dans les réglages mais inactif — cause dans le journal "
+           "(katakomba logs)"))
+elif "kill_switch_config" in st:
+    note(WARN, _("Blocage hors tunnel"),
+         _("désactivé — pendant une reconnexion, le trafic peut sortir à découvert"))
 
 # ── 6. Connectivité réelle à travers le tunnel ────────────────────────────────
 if en_cours:

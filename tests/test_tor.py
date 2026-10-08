@@ -298,5 +298,43 @@ class PrepareTorTest(unittest.TestCase):
             FakeDaemon()._prepare_tor_data_dir()
 
 
+class TorRootEtBlocageTest(unittest.TestCase):
+    """Le blocage laisse passer Tor par son utilisateur, debian-tor : resté
+    root, Tor serait bloqué, et toute connexion avec lui."""
+
+    def _demarrer(self, utilisateur):
+        import types
+        import daemon.tor as m_tor
+        d = FakeDaemon(_kill_active=True)
+        d.leves = []
+        d._kill_switch_off = lambda force=False: d.leves.append(True)
+        d._prepare_tor_data_dir = lambda: utilisateur
+        d._tor_command = lambda user: ["tor"]
+        faux = {
+            "shutil": types.SimpleNamespace(which=lambda n: "/usr/bin/tor"),
+            "socket": types.SimpleNamespace(socket=lambda: types.SimpleNamespace(
+                settimeout=lambda t: None, connect_ex=lambda a: 1, close=lambda: None)),
+            "threading": types.SimpleNamespace(Thread=lambda **k: types.SimpleNamespace(
+                start=lambda: None, is_alive=lambda: False)),
+        }
+        saved = {n: getattr(m_tor, n) for n in faux}
+        for n, v in faux.items():
+            setattr(m_tor, n, v)
+        try:
+            d._start_tor()
+        finally:
+            for n, v in saved.items():
+                setattr(m_tor, n, v)
+        return d
+
+    def test_tor_root_leve_le_blocage(self):
+        d = self._demarrer(None)
+        self.assertEqual(d.leves, [True])
+        self.assertTrue(d.has_log("Tor reste en root", "ERROR"))
+
+    def test_tor_debian_tor_garde_le_blocage(self):
+        self.assertEqual(self._demarrer("debian-tor").leves, [])
+
+
 if __name__ == "__main__":
     unittest.main()

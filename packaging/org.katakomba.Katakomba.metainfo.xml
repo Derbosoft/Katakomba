@@ -29,6 +29,7 @@
       provider: it is adapted for Tor automatically.
     </p>
     <ul>
+      <li>Kill switch: nothing leaves outside the tunnel, even during reconnections</li>
       <li>Automatic failover between accounts and providers, and recovery after sleep</li>
       <li>IPv6 blocking, the VPN's DNS applied on the tunnel, and split DNS for local domains</li>
       <li>Built-in diagnostics that check routing, DNS and the real exit address</li>
@@ -91,6 +92,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.8.0" date="2026-10-08">
+      <description>
+        <p>Kill switch, on by default: while the service runs, nothing leaves outside the tunnel, even during reconnections. Only Tor itself, the local network, the local DNS server and the excluded networks bypass it. It is lifted when you disconnect.</p>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.8.0</url>
+    </release>
     <release version="3.7.2" date="2026-10-08">
       <description>
         <p>Software centre metadata: Katakomba now shows its description, screenshots and release notes in GNOME Software and the Ubuntu App Center.</p>

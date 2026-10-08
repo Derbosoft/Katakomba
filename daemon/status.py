@@ -82,6 +82,8 @@ class StatusMixin:
             "tor_guard_routes": sorted(self._protected_routes),
             "lan_sharing":    self._lan_active,
             "ipv6_blocked":   self._ipv6_blocked,
+            "kill_switch":    self._kill_active,
+            "kill_switch_config": bool(self.config.get("kill_switch", True)),
         }
 
     def _start_status_server(self):

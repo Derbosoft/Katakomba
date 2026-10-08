@@ -173,6 +173,14 @@ class FenetreTest(unittest.TestCase):
         self.assertTrue(self.fen.bandeau.get_revealed(),
                         "le redémarrage nécessaire n'est pas proposé")
 
+    def test_blocage_hors_tunnel_actif_par_defaut_et_enregistre(self):
+        page = self.fen.pages["reglages"]
+        self.assertTrue(page.blocage.get_active())
+        page.blocage.set_active(False)
+        self.assertFalse(self.config_disque()["kill_switch"])
+        self.assertTrue(self.fen.bandeau.get_revealed(),
+                        "le redémarrage nécessaire n'est pas proposé")
+
     def test_exclusion_normalisee_et_ipv6_refusee(self):
         page = self.fen.pages["exclusions"]
         page.nouveau_reseau.set_text("10.0.20.7/24")

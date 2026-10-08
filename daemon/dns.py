@@ -135,6 +135,16 @@ class DNSMixin:
         drop-in du split DNS garde la priorité sur les domaines exclus."""
         ips = list(dict.fromkeys(self._vpn_dns_ips))   # dédup, ordre conservé
         if not ips:
+            if self._kill_active:
+                # Le DNS du système (le routeur, en général) est refusé par le
+                # blocage hors tunnel : sans DNS du VPN, plus aucun nom ne se
+                # résout.  La cause doit être lisible dans le journal.
+                self._log(
+                    "Aucun DNS poussé par le VPN (dhcp-option DNS absent du "
+                    "PUSH_REPLY) et le blocage hors tunnel refuse le DNS du "
+                    "système : plus aucun nom ne se résout. Configurez un DNS "
+                    "local (Exclusions) ou désactivez le blocage.", "ERROR")
+                return
             self._log(
                 "Aucun DNS poussé par le VPN (dhcp-option DNS absent du "
                 "PUSH_REPLY) — DNS système inchangé, risque de fuite ou de "

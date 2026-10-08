@@ -92,7 +92,8 @@ class StatusSnapshotTest(unittest.TestCase):
         for cle in ("version", "pid", "timestamp", "tor_running", "tor_ready",
                     "tunnel_up", "tunnel_iface", "tunnel_uptime", "provider",
                     "account_index", "rx_kbs", "conn_failures", "vpn_reconnects",
-                    "full_restarts", "lan_sharing", "ipv6_blocked"):
+                    "full_restarts", "lan_sharing", "ipv6_blocked", "kill_switch",
+                    "kill_switch_config"):
             self.assertIn(cle, snap, f"champ {cle} absent du statut")
 
     def test_progression_tor(self):

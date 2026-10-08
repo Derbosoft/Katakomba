@@ -50,6 +50,14 @@ EXIT_NO_PROVIDER  = 78
 KS6_CHAIN         = "KATAKOMBA_KS6"
 KS6_FWD_CHAIN     = "KATAKOMBA_KS6_FWD"
 KS_LAN_CHAIN      = "KATAKOMBA_LAN_FWD"
+# Blocage hors tunnel (kill switch) : (outil, chaîne parente, chaîne, IPv6,
+# FORWARD).  Voir FirewallMixin._kill_switch_rules.
+KILL_CHAINS = (
+    ("iptables",  "OUTPUT",  "KATAKOMBA_KILL",      False, False),
+    ("iptables",  "FORWARD", "KATAKOMBA_KILL_FWD",  False, True),
+    ("ip6tables", "OUTPUT",  "KATAKOMBA_KILL6",     True,  False),
+    ("ip6tables", "FORWARD", "KATAKOMBA_KILL6_FWD", True,  True),
+)
 
 TOR_CTRL_PORT     = 9051
 RECONNECT_DELAY   = 15
@@ -202,6 +210,7 @@ class DaemonCore:
         self._stop_vpn           = False
         self._stop_tor_flag      = False
         self._ipv6_blocked       = False
+        self._kill_active        = False  # blocage hors tunnel en place
         self._lan_active         = False
         self._lan_tun            = ""    # interface tunnel figée dans les règles LAN
         self._dnsmasq_proc       = None
@@ -318,6 +327,8 @@ class DaemonCore:
         self._teardown_lan_sharing()
         self._ipv6_block_off()
         self._remove_dns_split()
+        # En dernier : le service s'arrête, la connexion normale revient.
+        self._kill_switch_off()
         self._stop_status_server()
         if AUTH_TMP.exists():
             AUTH_TMP.unlink()
@@ -340,6 +351,10 @@ class DaemonCore:
         _purge_jumps("ip6tables", "OUTPUT",  KS6_CHAIN)
         _purge_jumps("ip6tables", "FORWARD", KS6_FWD_CHAIN)
         _purge_jumps("iptables",  "FORWARD", KS_LAN_CHAIN)
+        for tool, parent, chain, _v6, _fwd in KILL_CHAINS:
+            _purge_jumps(tool, parent, chain)
+            _run(tool, "-F", chain)
+            _run(tool, "-X", chain)
         for args in [
             ("ip6tables", "-F", KS6_CHAIN),
             ("ip6tables", "-X", KS6_CHAIN),
@@ -432,6 +447,9 @@ class DaemonCore:
             sys.exit(1)
         self._check_dns_stack()
         self.cleanup_stale_rules()
+        # Avant Tor : rien ne doit sortir à découvert, même pendant le
+        # bootstrap ou la première connexion.
+        self._kill_switch_on()
         self._start_status_server()
         if not self._start_services():
             sys.exit(1)

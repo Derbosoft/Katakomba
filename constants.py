@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "3.7.2"
+VERSION       = "3.8.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")
@@ -34,6 +34,10 @@ DEFAULT_CONFIG = {
     # l'ordre de priorité défini dans la configuration.
     "random_account":    True,
     "block_ipv6":        False,
+    # Blocage hors tunnel (kill switch) : tant que le service tourne, rien ne
+    # sort hors du tunnel, sauf Tor et le réseau local — y compris pendant
+    # les reconnexions.
+    "kill_switch":       True,
     "excluded_ips":      [],
     "excluded_domains":  [],
     "local_dns":         "",

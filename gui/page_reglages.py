@@ -70,6 +70,10 @@ class PageReglages(Adw.PreferencesPage):
         self.add(g)
 
         g = Adw.PreferencesGroup(title=_("Sécurité"))
+        self.blocage = self._interrupteur(
+            g, "kill_switch", _("Bloquer tout trafic hors du tunnel"),
+            _("Pendant une coupure ou une reconnexion, rien ne sort par votre "
+              "connexion normale. Le réseau local reste accessible."))
         self.ipv6 = self._interrupteur(
             g, "block_ipv6", _("Bloquer IPv6 pendant la connexion"),
             _("Le tunnel ne transporte que l'IPv4 : sans ce blocage, le trafic "
@@ -128,6 +132,7 @@ class PageReglages(Adw.PreferencesPage):
         try:
             self.auto.set_active(c.get("auto_reconnect", True))
             self.hasard.set_active(c.get("random_account", True))
+            self.blocage.set_active(c.get("kill_switch", True))
             self.ipv6.set_active(c.get("block_ipv6", False))
             self.mesure.set_active(c.get("circuit_check", True))
             self.seuil.set_value(int(c.get("circuit_min_kbs", 250)))

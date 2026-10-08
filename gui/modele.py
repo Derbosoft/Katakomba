@@ -878,7 +878,7 @@ def tuiles(service: str, st: dict) -> list:
         debit = _("Mesuré à la connexion")
     if not actif:
         ipv6 = ("—", _("Selon les réglages"))
-    elif st.get("ipv6_blocked"):
+    elif st.get("ipv6_blocked") or st.get("kill_switch"):
         ipv6 = (_("Bloqué"), _("Pas de fuite IPv6"))
     else:
         ipv6 = (_("Autorisé"), _("Peut contourner le tunnel"))

@@ -365,6 +365,20 @@ class FullRestartTest(unittest.TestCase):
             self.assertIn(attendu, d.appels, f"{attendu} non appelé")
         self.assertLess(d.appels.index("_stop_openvpn"), d.appels.index("_start"))
 
+    def test_blocage_garde_pendant_le_redemarrage(self):
+        """Le redémarrage complet est une reconnexion : rien ne doit fuir."""
+        import types
+        d = self._daemon()
+        d._kill_active = True
+        d._kill_switch_off = lambda force=False: d.appels.append("_kill_switch_off")
+        m_watchdog.time = types.SimpleNamespace(sleep=lambda s: None, time=time.time)
+        try:
+            d._full_restart()
+        finally:
+            m_watchdog.time = time
+        self.assertNotIn("_kill_switch_off", d.appels)
+        self.assertTrue(d._kill_active)
+
     def test_etat_reinitialise(self):
         import types
         d = self._daemon()
