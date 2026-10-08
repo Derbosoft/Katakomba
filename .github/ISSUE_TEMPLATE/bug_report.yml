@@ -1,0 +1,51 @@
+name: Bug report
+description: Something does not work as expected / Quelque chose ne fonctionne pas
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Remove your VPN credentials and real IP addresses** from everything below.
+        For a security vulnerability, do not open an issue: see [SECURITY.md](https://github.com/Derbosoft/Katakomba/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened? / Que s'est-il passé ?
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Katakomba version
+      placeholder: "3.7.0"
+    validations:
+      required: true
+
+  - type: input
+    id: distribution
+    attributes:
+      label: Distribution
+      placeholder: "Ubuntu 24.04 / Debian 13"
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: VPN provider
+      placeholder: "ProtonVPN, iVPN…"
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `katakomba doctor`
+      render: text
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output of `katakomba logs 100`
+      render: text

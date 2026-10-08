@@ -6,6 +6,8 @@
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Version](https://img.shields.io/badge/Version-3.7.0-blue)
+[![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
+[![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
 
 > [English documentation](README.md)
@@ -95,6 +97,8 @@ Le GUI et le daemon sont **entièrement découplés** : le GUI écrit uniquement
 ## Installation
 
 ### Par paquet `.deb` (recommandé)
+
+Téléchargez `katakomba_<version>_all.deb` depuis la **[dernière version publiée](https://github.com/Derbosoft/Katakomba/releases/latest)**, puis :
 
 ```bash
 sudo apt install ./katakomba_<version>_all.deb

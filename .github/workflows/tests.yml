@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Suite de tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Python système : python3-gi n'existe que pour lui.
+      - name: Dépendances (GTK 4, libadwaita, écran virtuel)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common xvfb
+
+      - name: run-tests.sh
+        run: xvfb-run -a bash run-tests.sh
+
+  paquet:
+    name: Paquet .deb
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build-deb.sh
+        run: bash packaging/build-deb.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: katakomba-deb
+          path: dist/*.deb
