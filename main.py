@@ -21,7 +21,7 @@ except (ImportError, ValueError) as e:
     i18n.activer()
     print(i18n._("Interface indisponible ({erreur}).").format(erreur=e) + "\n"
           + i18n._("Installez : {commande}").format(
-              commande="sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1"),
+              commande="sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1"),
           file=sys.stderr)
     sys.exit(1)
 

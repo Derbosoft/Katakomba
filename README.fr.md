@@ -85,7 +85,7 @@ Le GUI et le daemon sont **entièrement découplés** : le GUI écrit uniquement
 |-----------|-----------------|------|
 | Ubuntu / Debian | 24.04 / 13 | Système de base |
 | Python | 3.8+ | Daemon + GUI |
-| GTK 4 + libadwaita | 1.5+ | Interface graphique (`python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `librsvg2-common`) |
+| GTK 4 + libadwaita | 1.5+ | Interface graphique (`python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `librsvg2-common`) |
 | tor | — | Proxy SOCKS5 et réseau Tor |
 | openvpn | 2.4+ | Tunnel chiffré vers le fournisseur VPN |
 | dnsmasq | — | **Optionnel** — serveur DHCP, uniquement pour le partage LAN |
@@ -126,7 +126,7 @@ L'installateur effectue **7 étapes** :
 
 **1. Dépendances**
 ```bash
-apt install tor openvpn python3 curl python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common
+apt install tor openvpn python3 curl python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common
 ```
 `dnsmasq` ne sert qu'au partage LAN (désactivé par défaut) : depuis la v3.6.1 il n'est installé que s'il est déjà présent ou si le partage est configuré, plutôt qu'installé puis désactivé aussitôt. Pour l'ajouter plus tard : `sudo apt install dnsmasq`.
 

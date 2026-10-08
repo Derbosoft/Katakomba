@@ -527,7 +527,7 @@ class PaquetDebTest(unittest.TestCase):
     def test_dependances(self):
         control = (PAQ / "control.in").read_text()
         depends = next(l for l in control.splitlines() if l.startswith("Depends:"))
-        for dep in ("python3-gi", "gir1.2-gtk-4.0", "gir1.2-adw-1 (>= 1.5)",
+        for dep in ("python3-gi", "python3-gi-cairo", "gir1.2-gtk-4.0", "gir1.2-adw-1 (>= 1.5)",
                     "tor", "openvpn", "curl", "iptables",
                     "systemd-resolved", "pkexec"):
             self.assertIn(dep, depends)

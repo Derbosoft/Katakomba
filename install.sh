@@ -198,12 +198,13 @@ echo "[1/7] Installation des dépendances …"
 # échec franc.
 DEPS_BIN=(tor openvpn python3 curl)
 # Interface graphique : GTK 4 et libadwaita 1.5 ou plus (Ubuntu 24.04+, Debian 13+).
-DEPS_GUI=(python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common)
+DEPS_GUI=(python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common)
 gui_disponible() {
     python3 - << 'GUI_EOF' 2>/dev/null
 import sys, gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
+gi.require_foreign("cairo")
 from gi.repository import Adw
 sys.exit(0 if (Adw.get_major_version(), Adw.get_minor_version()) >= (1, 5) else 1)
 GUI_EOF

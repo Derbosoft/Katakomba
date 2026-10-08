@@ -67,6 +67,9 @@ class FenetreTest(unittest.TestCase):
             "CONFIG_FILE", "TORRC_FILE", "PROVIDERS_DIR", "SCRIPT_DIR", "etat_service",
             "lire_statut", "lire_evenements", "interfaces_lan", "demarrage_auto_actif",
             "systemctl", "privilegie", "PREFERENCES_FILE", "LANCEMENT_SESSION_FILE")}
+        # addCleanup, pas tearDown : appelé même si setUp échoue en route.
+        self.addCleanup(lambda: [setattr(modele, n, v) for n, v in self.sauve.items()])
+        self.addCleanup(setattr, sys, "excepthook", self._excepthook)
         type(self).avis = []
         modele.PREFERENCES_FILE = base / "prefs" / "interface.json"
         modele.LANCEMENT_SESSION_FILE = base / "autostart" / "org.katakomba.Katakomba.desktop"
@@ -97,8 +100,6 @@ class FenetreTest(unittest.TestCase):
         pomper(50)
         sys.excepthook = self._excepthook
         self.assertEqual(self._exceptions, [], "exception dans un rappel GTK")
-        for n, v in self.sauve.items():
-            setattr(modele, n, v)
         self._tmp.cleanup()
 
     def config_disque(self):
