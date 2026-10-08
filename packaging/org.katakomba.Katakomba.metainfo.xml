@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fiche AppStream : nom, description, captures et versions affichés par
+     les centres d'applications (GNOME Software, Centre d'applications
+     Ubuntu).  Installée par le paquet dans /usr/share/metainfo/.
+     Vérifiée par tests/test_scripts.py (appstreamcli validate). -->
+<component type="desktop-application">
+  <id>org.katakomba.Katakomba</id>
+  <launchable type="desktop-id">org.katakomba.Katakomba.desktop</launchable>
+
+  <name>Katakomba</name>
+  <summary>Route all traffic through a VPN over Tor</summary>
+  <developer id="io.github.derbosoft">
+    <name>Derbo</name>
+  </developer>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <description>
+    <p>
+      Katakomba routes all of your computer's traffic through OpenVPN, whose
+      connection itself travels through the Tor network. Your VPN provider sees
+      a Tor exit node, never your real address; your Internet provider sees
+      Tor, never your VPN or where you go.
+    </p>
+    <p>
+      A background service manages Tor, OpenVPN, DNS and reconnections, and a
+      setup wizard only needs the configuration file downloaded from your VPN
+      provider: it is adapted for Tor automatically.
+    </p>
+    <ul>
+      <li>Automatic failover between accounts and providers, and recovery after sleep</li>
+      <li>IPv6 blocking, the VPN's DNS applied on the tunnel, and split DNS for local domains</li>
+      <li>Built-in diagnostics that check routing, DNS and the real exit address</li>
+      <li>Desktop notifications when the connection drops and when it comes back</li>
+      <li>Advanced settings: network exclusions, LAN sharing, Tor circuit options</li>
+    </ul>
+    <p>
+      Requires a VPN provider offering OpenVPN over TCP. Expect a few megabits
+      per second: fine for browsing, less so for HD video.
+    </p>
+  </description>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Connection status and the path your traffic takes</caption>
+      <image type="source" width="1024" height="760">https://raw.githubusercontent.com/Derbosoft/Katakomba/main/assets/captures/connexion-en.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>VPN providers and accounts, in failover order</caption>
+      <image type="source" width="1024" height="760">https://raw.githubusercontent.com/Derbosoft/Katakomba/main/assets/captures/fournisseurs-en.png</image>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/Derbosoft/Katakomba</url>
+  <url type="bugtracker">https://github.com/Derbosoft/Katakomba/issues</url>
+  <url type="help">https://github.com/Derbosoft/Katakomba#readme</url>
+  <url type="vcs-browser">https://github.com/Derbosoft/Katakomba</url>
+  <url type="contribute">https://github.com/Derbosoft/Katakomba/blob/main/CONTRIBUTING.md</url>
+
+  <categories>
+    <category>Network</category>
+    <category>Security</category>
+  </categories>
+  <keywords>
+    <keyword>VPN</keyword>
+    <keyword>Tor</keyword>
+    <keyword>OpenVPN</keyword>
+    <keyword>privacy</keyword>
+    <keyword>anonymity</keyword>
+  </keywords>
+
+  <provides>
+    <binary>katakomba</binary>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#3ac7e0</color>
+    <color type="primary" scheme_preference="dark">#1b2a33</color>
+  </branding>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="3.7.2" date="2026-10-08">
+      <description>
+        <p>Software centre metadata: Katakomba now shows its description, screenshots and release notes in GNOME Software and the Ubuntu App Center.</p>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.7.2</url>
+    </release>
+    <release version="3.7.1" date="2026-10-08">
+      <description>
+        <p>The package now depends on python3-gi-cairo: without it, the window crashed when opening on a minimal installation. The license is stated consistently as GPL-3.0.</p>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.7.1</url>
+    </release>
+    <release version="3.7.0" date="2026-10-08">
+      <description>
+        <p>New name: Katakomba. An installation made under the previous name is migrated automatically.</p>
+        <ul>
+          <li>Provider files are adapted for Tor automatically, as downloaded</li>
+          <li>Allowlists for OpenVPN and Tor configuration, Tor runs unprivileged</li>
+          <li>Faster recovery: OpenVPN alone is restarted when Tor is healthy</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.7.0</url>
+    </release>
+  </releases>
+</component>

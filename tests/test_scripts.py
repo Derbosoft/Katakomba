@@ -543,6 +543,28 @@ class PaquetDebTest(unittest.TestCase):
         desktop = (PAQ / "org.katakomba.Katakomba.desktop").read_text()
         self.assertIn("Exec=/usr/bin/katakomba gui", desktop)
 
+    def test_fiche_appstream(self):
+        """Fiche des centres d'applications : livrée par le paquet, liée au
+        lanceur, à jour de la version, captures présentes dans le dépôt.
+        La validation par appstreamcli est faite par la CI."""
+        import sys
+        import xml.etree.ElementTree as ET
+        sys.path.insert(0, str(ROOT))
+        from constants import VERSION
+        fiche = ET.parse(PAQ / "org.katakomba.Katakomba.metainfo.xml").getroot()
+        lanceur = fiche.findtext("launchable")
+        self.assertEqual(lanceur, fiche.findtext("id") + ".desktop")
+        self.assertTrue((PAQ / lanceur).exists(), lanceur)
+        versions = [r.get("version") for r in fiche.iter("release")]
+        self.assertEqual(versions[0], VERSION, "version courante absente de la fiche")
+        self.assertEqual(versions, sorted(versions, reverse=True,
+                                          key=lambda v: tuple(map(int, v.split(".")))))
+        for image in fiche.iter("image"):
+            chemin = image.text.split("/main/", 1)[1]
+            self.assertTrue((ROOT / chemin).exists(), chemin)
+        self.assertIn("/usr/share/metainfo/org.katakomba.Katakomba.metainfo.xml",
+                      (PAQ / "build-deb.sh").read_text())
+
     def test_ancien_cli_retire_s_il_est_le_notre(self):
         self.assertIn('grep -qs "Katakomba — CLI wrapper" /usr/local/bin/katakomba',
                       INSTALL)

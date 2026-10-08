@@ -39,6 +39,9 @@ chmod 755 "$OPT/repair_network.sh" "$OPT/katakomba-cli.sh" "$OPT/install.sh" \
 
 install -m 755 "$RACINE/katakomba-cli.sh" "$P/usr/bin/katakomba"
 install -m 644 "$RACINE/packaging/org.katakomba.Katakomba.desktop" "$P/usr/share/applications/"
+# Fiche des centres d'applications (description, captures, versions).
+install -D -m 644 "$RACINE/packaging/org.katakomba.Katakomba.metainfo.xml" \
+        "$P/usr/share/metainfo/org.katakomba.Katakomba.metainfo.xml"
 install -D -m 644 "$RACINE/polkit/50-katakomba.rules" \
         "$P/usr/share/polkit-1/rules.d/50-katakomba.rules"
 install -D -m 644 "$RACINE/polkit/org.katakomba.policy" \
