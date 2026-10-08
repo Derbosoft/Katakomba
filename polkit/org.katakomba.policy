@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  Katakomba — actions privilégiées lancées par l'interface via pkexec.
+
+  pkexec reconnaît le programme (exec.path) et son premier argument
+  (exec.argv1) : l'invite dit ce que Katakomba demande, au lieu d'un
+  générique « exécuter /usr/bin/… en superutilisateur ».  Toute autre
+  commande passe par l'action générique de pkexec (mot de passe exigé).
+-->
+<policyconfig>
+  <vendor>Katakomba</vendor>
+  <icon_name>katakomba</icon_name>
+
+  <action id="org.katakomba.demarrage-auto.activer">
+    <description>Connect Katakomba at boot</description>
+    <description xml:lang="fr">Connecter Katakomba au démarrage</description>
+    <description xml:lang="es">Conectar Katakomba al iniciar</description>
+    <description xml:lang="de">Katakomba beim Start verbinden</description>
+    <description xml:lang="it">Connetti Katakomba all'avvio</description>
+    <description xml:lang="pt">Conectar o Katakomba ao iniciar</description>
+    <message>Katakomba wants to connect automatically every time the computer starts.</message>
+    <message xml:lang="fr">Katakomba veut se connecter automatiquement à chaque démarrage de l'ordinateur.</message>
+    <message xml:lang="es">Katakomba quiere conectarse automáticamente cada vez que se inicie el equipo.</message>
+    <message xml:lang="de">Katakomba möchte sich bei jedem Rechnerstart automatisch verbinden.</message>
+    <message xml:lang="it">Katakomba vuole connettersi automaticamente a ogni avvio del computer.</message>
+    <message xml:lang="pt">O Katakomba quer se conectar automaticamente sempre que o computador iniciar.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/opt/katakomba/katakomba-cli.sh</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">enable</annotate>
+  </action>
+
+  <action id="org.katakomba.demarrage-auto.desactiver">
+    <description>Stop connecting Katakomba at boot</description>
+    <description xml:lang="fr">Ne plus connecter Katakomba au démarrage</description>
+    <description xml:lang="es">Dejar de conectar Katakomba al iniciar</description>
+    <description xml:lang="de">Katakomba nicht mehr beim Start verbinden</description>
+    <description xml:lang="it">Non connettere più Katakomba all'avvio</description>
+    <description xml:lang="pt">Não conectar mais o Katakomba ao iniciar</description>
+    <message>Katakomba wants to stop connecting automatically when the computer starts.</message>
+    <message xml:lang="fr">Katakomba veut ne plus se connecter automatiquement au démarrage de l'ordinateur.</message>
+    <message xml:lang="es">Katakomba quiere dejar de conectarse automáticamente al iniciar el equipo.</message>
+    <message xml:lang="de">Katakomba möchte sich beim Rechnerstart nicht mehr automatisch verbinden.</message>
+    <message xml:lang="it">Katakomba vuole smettere di connettersi automaticamente all'avvio del computer.</message>
+    <message xml:lang="pt">O Katakomba quer parar de se conectar automaticamente ao iniciar o computador.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/opt/katakomba/katakomba-cli.sh</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">disable</annotate>
+  </action>
+
+  <action id="org.katakomba.reparer-reseau">
+    <description>Repair the network after Katakomba</description>
+    <description xml:lang="fr">Réparer le réseau après Katakomba</description>
+    <description xml:lang="es">Reparar la red tras Katakomba</description>
+    <description xml:lang="de">Netzwerk nach Katakomba reparieren</description>
+    <description xml:lang="it">Riparare la rete dopo Katakomba</description>
+    <description xml:lang="pt">Reparar a rede após o Katakomba</description>
+    <message>Katakomba wants to stop its service and remove the firewall rules, routes and DNS settings it left behind.</message>
+    <message xml:lang="fr">Katakomba veut arrêter son service et retirer les règles de pare-feu, routes et réglages DNS laissés derrière lui.</message>
+    <message xml:lang="es">Katakomba quiere detener su servicio y retirar las reglas de cortafuegos, rutas y ajustes DNS que haya dejado.</message>
+    <message xml:lang="de">Katakomba möchte seinen Dienst beenden und zurückgebliebene Firewall-Regeln, Routen und DNS-Einstellungen entfernen.</message>
+    <message xml:lang="it">Katakomba vuole arrestare il suo servizio e rimuovere le regole del firewall, i percorsi e le impostazioni DNS lasciati.</message>
+    <message xml:lang="pt">O Katakomba quer parar o serviço e remover as regras de firewall, rotas e configurações de DNS que deixou.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/opt/katakomba/repair_network.sh</annotate>
+  </action>
+</policyconfig>

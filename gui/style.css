@@ -1,0 +1,211 @@
+/* Katakomba — graphite.  Toujours sombre (voir app.py) ; libadwaita fournit
+   les composants, cette feuille leur donne une identité sobre : des gris
+   neutres, et une couleur franche (sans néon) par étape du trajet : vert
+   (cet ordinateur, connecté), violet (Tor), bleu (VPN), ambre (Internet).
+   L'état (attente, erreur) l'emporte toujours sur la teinte.
+
+   Deux syntaxes : les couleurs nommées (@define-color) pour libadwaita 1.5,
+   les variables CSS (:root) pour 1.6 et suivants. */
+
+@define-color accent_color #62cf97;
+@define-color accent_bg_color #2f7d58;
+@define-color accent_fg_color #eef1ef;
+@define-color window_bg_color #141416;
+@define-color window_fg_color #e2e2e5;
+@define-color view_bg_color #18181b;
+@define-color view_fg_color #e2e2e5;
+@define-color headerbar_bg_color #141416;
+@define-color headerbar_fg_color #e2e2e5;
+@define-color sidebar_bg_color #111113;
+@define-color sidebar_fg_color #e2e2e5;
+@define-color card_bg_color #1e1e22;
+@define-color card_fg_color #e2e2e5;
+@define-color dialog_bg_color #202024;
+@define-color dialog_fg_color #e2e2e5;
+@define-color popover_bg_color #202024;
+@define-color popover_fg_color #e2e2e5;
+@define-color success_color #62cf97;
+@define-color warning_color #e6bd62;
+@define-color error_color #ec7383;
+@define-color destructive_bg_color #b04656;
+
+:root {
+  --accent-color: #62cf97;
+  --accent-bg-color: #2f7d58;
+  --accent-fg-color: #eef1ef;
+  --window-bg-color: #141416;
+  --window-fg-color: #e2e2e5;
+  --view-bg-color: #18181b;
+  --view-fg-color: #e2e2e5;
+  --headerbar-bg-color: #141416;
+  --headerbar-fg-color: #e2e2e5;
+  --sidebar-bg-color: #111113;
+  --sidebar-fg-color: #e2e2e5;
+  --card-bg-color: #1e1e22;
+  --card-fg-color: #e2e2e5;
+  --dialog-bg-color: #202024;
+  --dialog-fg-color: #e2e2e5;
+  --popover-bg-color: #202024;
+  --popover-fg-color: #e2e2e5;
+  --success-color: #62cf97;
+  --warning-color: #e6bd62;
+  --error-color: #ec7383;
+  --destructive-bg-color: #b04656;
+}
+
+/* ── États ──────────────────────────────────────────────────────────────── */
+
+.etat-ok      { color: #62cf97; }
+.etat-attente { color: #b09cf0; }
+.etat-erreur  { color: #ec7383; }
+.etat-arret   { color: alpha(#e2e2e5, 0.55); }
+.etat-info    { color: alpha(#e2e2e5, 0.75); }
+
+/* ── Accueil : carte d'état ─────────────────────────────────────────────── */
+
+.carte-etat { padding: 22px 24px 26px 24px; }
+
+.pastille-etat {
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: 999px;
+  background-color: alpha(currentColor, 0.08);
+}
+
+.titre-etat {
+  font-size: 18pt;
+  font-weight: 600;
+}
+
+button.connexion {
+  min-height: 44px;
+  min-width: 190px;
+  font-size: 12pt;
+  font-weight: 600;
+  border-radius: 999px;
+}
+
+/* ── Accueil : trajet du trafic ─────────────────────────────────────────── */
+
+.noeud-icone {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid alpha(currentColor, 0.45);
+  background-color: alpha(currentColor, 0.08);
+}
+.noeud-icone.etat-ok { border-color: #62cf97; }
+.noeud-icone.etat-attente { border-color: #b09cf0; }
+.noeud-icone.etat-erreur { border-color: #ec7383; }
+
+/* Une teinte par étape, seulement quand elle est établie : l'étape brille
+   (halo doux, fond teinté). */
+.noeud-icone.etat-ok { background-color: alpha(currentColor, 0.14); }
+.noeud-icone.etat-ok.etape-ordinateur {
+  color: #62cf97; border-color: alpha(#62cf97, 0.8);
+  box-shadow: 0 0 12px alpha(#62cf97, 0.28);
+}
+.noeud-icone.etat-ok.etape-tor {
+  color: #a283f0; border-color: alpha(#a283f0, 0.8);
+  box-shadow: 0 0 12px alpha(#a283f0, 0.28);
+}
+.noeud-icone.etat-ok.etape-vpn {
+  color: #5fb2ea; border-color: alpha(#5fb2ea, 0.8);
+  box-shadow: 0 0 12px alpha(#5fb2ea, 0.28);
+}
+.noeud-icone.etat-ok.etape-internet {
+  color: #e6bd62; border-color: alpha(#e6bd62, 0.8);
+  box-shadow: 0 0 12px alpha(#e6bd62, 0.28);
+}
+
+.noeud-titre { font-weight: 700; }
+
+.lien {
+  min-height: 2px;
+  min-width: 2px;
+  border-radius: 1px;
+  background-color: alpha(#e2e2e5, 0.16);
+}
+.lien.etat-ok { background-color: alpha(#62cf97, 0.35); }
+.lien.etat-attente { background-color: alpha(#b09cf0, 0.6); }
+
+/* Trait établi : dégradé de l'étape précédente à celle qu'il atteint. */
+.lien.etat-ok.vers-tor {
+  background-image: linear-gradient(to right, alpha(#62cf97, 0.9), alpha(#a283f0, 0.9));
+}
+.lien.etat-ok.vers-vpn {
+  background-image: linear-gradient(to right, alpha(#a283f0, 0.9), alpha(#5fb2ea, 0.9));
+}
+.lien.etat-ok.vers-internet {
+  background-image: linear-gradient(to right, alpha(#5fb2ea, 0.9), alpha(#e6bd62, 0.9));
+}
+
+/* ── Accueil : chiffres ─────────────────────────────────────────────────── */
+
+.tuile { padding: 14px 16px; }
+.tuile-titre {
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: alpha(#e2e2e5, 0.55);
+}
+.tuile-valeur {
+  font-family: monospace;
+  font-size: 16pt;
+  font-weight: 600;
+}
+
+/* Titre teinté et fin liseré en haut, aux couleurs du trajet. */
+.tuile-duree    .tuile-titre { color: #62cf97; }
+.tuile-circuit  .tuile-titre { color: #a283f0; }
+.tuile-reprises .tuile-titre { color: #e6bd62; }
+.tuile-ipv6     .tuile-titre { color: #5fb2ea; }
+.tuile-duree    { box-shadow: inset 0 2px alpha(#62cf97, 0.55); }
+.tuile-circuit  { box-shadow: inset 0 2px alpha(#a283f0, 0.55); }
+.tuile-reprises { box-shadow: inset 0 2px alpha(#e6bd62, 0.55); }
+.tuile-ipv6     { box-shadow: inset 0 2px alpha(#5fb2ea, 0.55); }
+
+/* Numéro de priorité d'un fournisseur. */
+.numero {
+  border-radius: 999px;
+  min-width: 26px;
+  min-height: 26px;
+  font-weight: 700;
+  color: #5fb2ea;
+  background-color: alpha(#5fb2ea, 0.16);
+}
+
+/* ── Barre latérale ─────────────────────────────────────────────────────── */
+
+/* Point d'état à droite de « Connexion ». */
+.point { font-size: 13pt; }
+
+/* Icônes teintées, sur la même gamme que le trajet. */
+.nav-connexion    { color: #62cf97; }
+.nav-fournisseurs { color: #5fb2ea; }
+.nav-reglages     { color: alpha(#e2e2e5, 0.7); }
+.nav-diagnostic   { color: #e8927c; }
+.nav-journal      { color: #e6bd62; }
+.nav-exclusions   { color: #5fb2ea; }
+.nav-lan          { color: #62cf97; }
+.nav-tor          { color: #a283f0; }
+
+.section-laterale {
+  margin: 14px 12px 4px 12px;
+  font-size: 9pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: alpha(#e2e2e5, 0.45);
+}
+
+/* Journal et torrc : texte technique. */
+textview.technique, textview.technique text {
+  font-family: monospace;
+  font-size: 10pt;
+  background-color: #101012;
+}
+
+.heure {
+  font-family: monospace;
+  color: alpha(#e2e2e5, 0.55);
+}

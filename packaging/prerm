@@ -1,0 +1,11 @@
+#!/bin/sh
+# Avant le retrait des fichiers : arrêt du service et nettoyage du système
+# (règles pare-feu, unité, hook de veille).  Une mise à jour ne retire rien :
+# le postinst de la nouvelle version reconfigure et relance.
+set -e
+case "$1" in
+    remove|deconfigure)
+        bash /opt/katakomba/uninstall.sh --paquet || true
+        ;;
+esac
+exit 0

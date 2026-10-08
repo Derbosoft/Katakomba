@@ -1,0 +1,13 @@
+#!/bin/sh
+# Configuration du système après dépôt des fichiers par dpkg.  Toute la
+# logique est dans install.sh (mode paquet) : une seule procédure, que l'on
+# installe depuis les sources ou par le paquet.
+set -e
+case "$1" in
+    configure)
+        KATAKOMBA_PAQUET=1 bash /opt/katakomba/install.sh
+        # Mise à jour : le daemon tournait ? il repart sur le nouveau code.
+        systemctl try-restart katakomba.service 2>/dev/null || true
+        ;;
+esac
+exit 0

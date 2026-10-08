@@ -1,0 +1,20 @@
+Package: katakomba
+Version: @VERSION@
+Section: net
+Priority: optional
+Architecture: all
+Maintainer: @MAINTAINER@
+Installed-Size: @TAILLE@
+Depends: python3 (>= 3.9), python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1 (>= 1.5), librsvg2-common, tor, openvpn (>= 2.5), curl, iproute2, iptables, procps, systemd-resolved | systemd (<< 252), pkexec | policykit-1
+Suggests: dnsmasq
+Conflicts: tor-vpn-manager
+Replaces: tor-vpn-manager
+Description: VPN encapsulé dans Tor, avec assistant graphique
+ Katakomba fait passer tout le trafic réseau de la machine par OpenVPN,
+ dont la connexion transite elle-même par Tor : le fournisseur VPN voit un
+ nœud de sortie Tor, jamais votre adresse réelle.
+ .
+ Un service systemd gère Tor, OpenVPN, le DNS, le blocage IPv6 et la
+ reconnexion automatique. L'interface graphique propose un assistant : il
+ suffit du fichier de configuration téléchargé chez le fournisseur VPN, qui
+ est adapté automatiquement.

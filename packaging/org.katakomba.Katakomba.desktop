@@ -1,0 +1,17 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Katakomba
+Comment=Faire passer tout le trafic par un VPN à travers Tor
+Comment[en]=Route all traffic through a VPN tunnelled over Tor
+Comment[es]=Hacer pasar todo el tráfico por una VPN, a través de Tor
+Comment[de]=Den gesamten Verkehr über ein VPN leiten, durch Tor
+Comment[it]=Far passare tutto il traffico da una VPN, attraverso Tor
+Comment[pt]=Fazer todo o tráfego passar por uma VPN, através do Tor
+Exec=/usr/bin/katakomba gui
+Icon=katakomba
+StartupWMClass=org.katakomba.Katakomba
+X-GNOME-UsesNotifications=true
+Terminal=false
+Categories=Network;Security;
+Keywords=VPN;Tor;OpenVPN;anonymat;vie privée;

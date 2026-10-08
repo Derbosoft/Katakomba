@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Fichiers personnels — NE JAMAIS committer
+id.txt
+*.tmp
+auth.tmp
+.env
+
+# Configurations VPN personnelles
+# (ajouter ses propres fichiers via le GUI après installation)
+providers/*/
+!providers/.gitkeep
+
+# Artefacts de travail locaux — jamais dans le dépôt
+.backup-avant-correctif-*/
+/merge-*.py
+/elaguer-*.py
+.claude/
+
+# Paquets construits (packaging/build-deb.sh)
+dist/

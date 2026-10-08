@@ -1,0 +1,11 @@
+#!/bin/sh
+# « apt purge » : réglages, fournisseurs, comptes et données Tor effacés.
+# « apt remove » les conserve pour une réinstallation.
+set -e
+case "$1" in
+    purge)
+        rm -rf /etc/katakomba /var/lib/katakomba /opt/katakomba
+        groupdel katakomba 2>/dev/null || true
+        ;;
+esac
+exit 0

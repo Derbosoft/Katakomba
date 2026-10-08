@@ -1,0 +1,2149 @@
+# Katakomba — traduction : allemand.
+# Traduite depuis le français ; une relecture par un locuteur natif
+# est la bienvenue (outils/traductions.py verifier).
+msgid ""
+msgstr ""
+"Project-Id-Version: Katakomba\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: gui/app.py:47
+msgid "Dernière étape de l'installation : fermez votre session puis rouvrez-la (ou redémarrez l'ordinateur). Votre compte vient de recevoir l'accès à Katakomba, mais la session en cours a été ouverte avant."
+msgstr "Letzter Installationsschritt: Melden Sie sich ab und wieder an (oder starten Sie den Computer neu). Ihr Konto hat gerade Zugriff auf Katakomba erhalten, die laufende Sitzung wurde jedoch vorher geöffnet."
+
+#: gui/app.py:51
+msgid "Ce compte n'a pas accès à la configuration ({dossier}). Un administrateur de la machine peut vous l'accorder :\n\nsudo katakomba autoriser {compte}\n\npuis fermez et rouvrez votre session."
+msgstr "Dieses Konto hat keinen Zugriff auf die Konfiguration ({dossier}). Ein Administrator dieses Rechners kann ihn gewähren:\n\nsudo katakomba autoriser {compte}\n\nMelden Sie sich danach ab und wieder an."
+
+#: gui/app.py:127 gui/page_connexion.py:523 gui/page_connexion.py:520
+msgid "Se connecter"
+msgstr "Verbinden"
+
+#: gui/app.py:157
+msgid "Accès à Katakomba"
+msgstr "Zugriff auf Katakomba"
+
+#: gui/app.py:158
+msgid "Fermer"
+msgstr "Schließen"
+
+#: gui/app.py:149
+msgid "Langue : {langue}"
+msgstr "Sprache: {langue}"
+
+#: gui/app.py:184
+msgid "Katakomba requiert libadwaita {version} ou plus récent (Ubuntu 24.04+, Debian 13+)."
+msgstr "Katakomba benötigt libadwaita {version} oder neuer (Ubuntu 24.04+, Debian 13+)."
+
+#: gui/assistant.py:70
+msgid "Votre fournisseur VPN"
+msgstr "Ihr VPN-Anbieter"
+
+#: gui/assistant.py:71
+msgid "Téléchargez sur le site de votre fournisseur sa configuration OpenVPN (un fichier .ovpn, ou une archive .zip), de préférence en TCP. Gardez seulement les serveurs voulus : Katakomba adapte le reste automatiquement."
+msgstr "Laden Sie die OpenVPN-Konfiguration von der Website Ihres Anbieters herunter (eine .ovpn-Datei oder ein .zip-Archiv), am besten für TCP. Behalten Sie nur die gewünschten Server: Katakomba passt den Rest automatisch an."
+
+#: gui/assistant.py:94
+msgid "Fournisseur"
+msgstr "Anbieter"
+
+#: gui/assistant.py:97
+msgid "Lecture…"
+msgstr "Wird gelesen…"
+
+#: gui/assistant.py:135
+msgid "Choisissez d'abord le fichier de votre fournisseur."
+msgstr "Wählen Sie zuerst die Datei Ihres Anbieters."
+
+#: gui/assistant.py:147
+msgid "Vos identifiants"
+msgstr "Ihre Zugangsdaten"
+
+#: gui/assistant.py:148
+msgid "Les identifiants OpenVPN fournis par votre fournisseur. Chez beaucoup d'entre eux, ils sont différents de l'e-mail et du mot de passe de votre compte sur leur site."
+msgstr "Die OpenVPN-Zugangsdaten Ihres Anbieters. Bei vielen Anbietern unterscheiden sie sich von der E-Mail-Adresse und dem Passwort Ihres Kontos auf deren Website."
+
+#: gui/assistant.py:163
+msgid "Identifiants"
+msgstr "Zugangsdaten"
+
+#: gui/assistant.py:176 gui/assistant.py:198 gui/fenetre.py:26 gui/page_reglages.py:26
+msgid "Connexion"
+msgstr "Verbindung"
+
+#: gui/assistant.py:219 gui/modele.py:906
+msgid "Démarrage du service…"
+msgstr "Dienst wird gestartet…"
+
+#: gui/assistant.py:287
+msgid "Terminer"
+msgstr "Fertig"
+
+#: gui/assistant.py:55 gui/fenetre.py:147
+msgid "Assistant de configuration"
+msgstr "Einrichtungsassistent"
+
+#: gui/assistant.py:77 gui/page_fournisseurs.py:87
+msgid "Fichier de configuration"
+msgstr "Konfigurationsdatei"
+
+#: gui/assistant.py:78
+msgid "Aucun fichier choisi"
+msgstr "Keine Datei gewählt"
+
+#: gui/assistant.py:80 gui/page_fournisseurs.py:90
+msgid "Choisir…"
+msgstr "Auswählen…"
+
+#: gui/assistant.py:87
+msgid "Nom du fournisseur"
+msgstr "Name des Anbieters"
+
+#: gui/assistant.py:92 gui/assistant.py:161
+msgid "Suivant"
+msgstr "Weiter"
+
+#: gui/assistant.py:109
+msgid "Aucun fichier utilisable"
+msgstr "Keine verwendbare Datei"
+
+#: gui/assistant.py:153 gui/page_fournisseurs.py:144
+msgid "Identifiant"
+msgstr "Benutzername"
+
+#: gui/assistant.py:154 gui/page_fournisseurs.py:145
+msgid "Mot de passe"
+msgstr "Passwort"
+
+#: gui/assistant.py:167
+msgid "Identifiant et mot de passe sont nécessaires."
+msgstr "Benutzername und Passwort sind erforderlich."
+
+#: gui/assistant.py:183 gui/page_reglages.py:38
+msgid "Se connecter au démarrage de l'ordinateur"
+msgstr "Beim Rechnerstart verbinden"
+
+#: gui/assistant.py:184
+msgid "Le mot de passe administrateur est demandé pour ce réglage."
+msgstr "Für diese Einstellung ist das Administratorpasswort nötig."
+
+#: gui/assistant.py:196
+msgid "Enregistrer et se connecter"
+msgstr "Speichern und verbinden"
+
+#: gui/assistant.py:242
+msgid "autorisation refusée"
+msgstr "Berechtigung verweigert"
+
+#: gui/assistant.py:82
+msgid "Fichiers de votre fournisseur"
+msgstr "Dateien Ihres Anbieters"
+
+#: gui/assistant.py:82 gui/page_fournisseurs.py:168
+msgid "Configuration OpenVPN"
+msgstr "OpenVPN-Konfiguration"
+
+#: gui/assistant.py:118
+msgid "Fichier prêt : {n} serveur."
+msgid_plural "Fichier prêt : {n} serveurs."
+msgstr[0] "Datei bereit: {n} Server."
+msgstr[1] "Datei bereit: {n} Server."
+
+#: gui/assistant.py:177
+msgid "Fournisseur « {fournisseur} », identifiant « {identifiant} ». Katakomba enregistre la configuration puis se connecte."
+msgstr "Anbieter „{fournisseur}“, Benutzername „{identifiant}“. Katakomba speichert die Konfiguration und verbindet sich dann."
+
+#: gui/assistant.py:266
+msgid "La connexion prend plus de temps que prévu. Elle continue en arrière-plan ; son état reste visible sur l'écran Connexion."
+msgstr "Die Verbindung dauert länger als erwartet. Sie läuft im Hintergrund weiter; ihr Status bleibt auf der Seite „Verbindung“ sichtbar."
+
+#: gui/assistant.py:110
+msgid "Ce fichier ne peut pas être utilisé :"
+msgstr "Diese Datei kann nicht verwendet werden:"
+
+#: gui/assistant.py:122
+msgid "{n} adaptation faite automatiquement pour fonctionner à travers Tor."
+msgid_plural "{n} adaptations faites automatiquement pour fonctionner à travers Tor."
+msgstr[0] "{n} automatische Anpassung für den Betrieb über Tor."
+msgstr[1] "{n} automatische Anpassungen für den Betrieb über Tor."
+
+#: gui/assistant.py:232
+msgid "Le service n'a pas pu démarrer : {erreur}"
+msgstr "Der Dienst konnte nicht starten: {erreur}"
+
+#: gui/assistant.py:243
+msgid "Le service n'a pas pu démarrer ({cause}). Réessayez depuis l'écran Connexion."
+msgstr "Der Dienst konnte nicht starten ({cause}). Versuchen Sie es auf der Seite „Verbindung“ erneut."
+
+#: gui/assistant.py:213
+msgid "Enregistrement impossible : {erreur}"
+msgstr "Speichern nicht möglich: {erreur}"
+
+#: gui/fenetre.py:27 gui/page_fournisseurs.py:34
+msgid "Fournisseurs"
+msgstr "Anbieter"
+
+#: gui/fenetre.py:28
+msgid "Réglages"
+msgstr "Einstellungen"
+
+#: gui/fenetre.py:29
+msgid "Diagnostic"
+msgstr "Diagnose"
+
+#: gui/fenetre.py:30
+msgid "Journal"
+msgstr "Protokoll"
+
+#: gui/fenetre.py:31
+msgid "Exclusions"
+msgstr "Ausnahmen"
+
+#: gui/fenetre.py:32
+msgid "Partage LAN"
+msgstr "LAN-Freigabe"
+
+#: gui/fenetre.py:33 katakomba-cli.sh:294 katakomba-cli.sh:296 katakomba-cli.sh:298
+msgid "Tor"
+msgstr "Tor"
+
+#: gui/fenetre.py:146
+msgid "Mode avancé"
+msgstr "Erweiterter Modus"
+
+#: gui/fenetre.py:149
+msgid "À propos de Katakomba"
+msgstr "Über Katakomba"
+
+#: gui/fenetre.py:152
+msgid "Quitter"
+msgstr "Beenden"
+
+#: gui/fenetre.py:159
+msgid "Réglage enregistré : il sera appliqué au prochain démarrage du service."
+msgstr "Einstellung gespeichert: Sie gilt ab dem nächsten Start des Dienstes."
+
+#: gui/fenetre.py:160
+msgid "Redémarrer maintenant"
+msgstr "Jetzt neu starten"
+
+#: gui/fenetre.py:268
+msgid "Mode avancé activé"
+msgstr "Erweiterter Modus aktiviert"
+
+#: gui/fenetre.py:268
+msgid "Mode simple"
+msgstr "Einfacher Modus"
+
+#: gui/fenetre.py:156
+msgid "Menu principal"
+msgstr "Hauptmenü"
+
+#: gui/fenetre.py:249
+msgid "Katakomba veille en arrière-plan"
+msgstr "Katakomba wacht im Hintergrund"
+
+#: gui/fenetre.py:250
+msgid "Il vous préviendra si la connexion tombe. Pour le quitter : menu principal, Quitter."
+msgstr "Es meldet sich, wenn die Verbindung abbricht. Zum Beenden: Hauptmenü, Beenden."
+
+#: gui/fenetre.py:286 gui/fenetre.py:288 gui/page_tor.py:196 gui/page_tor.py:199
+msgid "Enregistrement impossible"
+msgstr "Speichern nicht möglich"
+
+#: gui/fenetre.py:352
+msgid "Action impossible"
+msgstr "Aktion nicht möglich"
+
+#: gui/fenetre.py:379
+msgid "Tout le trafic de la machine passe par un VPN, lui-même encapsulé dans Tor."
+msgstr "Der gesamte Datenverkehr des Rechners läuft über ein VPN, das selbst durch Tor getunnelt wird."
+
+#: gui/fenetre.py:117
+msgid "Avancé"
+msgstr "Erweitert"
+
+#: gui/fenetre.py:354 gui/page_reglages.py:189 gui/page_reglages.py:295
+msgid "Action annulée"
+msgstr "Aktion abgebrochen"
+
+#: gui/fenetre.py:258
+msgid "Préférence non enregistrée : {erreur}"
+msgstr "Einstellung nicht gespeichert: {erreur}"
+
+#: gui/fenetre.py:356
+msgid "Le service n'a pas répondu comme prévu"
+msgstr "Der Dienst hat nicht wie erwartet reagiert"
+
+#: gui/fenetre.py:357 gui/page_reglages.py:193
+msgid "Erreur inconnue."
+msgstr "Unbekannter Fehler."
+
+#: gui/modele.py:131
+msgid "Votre compte ne peut pas modifier la configuration de Katakomba. Fermez puis rouvrez votre session ; si le problème persiste : sudo katakomba autoriser $USER"
+msgstr "Ihr Konto kann die Konfiguration von Katakomba nicht ändern. Melden Sie sich ab und wieder an; besteht das Problem weiter: sudo katakomba autoriser $USER"
+
+#: gui/modele.py:739
+msgid "démarrage du service"
+msgstr "Start des Dienstes"
+
+#: gui/modele.py:739
+msgid "redémarrage complet de Tor et d'OpenVPN"
+msgstr "vollständiger Neustart von Tor und OpenVPN"
+
+#: gui/modele.py:740
+msgid "perte de connectivité, relance d'OpenVPN"
+msgstr "Verbindung verloren, OpenVPN wird neu gestartet"
+
+#: gui/modele.py:741
+msgid "circuit Tor trop lent, nouveau tirage"
+msgstr "Tor-Kanal zu langsam, neuer wird gewählt"
+
+#: gui/modele.py:741
+msgid "connexion VPN interrompue"
+msgstr "VPN-Verbindung unterbrochen"
+
+#: gui/modele.py:742
+msgid "identifiants refusés, compte suivant"
+msgstr "Zugangsdaten abgelehnt, nächstes Konto"
+
+#: gui/modele.py:236
+msgid "Donnez un nom au fournisseur (par exemple celui de votre VPN)."
+msgstr "Geben Sie dem Anbieter einen Namen (zum Beispiel den Ihres VPN)."
+
+#: gui/modele.py:238
+msgid "Le nom ne peut contenir ni « / » ni « \\ »."
+msgstr "Der Name darf weder „/“ noch „\\“ enthalten."
+
+#: gui/modele.py:273
+msgid "Les lignes retirées restent dans le fichier, en commentaire."
+msgstr "Entfernte Zeilen bleiben als Kommentar in der Datei."
+
+#: gui/modele.py:788
+msgid "Connexion au VPN…"
+msgstr "Verbindung zum VPN…"
+
+#: gui/modele.py:789
+msgid "À travers Tor, en général en moins de 30 secondes."
+msgstr "Über Tor, meist in weniger als 30 Sekunden."
+
+#: gui/modele.py:867
+msgid "Depuis le démarrage"
+msgstr "Seit dem Start"
+
+#: gui/modele.py:878
+msgid "Mesuré à la connexion"
+msgstr "Beim Verbinden gemessen"
+
+#: gui/modele.py:909
+msgid "Connecté : votre trafic passe par Tor, puis par le VPN."
+msgstr "Verbunden: Ihr Datenverkehr läuft über Tor und dann über das VPN."
+
+#: gui/modele.py:923
+msgid "Connexion au VPN à travers Tor…"
+msgstr "Verbindung zum VPN über Tor…"
+
+#: gui/modele.py:946
+msgid "Service démarré"
+msgstr "Dienst gestartet"
+
+#: gui/modele.py:947
+msgid "Service arrêté"
+msgstr "Dienst beendet"
+
+#: gui/modele.py:948 gui/modele.py:774
+msgid "Connecté"
+msgstr "Verbunden"
+
+#: gui/modele.py:950
+msgid "Circuit mesuré : {debit}"
+msgstr "Kanal gemessen: {debit}"
+
+#: gui/modele.py:952
+msgid "Circuit trop lent ({debit}) : nouveau tirage"
+msgstr "Kanal zu langsam ({debit}): neuer wird gewählt"
+
+#: gui/modele.py:954
+msgid "Circuit lent conservé ({debit})"
+msgstr "Langsamer Kanal beibehalten ({debit})"
+
+#: gui/modele.py:956
+msgid "Connexion perdue : relance d'OpenVPN"
+msgstr "Verbindung verloren: OpenVPN wird neu gestartet"
+
+#: gui/modele.py:958
+msgid "Connexion perdue : redémarrage complet"
+msgstr "Verbindung verloren: vollständiger Neustart"
+
+#: gui/modele.py:960
+msgid "Compte {n} refusé par le fournisseur"
+msgstr "Konto {n} vom Anbieter abgelehnt"
+
+#: gui/modele.py:961
+msgid "Bascule vers le fournisseur suivant"
+msgstr "Wechsel zum nächsten Anbieter"
+
+#: gui/modele.py:264
+msgid "Modifications apportées :"
+msgstr "Vorgenommene Änderungen:"
+
+#: gui/modele.py:757 gui/modele.py:831 gui/page_fournisseurs.py:22
+msgid "Aucun fournisseur"
+msgstr "Kein Anbieter"
+
+#: gui/modele.py:758
+msgid "Ajoutez votre fournisseur VPN pour commencer : l'assistant vous guide."
+msgstr "Fügen Sie Ihren VPN-Anbieter hinzu, um zu beginnen: Der Assistent führt Sie."
+
+#: gui/modele.py:762
+msgid "Arrêté sur une erreur"
+msgstr "Mit einem Fehler beendet"
+
+#: gui/modele.py:763
+msgid "Le détail est dans le journal. Vous pouvez relancer la connexion."
+msgstr "Einzelheiten stehen im Protokoll. Sie können die Verbindung neu starten."
+
+#: gui/modele.py:767
+msgid "Démarrage…"
+msgstr "Wird gestartet…"
+
+#: gui/modele.py:768
+msgid "Le service démarre."
+msgstr "Der Dienst startet."
+
+#: gui/modele.py:770
+msgid "Déconnecté"
+msgstr "Getrennt"
+
+#: gui/modele.py:771
+msgid "Votre trafic ne passe pas par Katakomba."
+msgstr "Ihr Datenverkehr läuft nicht über Katakomba."
+
+#: gui/modele.py:775
+msgid "Tout le trafic de cet ordinateur passe par le VPN, à travers Tor."
+msgstr "Der gesamte Datenverkehr dieses Rechners läuft über das VPN, durch Tor."
+
+#: gui/modele.py:780 gui/modele.py:826
+msgid "Reconnexion…"
+msgstr "Neuverbindung…"
+
+#: gui/modele.py:786
+msgid "Connexion au réseau Tor…"
+msgstr "Verbindung zum Tor-Netzwerk…"
+
+#: gui/modele.py:787
+msgid "1 à 3 minutes la première fois."
+msgstr "Beim ersten Mal 1 bis 3 Minuten."
+
+#: gui/modele.py:804
+msgid "Trafic redirigé"
+msgstr "Verkehr umgeleitet"
+
+#: gui/modele.py:806
+msgid "Trafic direct"
+msgstr "Direkter Verkehr"
+
+#: gui/modele.py:838
+msgid "Via le VPN"
+msgstr "Über das VPN"
+
+#: gui/modele.py:845
+msgid "Cet ordinateur"
+msgstr "Dieser Rechner"
+
+#: gui/modele.py:847
+msgid "Réseau Tor"
+msgstr "Tor-Netzwerk"
+
+#: gui/modele.py:853
+msgid "Internet"
+msgstr "Internet"
+
+#: gui/modele.py:872
+msgid "relance légère"
+msgid_plural "relances légères"
+msgstr[0] "schneller Neustart"
+msgstr[1] "schnelle Neustarts"
+
+#: gui/modele.py:880
+msgid "Selon les réglages"
+msgstr "Laut Einstellungen"
+
+#: gui/modele.py:886
+msgid "Connecté depuis"
+msgstr "Verbunden seit"
+
+#: gui/modele.py:889
+msgid "Circuit Tor"
+msgstr "Tor-Kanal"
+
+#: gui/modele.py:891
+msgid "Reprises"
+msgstr "Neustarts"
+
+#: gui/modele.py:893 katakomba-cli.sh:475 katakomba-cli.sh:477
+msgid "IPv6"
+msgstr "IPv6"
+
+#: gui/modele.py:903
+msgid "Le service s'est arrêté sur une erreur. Le détail est visible dans la page Journal."
+msgstr "Der Dienst wurde mit einem Fehler beendet. Einzelheiten finden Sie auf der Seite „Protokoll“."
+
+#: gui/modele.py:916
+msgid "Le fournisseur a refusé l'identifiant ou le mot de passe. Vérifiez-les : ce sont les identifiants OpenVPN, souvent différents de ceux de votre compte sur le site du fournisseur."
+msgstr "Der Anbieter hat Benutzername oder Passwort abgelehnt. Prüfen Sie beides: Es sind die OpenVPN-Zugangsdaten, oft andere als die Ihres Kontos auf der Website des Anbieters."
+
+#: gui/modele.py:921
+msgid "Connexion au réseau Tor… (1 à 3 minutes la première fois)"
+msgstr "Verbindung zum Tor-Netzwerk… (beim ersten Mal 1 bis 3 Minuten)"
+
+#: gui/modele.py:66
+msgid "{valeur} Mb/s"
+msgstr "{valeur} Mbit/s"
+
+#: gui/modele.py:70
+msgid "{valeur} Ko/s"
+msgstr "{valeur} KB/s"
+
+#: gui/modele.py:76
+msgid "{n} s"
+msgstr "{n} s"
+
+#: gui/modele.py:197
+msgid "Qualité du circuit : débit minimum entier ≥ 0, essais entre 1 et 10."
+msgstr "Kanalqualität: Mindestrate als ganze Zahl ≥ 0, Versuche zwischen 1 und 10."
+
+#: gui/modele.py:240
+msgid "Un fournisseur « {nom} » existe déjà."
+msgstr "Ein Anbieter „{nom}“ existiert bereits."
+
+#: gui/modele.py:261
+msgid "{n} serveur retenu."
+msgid_plural "{n} serveurs retenus."
+msgstr[0] "{n} Server übernommen."
+msgstr[1] "{n} Server übernommen."
+
+#: gui/modele.py:531
+msgid "Ce fichier n'est pas une sauvegarde Katakomba."
+msgstr "Diese Datei ist keine Katakomba-Sicherung."
+
+#: gui/modele.py:534
+msgid "config.json ne contient pas un objet JSON"
+msgstr "config.json enthält kein JSON-Objekt"
+
+#: gui/modele.py:726
+msgid "Veille sur la connexion et prévient en cas de coupure"
+msgstr "Überwacht die Verbindung und meldet Abbrüche"
+
+#: gui/modele.py:812
+msgid "Circuit établi"
+msgstr "Kanal aufgebaut"
+
+#: gui/modele.py:840
+msgid "En attente du tunnel"
+msgstr "Wartet auf den Tunnel"
+
+#: gui/modele.py:842
+msgid "Sans Katakomba"
+msgstr "Ohne Katakomba"
+
+#: gui/modele.py:851
+msgid "VPN"
+msgstr "VPN"
+
+#: gui/modele.py:882
+msgid "Bloqué"
+msgstr "Blockiert"
+
+#: gui/modele.py:882
+msgid "Pas de fuite IPv6"
+msgstr "Kein IPv6-Leck"
+
+#: gui/modele.py:884
+msgid "Autorisé"
+msgstr "Erlaubt"
+
+#: gui/modele.py:884
+msgid "Peut contourner le tunnel"
+msgstr "Kann den Tunnel umgehen"
+
+#: gui/modele.py:888
+msgid "Tunnel actif"
+msgstr "Tunnel aktiv"
+
+#: gui/modele.py:888
+msgid "Pas de tunnel"
+msgstr "Kein Tunnel"
+
+#: gui/modele.py:913
+msgid "Mesure du débit en cours…"
+msgstr "Geschwindigkeit wird gemessen…"
+
+#: gui/modele.py:78
+msgid "{n} min"
+msgstr "{n} min"
+
+#: gui/modele.py:164 gui/modele.py:179
+msgid "« {valeur} » n'est pas une adresse IP."
+msgstr "„{valeur}“ ist keine IP-Adresse."
+
+#: gui/modele.py:190 gui/page_exclusions.py:82
+msgid "Serveur DNS local : {erreur}"
+msgstr "Lokaler DNS-Server: {erreur}"
+
+#: gui/modele.py:200
+msgid "Partage LAN : {erreur}"
+msgstr "LAN-Freigabe: {erreur}"
+
+#: gui/modele.py:219
+msgid "« {valeur} » est une adresse IPv6 : l'exclusion du tunnel ne gère que l'IPv4."
+msgstr "„{valeur}“ ist eine IPv6-Adresse: Die Tunnel-Ausnahme unterstützt nur IPv4."
+
+#: gui/modele.py:781
+msgid "{raison} — depuis {duree}."
+msgstr "{raison} — seit {duree}."
+
+#: gui/modele.py:816 gui/modele.py:827 gui/page_connexion.py:545
+msgid "Connexion…"
+msgstr "Verbindung…"
+
+#: gui/modele.py:818 gui/modele.py:833
+msgid "Arrêté"
+msgstr "Beendet"
+
+#: gui/modele.py:820 gui/modele.py:835
+msgid "Inactif"
+msgstr "Inaktiv"
+
+#: gui/modele.py:824
+msgid "Compte {n}"
+msgstr "Konto {n}"
+
+#: gui/modele.py:829
+msgid "En attente de Tor"
+msgstr "Wartet auf Tor"
+
+#: gui/modele.py:869
+msgid "dont {n} redémarrage complet"
+msgid_plural "dont {n} redémarrages complets"
+msgstr[0] "davon {n} vollständiger Neustart"
+msgstr[1] "davon {n} vollständige Neustarts"
+
+#: gui/modele.py:874
+msgid "{debit} · il y a {duree}"
+msgstr "{debit} · vor {duree}"
+
+#: gui/modele.py:81 katakomba-cli.sh:245
+msgid "{h} h {m:02d}"
+msgstr "{h} h {m:02d} min"
+
+#: gui/modele.py:84
+msgid "{j} j {h} h"
+msgstr "{j} T. {h} h"
+
+#: gui/modele.py:173
+msgid "Sous-réseau « {valeur} » invalide."
+msgstr "Ungültiges Subnetz „{valeur}“."
+
+#: gui/modele.py:176
+msgid "{adresse} n'appartient pas à {reseau}."
+msgstr "{adresse} gehört nicht zu {reseau}."
+
+#: gui/modele.py:216
+msgid "« {valeur} » n'est pas une adresse ou un réseau valide."
+msgstr "„{valeur}“ ist keine gültige Adresse und kein gültiges Netz."
+
+#: gui/modele.py:268
+msgid "… et {n} autre, détaillée en tête du fichier."
+msgid_plural "… et {n} autres, détaillées en tête du fichier."
+msgstr[0] "… und {n} weitere, oben in der Datei aufgeführt."
+msgstr[1] "… und {n} weitere, oben in der Datei aufgeführt."
+
+#: gui/modele.py:552
+msgid "{fichier} : chemin refusé"
+msgstr "{fichier}: Pfad abgelehnt"
+
+#: gui/modele.py:557 gui/modele.py:578
+msgid "{fichier} : {raison}"
+msgstr "{fichier}: {raison}"
+
+#: gui/modele.py:572
+msgid "{fournisseur} : chemin .ovpn refusé (hors de providers/)"
+msgstr "{fournisseur}: .ovpn-Pfad abgelehnt (außerhalb von providers/)"
+
+#: gui/modele.py:810
+msgid "{n} relais d'entrée"
+msgid_plural "{n} relais d'entrée"
+msgstr[0] "{n} Eingangsrelais"
+msgstr[1] "{n} Eingangsrelais"
+
+#: gui/modele.py:1026 gui/page_diagnostic.py:107
+msgid "Diagnostic impossible : {erreur}"
+msgstr "Diagnose nicht möglich: {erreur}"
+
+#: gui/modele.py:559
+msgid "trop volumineux"
+msgstr "zu groß"
+
+#: gui/modele.py:911
+msgid "Débit mesuré : {debit}."
+msgstr "Gemessene Geschwindigkeit: {debit}."
+
+#: gui/modele.py:815
+msgid "Démarrage : {n} %"
+msgstr "Start: {n} %"
+
+#: gui/outils.py:72
+msgid "Tous les fichiers"
+msgstr "Alle Dateien"
+
+#: gui/outils.py:34
+msgid "OK"
+msgstr "OK"
+
+#: gui/outils.py:130
+msgid "Plus d'actions"
+msgstr "Weitere Aktionen"
+
+#: gui/outils.py:55 gui/page_fournisseurs.py:162 gui/page_fournisseurs.py:184
+msgid "Annuler"
+msgstr "Abbrechen"
+
+#: gui/page_connexion.py:321 gui/page_connexion.py:326
+msgid "Redémarrer la connexion"
+msgstr "Verbindung neu starten"
+
+#: gui/page_connexion.py:380
+msgid "Derniers événements"
+msgstr "Letzte Ereignisse"
+
+#: gui/page_connexion.py:381
+msgid "Ce que Katakomba a fait récemment pour garder la connexion."
+msgstr "Was Katakomba zuletzt getan hat, um die Verbindung zu halten."
+
+#: gui/page_connexion.py:382
+msgid "Journal complet"
+msgstr "Ganzes Protokoll"
+
+#: gui/page_connexion.py:545
+msgid "Déconnexion…"
+msgstr "Wird getrennt…"
+
+#: gui/page_connexion.py:546
+msgid "Redémarrage…"
+msgstr "Neustart…"
+
+#: gui/page_connexion.py:521
+msgid "Se déconnecter"
+msgstr "Trennen"
+
+#: gui/page_connexion.py:522
+msgid "Ajouter mon fournisseur"
+msgstr "Meinen Anbieter hinzufügen"
+
+#: gui/page_connexion.py:576
+msgid "{jour}/{mois} {heure}"
+msgstr "{jour}.{mois}. {heure}"
+
+#: gui/page_connexion.py:583
+msgid "Aucun événement récent"
+msgstr "Keine aktuellen Ereignisse"
+
+#: gui/page_connexion.py:584
+msgid "Le journal du service est vide ou illisible pour ce compte."
+msgstr "Das Dienstprotokoll ist leer oder für dieses Konto nicht lesbar."
+
+#: gui/page_diagnostic.py:114
+msgid "Reconnexion en cours"
+msgstr "Neuverbindung läuft"
+
+#: gui/page_diagnostic.py:154
+msgid "Rapport copié"
+msgstr "Bericht kopiert"
+
+#: gui/page_diagnostic.py:36
+msgid "Vérifier la protection"
+msgstr "Schutz überprüfen"
+
+#: gui/page_diagnostic.py:37
+msgid "Routage, DNS, fuites possibles, relais Tor protégés, sortie réelle vers Internet. Rien n'est modifié, aucun mot de passe n'est demandé."
+msgstr "Routing, DNS, mögliche Lecks, geschützte Tor-Relais, echter Ausgang ins Internet. Nichts wird verändert, kein Passwort wird abgefragt."
+
+#: gui/page_diagnostic.py:40
+msgid "Lancer le diagnostic"
+msgstr "Diagnose starten"
+
+#: gui/page_diagnostic.py:47
+msgid "Diagnostic en cours…"
+msgstr "Diagnose läuft…"
+
+#: gui/page_diagnostic.py:48
+msgid "Une vingtaine de secondes : la sortie vers Internet est testée pour de vrai."
+msgstr "Etwa zwanzig Sekunden: Der Weg ins Internet wird wirklich getestet."
+
+#: gui/page_diagnostic.py:81
+msgid "Contrôles"
+msgstr "Prüfungen"
+
+#: gui/page_diagnostic.py:83 gui/page_diagnostic.py:86
+msgid "Copier le rapport"
+msgstr "Bericht kopieren"
+
+#: gui/page_diagnostic.py:90
+msgid "Relancer"
+msgstr "Erneut ausführen"
+
+#: gui/page_diagnostic.py:119
+msgid "Diagnostic impossible"
+msgstr "Diagnose nicht möglich"
+
+#: gui/page_diagnostic.py:116
+msgid "{n} problème à corriger"
+msgid_plural "{n} problèmes à corriger"
+msgstr[0] "{n} Problem zu beheben"
+msgstr[1] "{n} Probleme zu beheben"
+
+#: gui/page_diagnostic.py:124
+msgid "Tout est conforme"
+msgstr "Alles in Ordnung"
+
+#: gui/page_diagnostic.py:121
+msgid "Protégé, {n} point à surveiller"
+msgid_plural "Protégé, {n} points à surveiller"
+msgstr[0] "Geschützt, {n} Punkt im Blick behalten"
+msgstr[1] "Geschützt, {n} Punkte im Blick behalten"
+
+#: gui/page_exclusions.py:87
+msgid "Serveur DNS local enregistré"
+msgstr "Lokaler DNS-Server gespeichert"
+
+#: gui/page_exclusions.py:20
+msgid "Serveur DNS local"
+msgstr "Lokaler DNS-Server"
+
+#: gui/page_exclusions.py:21
+msgid "Résout les domaines locaux ci-dessous. Son réseau doit aussi figurer dans les adresses exclues."
+msgstr "Löst die unten stehenden lokalen Domains auf. Sein Netz muss auch unter den ausgenommenen Adressen stehen."
+
+#: gui/page_exclusions.py:23
+msgid "Adresse IP du serveur"
+msgstr "IP-Adresse des Servers"
+
+#: gui/page_exclusions.py:29
+msgid "Domaines locaux"
+msgstr "Lokale Domains"
+
+#: gui/page_exclusions.py:30
+msgid "Envoyés à votre DNS local au lieu du DNS du VPN (par exemple .lan ou .internal)."
+msgstr "Werden an Ihren lokalen DNS statt an den DNS des VPN geschickt (zum Beispiel .lan oder .internal)."
+
+#: gui/page_exclusions.py:33
+msgid "Ajouter un domaine"
+msgstr "Domain hinzufügen"
+
+#: gui/page_exclusions.py:41
+msgid "Adresses et réseaux exclus du tunnel"
+msgstr "Vom Tunnel ausgenommene Adressen und Netze"
+
+#: gui/page_exclusions.py:42
+msgid "Joints directement, par la passerelle locale : imprimante, NAS, autres machines du réseau (IPv4)."
+msgstr "Direkt über das lokale Gateway erreicht: Drucker, NAS, andere Rechner im Netz (IPv4)."
+
+#: gui/page_exclusions.py:45
+msgid "Ajouter une adresse ou un réseau (ex. 192.168.1.0/24)"
+msgstr "Adresse oder Netz hinzufügen (z. B. 192.168.1.0/24)"
+
+#: gui/page_exclusions.py:68
+msgid "Retirer"
+msgstr "Entfernen"
+
+#: gui/page_fournisseurs.py:126
+msgid "Le fournisseur et tous ses comptes seront retirés de Katakomba. Son fichier de configuration reste sur le disque."
+msgstr "Der Anbieter und alle seine Konten werden aus Katakomba entfernt. Seine Konfigurationsdatei bleibt auf der Festplatte."
+
+#: gui/page_fournisseurs.py:128 gui/page_fournisseurs.py:139
+msgid "Supprimer"
+msgstr "Löschen"
+
+#: gui/page_fournisseurs.py:137
+msgid "Supprimer ce compte ?"
+msgstr "Dieses Konto löschen?"
+
+#: gui/page_fournisseurs.py:159 gui/page_fournisseurs.py:108
+msgid "Ajouter un compte"
+msgstr "Konto hinzufügen"
+
+#: gui/page_fournisseurs.py:160
+msgid "Les identifiants OpenVPN de ce fournisseur, souvent différents de ceux de votre compte sur son site."
+msgstr "Die OpenVPN-Zugangsdaten dieses Anbieters, oft andere als die Ihres Kontos auf seiner Website."
+
+#: gui/page_fournisseurs.py:23
+msgid "Ajoutez votre fournisseur VPN : il suffit du fichier de configuration téléchargé sur son site."
+msgstr "Fügen Sie Ihren VPN-Anbieter hinzu: Die von seiner Website geladene Konfigurationsdatei genügt."
+
+#: gui/page_fournisseurs.py:25
+msgid "Ajouter un fournisseur"
+msgstr "Anbieter hinzufügen"
+
+#: gui/page_fournisseurs.py:35
+msgid "Le premier est utilisé en priorité. En cas d'échec, Katakomba passe au compte suivant, puis au fournisseur suivant."
+msgstr "Der erste wird bevorzugt verwendet. Scheitert er, wechselt Katakomba zum nächsten Konto, dann zum nächsten Anbieter."
+
+#: gui/page_fournisseurs.py:67
+msgid "Prioritaire"
+msgstr "Bevorzugt"
+
+#: gui/page_fournisseurs.py:70
+msgid "aucun fichier de configuration"
+msgstr "keine Konfigurationsdatei"
+
+#: gui/page_fournisseurs.py:157
+msgid "Compte ajouté"
+msgstr "Konto hinzugefügt"
+
+#: gui/page_fournisseurs.py:40 gui/page_fournisseurs.py:162
+msgid "Ajouter"
+msgstr "Hinzufügen"
+
+#: gui/page_fournisseurs.py:68
+msgid "{n} compte"
+msgid_plural "{n} comptes"
+msgstr[0] "{n} Konto"
+msgstr[1] "{n} Konten"
+
+#: gui/page_fournisseurs.py:77
+msgid "Fichier ou compte manquant"
+msgstr "Datei oder Konto fehlt"
+
+#: gui/page_fournisseurs.py:88
+msgid "Aucun — choisissez celui du fournisseur"
+msgstr "Keine — wählen Sie die des Anbieters"
+
+#: gui/page_fournisseurs.py:90
+msgid "Remplacer…"
+msgstr "Ersetzen…"
+
+#: gui/page_fournisseurs.py:125
+msgid "Supprimer « {nom} » ?"
+msgstr "„{nom}“ löschen?"
+
+#: gui/page_fournisseurs.py:138
+msgid "Le compte « {nom} » sera retiré de ce fournisseur."
+msgstr "Das Konto „{nom}“ wird von diesem Anbieter entfernt."
+
+#: gui/page_fournisseurs.py:167
+msgid "Fichiers du fournisseur « {nom} »"
+msgstr "Dateien des Anbieters „{nom}“"
+
+#: gui/page_fournisseurs.py:174
+msgid "Lecture impossible"
+msgstr "Lesen nicht möglich"
+
+#: gui/page_fournisseurs.py:178
+msgid "Ce fichier ne peut pas être utilisé"
+msgstr "Diese Datei kann nicht verwendet werden"
+
+#: gui/page_fournisseurs.py:182
+msgid "Adaptation du fichier"
+msgstr "Anpassung der Datei"
+
+#: gui/page_fournisseurs.py:196
+msgid "Écriture impossible"
+msgstr "Schreiben nicht möglich"
+
+#: gui/page_fournisseurs.py:200
+msgid "Configuration de « {nom} » enregistrée"
+msgstr "Konfiguration von „{nom}“ gespeichert"
+
+#: gui/page_fournisseurs.py:67
+msgid "Priorité {n}"
+msgstr "Priorität {n}"
+
+#: gui/page_fournisseurs.py:82
+msgid "Monter en priorité"
+msgstr "Nach oben"
+
+#: gui/page_fournisseurs.py:83
+msgid "Descendre en priorité"
+msgstr "Nach unten"
+
+#: gui/page_fournisseurs.py:84
+msgid "Supprimer le fournisseur…"
+msgstr "Anbieter löschen…"
+
+#: gui/page_fournisseurs.py:98
+msgid "Compte {n} · mot de passe enregistré"
+msgstr "Konto {n} · Passwort gespeichert"
+
+#: gui/page_fournisseurs.py:101
+msgid "Essayer plus tôt"
+msgstr "Früher versuchen"
+
+#: gui/page_fournisseurs.py:102
+msgid "Essayer plus tard"
+msgstr "Später versuchen"
+
+#: gui/page_fournisseurs.py:104
+msgid "Supprimer le compte…"
+msgstr "Konto löschen…"
+
+#: gui/page_fournisseurs.py:184
+msgid "Enregistrer"
+msgstr "Speichern"
+
+#: gui/page_journal.py:35
+msgid "Tous les messages"
+msgstr "Alle Meldungen"
+
+#: gui/page_journal.py:36
+msgid "Avertissements et erreurs"
+msgstr "Warnungen und Fehler"
+
+#: gui/page_journal.py:37
+msgid "Erreurs seulement"
+msgstr "Nur Fehler"
+
+#: gui/page_journal.py:77
+msgid "Gravité"
+msgstr "Schweregrad"
+
+#: gui/page_journal.py:190
+msgid "Exporter le journal"
+msgstr "Protokoll exportieren"
+
+#: gui/page_journal.py:191
+msgid "Texte"
+msgstr "Text"
+
+#: gui/page_journal.py:70
+msgid "Rechercher dans le journal"
+msgstr "Protokoll durchsuchen"
+
+#: gui/page_journal.py:81
+msgid "Masquer la routine (connexions de contrôle de Tor, certificats…)"
+msgstr "Routinemeldungen ausblenden (Tor-Steuerverbindungen, Zertifikate…)"
+
+#: gui/page_journal.py:83
+msgid "Masquer la routine"
+msgstr "Routine ausblenden"
+
+#: gui/page_journal.py:87 gui/page_journal.py:88
+msgid "Suivi en direct"
+msgstr "Live-Verfolgung"
+
+#: gui/page_journal.py:93 gui/page_journal.py:95
+msgid "Exporter les lignes affichées"
+msgstr "Angezeigte Zeilen exportieren"
+
+#: gui/page_journal.py:154
+msgid "Journal vide ou illisible pour ce compte (groupes adm ou systemd-journal requis)."
+msgstr "Protokoll leer oder für dieses Konto nicht lesbar (Gruppe adm oder systemd-journal nötig)."
+
+#: gui/page_journal.py:162
+msgid "Aucune ligne ne correspond aux filtres."
+msgstr "Keine Zeile entspricht den Filtern."
+
+#: gui/page_journal.py:186 gui/page_reglages.py:254
+msgid "Export impossible"
+msgstr "Export nicht möglich"
+
+#: gui/page_journal.py:188
+msgid "Journal exporté : {fichier}"
+msgstr "Protokoll exportiert: {fichier}"
+
+#: gui/page_lan.py:127
+msgid "Adresses du partage LAN enregistrées"
+msgstr "Adressen der LAN-Freigabe gespeichert"
+
+#: gui/page_lan.py:22
+msgid "Partage de la connexion"
+msgstr "Verbindungsfreigabe"
+
+#: gui/page_lan.py:23
+msgid "Les appareils branchés sur la seconde carte reçoivent une adresse et passent par le tunnel Tor + VPN. Si le tunnel tombe, leur trafic est bloqué. Pris en compte au prochain démarrage du service."
+msgstr "Geräte an der zweiten Netzwerkkarte erhalten eine Adresse und laufen über den Tor-+-VPN-Tunnel. Fällt der Tunnel aus, wird ihr Verkehr blockiert. Gilt ab dem nächsten Start des Dienstes."
+
+#: gui/page_lan.py:27
+msgid "Activer le partage LAN"
+msgstr "LAN-Freigabe aktivieren"
+
+#: gui/page_lan.py:32
+msgid "Carte réseau"
+msgstr "Netzwerkkarte"
+
+#: gui/page_lan.py:33
+msgid "La carte qui porte l'accès Internet n'est jamais proposée."
+msgstr "Die Karte mit dem Internetzugang wird nie angeboten."
+
+#: gui/page_lan.py:37
+msgid "Actualiser la liste"
+msgstr "Liste aktualisieren"
+
+#: gui/page_lan.py:40
+msgid "Adresse de la carte (passerelle des appareils)"
+msgstr "Adresse der Karte (Gateway der Geräte)"
+
+#: gui/page_lan.py:44
+msgid "Sous-réseau (ex. 10.0.0.0/24)"
+msgstr "Subnetz (z. B. 10.0.0.0/24)"
+
+#: gui/page_lan.py:48
+msgid "Distribuer les adresses automatiquement"
+msgstr "Adressen automatisch vergeben"
+
+#: gui/page_lan.py:49
+msgid "Serveur DHCP (paquet dnsmasq requis)."
+msgstr "DHCP-Server (Paket dnsmasq erforderlich)."
+
+#: gui/page_lan.py:80
+msgid "(aucune carte disponible)"
+msgstr "(keine Karte verfügbar)"
+
+#: gui/page_reglages.py:28
+msgid "Reconnexion automatique"
+msgstr "Automatisch neu verbinden"
+
+#: gui/page_reglages.py:29
+msgid "Rétablir la connexion dès qu'elle tombe."
+msgstr "Die Verbindung sofort wiederherstellen, wenn sie abbricht."
+
+#: gui/page_reglages.py:31
+msgid "Choisir un compte au hasard"
+msgstr "Konto zufällig wählen"
+
+#: gui/page_reglages.py:32
+msgid "Parmi les comptes du fournisseur. L'ordre des fournisseurs, lui, reste celui de la liste."
+msgstr "Unter den Konten des Anbieters. Die Reihenfolge der Anbieter bleibt die der Liste."
+
+#: gui/page_reglages.py:74
+msgid "Bloquer IPv6 pendant la connexion"
+msgstr "IPv6 während der Verbindung blockieren"
+
+#: gui/page_reglages.py:75
+msgid "Le tunnel ne transporte que l'IPv4 : sans ce blocage, le trafic IPv6 sortirait à découvert."
+msgstr "Der Tunnel transportiert nur IPv4: Ohne diese Sperre ginge IPv6-Verkehr ungeschützt hinaus."
+
+#: gui/page_reglages.py:85
+msgid "Mesurer le débit à la connexion"
+msgstr "Geschwindigkeit beim Verbinden messen"
+
+#: gui/page_reglages.py:87
+msgid "Débit minimum (Ko/s)"
+msgstr "Mindestgeschwindigkeit (KB/s)"
+
+#: gui/page_reglages.py:91
+msgid "Nouveaux tirages au plus"
+msgstr "Höchstens neue Kanäle"
+
+#: gui/page_reglages.py:92
+msgid "Avant de garder le circuit tel quel : mieux vaut un tunnel lent qu'une boucle de reconnexions."
+msgstr "Bevor der Kanal so bleibt: Ein langsamer Tunnel ist besser als eine Schleife aus Neuverbindungen."
+
+#: gui/page_reglages.py:258 gui/page_reglages.py:103
+msgid "Exporter la configuration"
+msgstr "Konfiguration exportieren"
+
+#: gui/page_reglages.py:259 gui/page_reglages.py:264
+msgid "Sauvegarde Katakomba"
+msgstr "Katakomba-Sicherung"
+
+#: gui/page_reglages.py:264 gui/page_reglages.py:104
+msgid "Importer une sauvegarde"
+msgstr "Sicherung importieren"
+
+#: gui/page_reglages.py:303
+msgid "Réparer le réseau ?"
+msgstr "Netzwerk reparieren?"
+
+#: gui/page_reglages.py:304
+msgid "Le service va s'arrêter et toutes les règles réseau de Katakomba seront nettoyées. Le mot de passe administrateur sera demandé."
+msgstr "Der Dienst wird beendet und alle Netzwerkregeln von Katakomba werden entfernt. Das Administratorpasswort wird abgefragt."
+
+#: gui/page_reglages.py:307
+msgid "Réparer"
+msgstr "Reparieren"
+
+#: gui/page_reglages.py:36
+msgid "Démarrage"
+msgstr "Start"
+
+#: gui/page_reglages.py:39
+msgid "Le mot de passe administrateur est demandé pour changer ce réglage."
+msgstr "Zum Ändern dieser Einstellung ist das Administratorpasswort nötig."
+
+#: gui/page_reglages.py:46
+msgid "Interface"
+msgstr "Oberfläche"
+
+#: gui/page_reglages.py:47
+msgid "Propres à votre compte, sans mot de passe."
+msgstr "Gelten nur für Ihr Konto, ohne Passwort."
+
+#: gui/page_reglages.py:48
+msgid "Langue du système"
+msgstr "Systemsprache"
+
+#: gui/page_reglages.py:49
+msgid "Langue"
+msgstr "Sprache"
+
+#: gui/page_reglages.py:53
+msgid "Continuer en arrière-plan"
+msgstr "Im Hintergrund weiterlaufen"
+
+#: gui/page_reglages.py:54
+msgid "Fermer la fenêtre laisse Katakomba veiller sur la connexion. Pour le quitter : menu principal, Quitter."
+msgstr "Nach dem Schließen des Fensters überwacht Katakomba die Verbindung weiter. Zum Beenden: Hauptmenü, Beenden."
+
+#: gui/page_reglages.py:59
+msgid "Prévenir en cas de coupure"
+msgstr "Bei Verbindungsabbruch benachrichtigen"
+
+#: gui/page_reglages.py:66
+msgid "Lancer à l'ouverture de session"
+msgstr "Bei der Anmeldung starten"
+
+#: gui/page_reglages.py:67
+msgid "Discrètement, sans ouvrir la fenêtre."
+msgstr "Unauffällig, ohne das Fenster zu öffnen."
+
+#: gui/page_reglages.py:72
+msgid "Sécurité"
+msgstr "Sicherheit"
+
+#: gui/page_reglages.py:80
+msgid "Qualité du circuit Tor"
+msgstr "Qualität des Tor-Kanals"
+
+#: gui/page_reglages.py:81
+msgid "Une seule mesure de 2 Mo juste après la connexion : un circuit trop lent est aussitôt remplacé. Aucune surveillance continue."
+msgstr "Eine einzige 2-MB-Messung direkt nach dem Verbinden: Ein zu langsamer Kanal wird sofort ersetzt. Keine Dauerüberwachung."
+
+#: gui/page_reglages.py:99
+msgid "Sauvegarde"
+msgstr "Sicherung"
+
+#: gui/page_reglages.py:100
+msgid "Fournisseurs, comptes, fichiers de configuration et réglages de Tor, dans un seul fichier .katakomba. Les identifiants n'y sont pas chiffrés : gardez-le en lieu sûr."
+msgstr "Anbieter, Konten, Konfigurationsdateien und Tor-Einstellungen in einer einzigen .katakomba-Datei. Die Zugangsdaten sind darin nicht verschlüsselt: Bewahren Sie sie sicher auf."
+
+#: gui/page_reglages.py:103
+msgid "Exporter…"
+msgstr "Exportieren…"
+
+#: gui/page_reglages.py:104
+msgid "Importer…"
+msgstr "Importieren…"
+
+#: gui/page_reglages.py:105
+msgid "Remplace la configuration actuelle."
+msgstr "Ersetzt die aktuelle Konfiguration."
+
+#: gui/page_reglages.py:108
+msgid "Dépannage"
+msgstr "Fehlerbehebung"
+
+#: gui/page_reglages.py:110
+msgid "Réparer le réseau"
+msgstr "Netzwerk reparieren"
+
+#: gui/page_reglages.py:110
+msgid "Réparer…"
+msgstr "Reparieren…"
+
+#: gui/page_reglages.py:111
+msgid "Retire les règles de pare-feu, routes et DNS laissés par une coupure, puis arrête le service."
+msgstr "Entfernt Firewall-Regeln, Routen und DNS-Einstellungen, die ein Ausfall hinterlassen hat, und beendet dann den Dienst."
+
+#: gui/page_reglages.py:242
+msgid "Katakomba se lancera à l'ouverture de session"
+msgstr "Katakomba startet bei der Anmeldung"
+
+#: gui/page_reglages.py:243
+msgid "Plus de lancement à l'ouverture de session"
+msgstr "Kein Start mehr bei der Anmeldung"
+
+#: gui/page_reglages.py:259
+msgid "sauvegarde"
+msgstr "sicherung"
+
+#: gui/page_reglages.py:282
+msgid "Import partiel"
+msgstr "Teilweiser Import"
+
+#: gui/page_reglages.py:285
+msgid "Configuration importée"
+msgstr "Konfiguration importiert"
+
+#: gui/page_reglages.py:164
+msgid "≈ {debit} sur un test de débit"
+msgstr "≈ {debit} bei einem Geschwindigkeitstest"
+
+#: gui/page_reglages.py:197
+msgid "Connexion au démarrage activée"
+msgstr "Verbinden beim Start aktiviert"
+
+#: gui/page_reglages.py:198
+msgid "Connexion au démarrage désactivée"
+msgstr "Verbinden beim Start deaktiviert"
+
+#: gui/page_reglages.py:240 gui/page_reglages.py:191
+msgid "Réglage impossible"
+msgstr "Einstellung nicht möglich"
+
+#: gui/page_reglages.py:267
+msgid "Remplacer la configuration ?"
+msgstr "Konfiguration ersetzen?"
+
+#: gui/page_reglages.py:268
+msgid "Fournisseurs, comptes et réglages actuels seront remplacés par ceux de la sauvegarde."
+msgstr "Aktuelle Anbieter, Konten und Einstellungen werden durch die der Sicherung ersetzt."
+
+#: gui/page_reglages.py:269
+msgid "Remplacer"
+msgstr "Ersetzen"
+
+#: gui/page_reglages.py:277
+msgid "Import impossible"
+msgstr "Import nicht möglich"
+
+#: gui/page_reglages.py:60
+msgid "Notification si la connexion tombe plus de {n} s, puis quand elle revient, ou si le service s'arrête."
+msgstr "Eine Benachrichtigung, wenn die Verbindung länger als {n} s ausfällt, dann wenn sie zurück ist, oder wenn der Dienst endet."
+
+#: gui/page_reglages.py:256
+msgid "Configuration exportée : {fichier}"
+msgstr "Konfiguration exportiert: {fichier}"
+
+#: gui/page_reglages.py:283
+msgid "Configuration importée, sauf :"
+msgstr "Konfiguration importiert, außer:"
+
+#: gui/page_reglages.py:293
+msgid "Réparation impossible"
+msgstr "Reparatur nicht möglich"
+
+#: gui/page_reglages.py:297
+msgid "Réseau réparé"
+msgstr "Netzwerk repariert"
+
+#: gui/page_reglages.py:298
+msgid "Le service est arrêté. Reconnectez-vous depuis l'écran Connexion."
+msgstr "Der Dienst ist beendet. Verbinden Sie sich auf der Seite „Verbindung“ erneut."
+
+#: gui/page_tor.py:40
+msgid "Défaut de Tor"
+msgstr "Tor-Standard"
+
+#: gui/page_tor.py:40
+msgid "1 mois"
+msgstr "1 Monat"
+
+#: gui/page_tor.py:40
+msgid "2 mois"
+msgstr "2 Monate"
+
+#: gui/page_tor.py:40
+msgid "3 mois"
+msgstr "3 Monate"
+
+#: gui/page_tor.py:40
+msgid "6 mois"
+msgstr "6 Monate"
+
+#: gui/page_tor.py:16
+msgid "Relais stables pour OpenVPN"
+msgstr "Stabile Relais für OpenVPN"
+
+#: gui/page_tor.py:17
+msgid "Délai de construction fixe"
+msgstr "Feste Aufbauzeit"
+
+#: gui/page_tor.py:18
+msgid "plus prévisible"
+msgstr "besser vorhersehbar"
+
+#: gui/page_tor.py:21
+msgid "Durée de vie d'un circuit (s)"
+msgstr "Lebensdauer eines Kanals (s)"
+
+#: gui/page_tor.py:22 gui/page_tor.py:26 gui/page_tor.py:30
+msgid "0 : défaut de Tor"
+msgstr "0: Tor-Standard"
+
+#: gui/page_tor.py:23
+msgid "Délai de construction (s)"
+msgstr "Aufbauzeit (s)"
+
+#: gui/page_tor.py:24 gui/page_tor.py:28
+msgid "0 : désactivé"
+msgstr "0: deaktiviert"
+
+#: gui/page_tor.py:25
+msgid "Préparation d'un nouveau circuit (s)"
+msgstr "Vorbereitung eines neuen Kanals (s)"
+
+#: gui/page_tor.py:27
+msgid "Maintien de connexion (s)"
+msgstr "Verbindung halten (s)"
+
+#: gui/page_tor.py:29
+msgid "Nombre de relais d'entrée"
+msgstr "Anzahl der Eingangsrelais"
+
+#: gui/page_tor.py:33
+msgid "Limiter les écritures sur le disque"
+msgstr "Schreibzugriffe auf die Festplatte begrenzen"
+
+#: gui/page_tor.py:34
+msgid "Masquer les adresses dans le journal de Tor"
+msgstr "Adressen im Tor-Protokoll verbergen"
+
+#: gui/page_tor.py:35
+msgid "Tor sans IPv6"
+msgstr "Tor ohne IPv6"
+
+#: gui/page_tor.py:36
+msgid "Signaler les requêtes DNS locales"
+msgstr "Lokale DNS-Anfragen melden"
+
+#: gui/page_tor.py:37
+msgid "Rembourrage du trafic"
+msgstr "Datenverkehr auffüllen"
+
+#: gui/page_tor.py:38
+msgid "résiste à l'analyse de trafic, consomme plus"
+msgstr "erschwert Verkehrsanalyse, verbraucht mehr"
+
+#: gui/page_tor.py:208
+msgid "Réglages de Tor enregistrés — redémarrage…"
+msgstr "Tor-Einstellungen gespeichert — Neustart…"
+
+#: gui/page_tor.py:221
+msgid "Réinitialiser les réglages de Tor ?"
+msgstr "Tor-Einstellungen zurücksetzen?"
+
+#: gui/page_tor.py:222
+msgid "Le torrc personnalisé est supprimé : Tor redémarre avec la configuration de base de Katakomba."
+msgstr "Die angepasste torrc wird gelöscht: Tor startet mit der Grundkonfiguration von Katakomba neu."
+
+#: gui/page_tor.py:223 gui/page_tor.py:118
+msgid "Réinitialiser"
+msgstr "Zurücksetzen"
+
+#: gui/page_tor.py:59
+msgid "Circuits"
+msgstr "Kanäle"
+
+#: gui/page_tor.py:60
+msgid "Les valeurs par défaut privilégient des circuits longs et stables, adaptés à un tunnel VPN permanent."
+msgstr "Die Standardwerte bevorzugen lange, stabile Kanäle, passend für einen dauerhaften VPN-Tunnel."
+
+#: gui/page_tor.py:71
+msgid "Durée de vie des relais d'entrée"
+msgstr "Lebensdauer der Eingangsrelais"
+
+#: gui/page_tor.py:78
+msgid "Confidentialité"
+msgstr "Datenschutz"
+
+#: gui/page_tor.py:84
+msgid "Pays de sortie exclus"
+msgstr "Ausgeschlossene Ausgangsländer"
+
+#: gui/page_tor.py:90
+msgid "Exclusion stricte"
+msgstr "Strikter Ausschluss"
+
+#: gui/page_tor.py:97
+msgid "Mode expert"
+msgstr "Expertenmodus"
+
+#: gui/page_tor.py:98
+msgid "Le torrc complet. Les lignes que les réglages ci-dessus ne représentent pas sont conservées. Les paramètres obligatoires sont toujours garantis."
+msgstr "Die vollständige torrc. Zeilen, die die Einstellungen oben nicht abbilden, bleiben erhalten. Die Pflichtparameter sind immer gewährleistet."
+
+#: gui/page_tor.py:121
+msgid "Appliquer et redémarrer"
+msgstr "Anwenden und neu starten"
+
+#: gui/page_tor.py:202
+msgid "Ce torrc serait refusé"
+msgstr "Diese torrc würde abgelehnt"
+
+#: gui/page_tor.py:219
+msgid "Réglages de Tor réinitialisés — redémarrage…"
+msgstr "Tor-Einstellungen zurückgesetzt — Neustart…"
+
+#: gui/page_tor.py:91
+msgid "peut empêcher toute connexion si aucun relais ne convient"
+msgstr "kann jede Verbindung verhindern, wenn kein Relais passt"
+
+#: gui/page_tor.py:205
+msgid "Retirez-les puis réessayez."
+msgstr "Entfernen Sie sie und versuchen Sie es erneut."
+
+#: gui/page_tor.py:85
+msgid "Codes ISO entre accolades, séparés par des virgules : {exemple}. Vide : aucun."
+msgstr "ISO-Codes in geschweiften Klammern, durch Kommas getrennt: {exemple}. Leer: keine."
+
+#: gui/page_tor.py:216
+msgid "Réinitialisation impossible"
+msgstr "Zurücksetzen nicht möglich"
+
+#: gui/page_tor.py:203
+msgid "Tor le lit en root au démarrage : le daemon refuserait ces lignes."
+msgstr "Tor liest sie beim Start als root: Der Daemon würde diese Zeilen ablehnen."
+
+#: gui/veilleur.py:149
+msgid "Connexion perdue"
+msgstr "Verbindung verloren"
+
+#: gui/veilleur.py:153
+msgid "Connexion toujours en cours"
+msgstr "Verbindung läuft noch"
+
+#: gui/veilleur.py:110
+msgid "Katakomba est arrêté"
+msgstr "Katakomba ist beendet"
+
+#: gui/veilleur.py:110
+msgid "La connexion VPN est coupée."
+msgstr "Die VPN-Verbindung ist getrennt."
+
+#: gui/veilleur.py:150
+msgid "Reconnexion en cours depuis {duree}. {raison}."
+msgstr "Neuverbindung seit {duree}. {raison}."
+
+#: gui/veilleur.py:151
+msgid "Reconnexion en cours depuis {duree}."
+msgstr "Neuverbindung seit {duree}."
+
+#: gui/veilleur.py:154
+msgid "Pas encore de tunnel après {duree}. {raison}."
+msgstr "Nach {duree} noch kein Tunnel. {raison}."
+
+#: gui/veilleur.py:155
+msgid "Pas encore de tunnel après {duree}."
+msgstr "Nach {duree} noch kein Tunnel."
+
+#: gui/veilleur.py:107
+msgid "Katakomba s'est arrêté sur une erreur"
+msgstr "Katakomba wurde mit einem Fehler beendet"
+
+#: gui/veilleur.py:108
+msgid "La connexion VPN est coupée. Le diagnostic et le journal en donnent la raison."
+msgstr "Die VPN-Verbindung ist getrennt. Diagnose und Protokoll nennen den Grund."
+
+#: gui/veilleur.py:118
+msgid "Connexion rétablie"
+msgstr "Verbindung wiederhergestellt"
+
+#: gui/veilleur.py:123
+msgid "Katakomba est connecté"
+msgstr "Katakomba ist verbunden"
+
+#: gui/veilleur.py:125
+msgid "À travers Tor."
+msgstr "Über Tor."
+
+#: gui/veilleur.py:119
+msgid "Après {duree} de coupure."
+msgstr "Nach {duree} Ausfall."
+
+#: gui/veilleur.py:124
+msgid "Via {fournisseur}, à travers Tor."
+msgstr "Über {fournisseur}, durch Tor."
+
+#: main.py:23
+msgid "Installez : {commande}"
+msgstr "Installieren Sie: {commande}"
+
+#: main.py:22
+msgid "Interface indisponible ({erreur})."
+msgstr "Oberfläche nicht verfügbar ({erreur})."
+
+#: validation.py:76 validation.py:77
+msgid "charge une bibliothèque (code exécuté en root)"
+msgstr "lädt eine Bibliothek (Code läuft als root)"
+
+#: validation.py:78
+msgid "charge un module OpenSSL (code exécuté en root)"
+msgstr "lädt ein OpenSSL-Modul (Code läuft als root)"
+
+#: validation.py:79
+msgid "charge un moteur OpenSSL (code exécuté en root)"
+msgstr "lädt eine OpenSSL-Engine (Code läuft als root)"
+
+#: validation.py:80 validation.py:241
+msgid "inclut un autre fichier, non contrôlé"
+msgstr "bindet eine andere, ungeprüfte Datei ein"
+
+#: validation.py:81
+msgid "change le répertoire de travail d'OpenVPN"
+msgstr "ändert das Arbeitsverzeichnis von OpenVPN"
+
+#: validation.py:82
+msgid "change la racine d'OpenVPN"
+msgstr "ändert das Wurzelverzeichnis von OpenVPN"
+
+#: validation.py:83 validation.py:84 validation.py:85 validation.py:86 validation.py:88
+msgid "écrit un fichier arbitraire en root"
+msgstr "schreibt eine beliebige Datei als root"
+
+#: validation.py:87
+msgid "déplace les fichiers temporaires d'OpenVPN"
+msgstr "verschiebt die temporären Dateien von OpenVPN"
+
+#: validation.py:89
+msgid "détourne la sortie que le daemon analyse"
+msgstr "leitet die Ausgabe um, die der Daemon auswertet"
+
+#: validation.py:90
+msgid "détache OpenVPN du daemon"
+msgstr "löst OpenVPN vom Daemon"
+
+#: validation.py:91
+msgid "ouvre une interface de pilotage d'OpenVPN"
+msgstr "öffnet eine Steuerschnittstelle von OpenVPN"
+
+#: validation.py:92
+msgid "incompatible avec le passage par Tor (--socks-proxy)"
+msgstr "nicht vereinbar mit dem Weg über Tor (--socks-proxy)"
+
+#: validation.py:95
+msgid "exécute un programme externe"
+msgstr "führt ein externes Programm aus"
+
+#: validation.py:239 validation.py:240
+msgid "lance un programme externe (en root)"
+msgstr "startet ein externes Programm (als root)"
+
+#: validation.py:242 validation.py:244 validation.py:245 validation.py:246
+msgid "écrit un fichier arbitraire"
+msgstr "schreibt eine beliebige Datei"
+
+#: validation.py:243
+msgid "abréviation de Log : écrit un fichier arbitraire"
+msgstr "Abkürzung für Log: schreibt eine beliebige Datei"
+
+#: validation.py:247
+msgid "ouvre un socket de pilotage non prévu"
+msgstr "öffnet einen nicht vorgesehenen Steuer-Socket"
+
+#: validation.py:248
+msgid "ouvre le pilotage de Tor par mot de passe"
+msgstr "öffnet die Steuerung von Tor per Passwort"
+
+#: validation.py:249
+msgid "imposé par le daemon"
+msgstr "vom Daemon vorgegeben"
+
+#: validation.py:250 validation.py:251
+msgid "détacherait Tor du daemon"
+msgstr "würde Tor vom Daemon lösen"
+
+#: validation.py:252 validation.py:253
+msgid "déplace les données de Tor"
+msgstr "verschiebt die Daten von Tor"
+
+#: validation.py:254
+msgid "crée un service onion non prévu"
+msgstr "erstellt einen nicht vorgesehenen Onion-Dienst"
+
+#: validation.py:255 validation.py:256
+msgid "ferait de la machine un relais Tor"
+msgstr "würde den Rechner zu einem Tor-Relais machen"
+
+#: validation.py:129
+msgid "inconnue"
+msgstr "unbekannt"
+
+#: validation.py:206
+msgid "bloc <{bloc}> jamais refermé"
+msgstr "Block <{bloc}> nie geschlossen"
+
+#: validation.py:200
+msgid "ligne {n} : directive « {nom} » refusée — {raison}"
+msgstr "Zeile {n}: Direktive „{nom}“ abgelehnt — {raison}"
+
+#: validation.py:203
+msgid "ligne {n} : directive {nom} non autorisée"
+msgstr "Zeile {n}: Direktive {nom} nicht erlaubt"
+
+#: validation.py:270
+msgid "ligne {n} : continuation de ligne (\\) non supportée"
+msgstr "Zeile {n}: Zeilenfortsetzung (\\) nicht unterstützt"
+
+#: validation.py:278
+msgid "ligne {n} : option « {cle} » refusée — {raison}"
+msgstr "Zeile {n}: Option „{cle}“ abgelehnt — {raison}"
+
+#: validation.py:281
+msgid "ligne {n} : option inconnue ou non autorisée"
+msgstr "Zeile {n}: unbekannte oder nicht erlaubte Option"
+
+#: validation.py:169
+msgid "ligne {n} : bloc <{bloc}> non autorisé"
+msgstr "Zeile {n}: Block <{bloc}> nicht erlaubt"
+
+#: validation.py:171
+msgid "ligne {n} : bloc non autorisé"
+msgstr "Zeile {n}: Block nicht erlaubt"
+
+#: validation.py:190
+msgid "Le .ovpn déclare « script-security {niveau} » — sans effet, le daemon impose le niveau 1 après --config. Supprimez cette ligne : elle n'a aucune utilité ici et tenterait d'autoriser l'exécution de code par le daemon, en root."
+msgstr "Die .ovpn setzt „script-security {niveau}“ — wirkungslos, der Daemon erzwingt Stufe 1 nach --config. Löschen Sie diese Zeile: Sie nützt hier nichts und würde versuchen, dem Daemon Codeausführung als root zu erlauben."
+
+#: adaptation.py:348
+msgid "Aucun fichier .ovpn fourni."
+msgstr "Keine .ovpn-Datei angegeben."
+
+#: adaptation.py:456
+msgid "Aucun fichier .ovpn ou .conf trouvé."
+msgstr "Keine .ovpn- oder .conf-Datei gefunden."
+
+#: adaptation.py:253
+msgid "« proto tcp » ajouté (OpenVPN utiliserait l'UDP par défaut)"
+msgstr "„proto tcp“ ergänzt (OpenVPN würde sonst UDP verwenden)"
+
+#: adaptation.py:321
+msgid "« {annexe} » intégré au fichier ({directive})"
+msgstr "„{annexe}“ in die Datei eingebettet ({directive})"
+
+#: adaptation.py:368
+msgid "Configuration UDP convertie en TCP sur les mêmes ports (Tor ne transporte que du TCP). Si la connexion échoue, le fournisseur n'accepte pas le TCP sur ces ports : téléchargez sa variante TCP, souvent sur le port 443."
+msgstr "UDP-Konfiguration auf denselben Ports in TCP umgewandelt (Tor transportiert nur TCP). Scheitert die Verbindung, akzeptiert der Anbieter auf diesen Ports kein TCP: Laden Sie seine TCP-Variante herunter, oft auf Port 443."
+
+#: adaptation.py:377
+msgid "Fichiers à blocs <connection> : importez-les un par un."
+msgstr "Dateien mit <connection>-Blöcken: Importieren Sie sie einzeln."
+
+#: adaptation.py:413
+msgid "Modifications :"
+msgstr "Änderungen:"
+
+#: adaptation.py:143
+msgid "« {ligne} » retiré — {raison}"
+msgstr "„{ligne}“ entfernt — {raison}"
+
+#: adaptation.py:177
+msgid "exécution de script ; le daemon applique le DNS du VPN lui-même"
+msgstr "Skriptausführung; der Daemon setzt den DNS des VPN selbst"
+
+#: adaptation.py:248
+msgid "{fichier} : aucun serveur (ligne « remote ») — ce n'est pas un fichier de connexion client."
+msgstr "{fichier}: kein Server („remote“-Zeile) — dies ist keine Client-Verbindungsdatei."
+
+#: adaptation.py:281
+msgid "Chiffrement « {cipher} » obsolète et non pris en charge par OpenVPN récent — la connexion reposera sur AES-GCM, que le serveur doit accepter."
+msgstr "Verschlüsselung „{cipher}“ ist veraltet und wird von aktuellem OpenVPN nicht unterstützt — die Verbindung nutzt AES-GCM, das der Server akzeptieren muss."
+
+#: adaptation.py:288
+msgid "« data-ciphers » ajouté avec {cipher} en dernier recours (OpenVPN ignore « cipher » seul depuis la 2.6)"
+msgstr "„data-ciphers“ mit {cipher} als letzter Möglichkeit ergänzt (OpenVPN ignoriert „cipher“ allein seit 2.6)"
+
+#: adaptation.py:296
+msgid "{fichier} : fichier « {annexe} » ({directive}) introuvable — placez-le à côté du .ovpn, ou importez le .zip complet du fournisseur."
+msgstr "{fichier}: Datei „{annexe}“ ({directive}) nicht gefunden — legen Sie sie neben die .ovpn oder importieren Sie das vollständige .zip des Anbieters."
+
+#: adaptation.py:302
+msgid "{fichier} : « crl-verify … dir » (répertoire) n'est pas intégrable."
+msgstr "{fichier}: „crl-verify … dir“ (Verzeichnis) kann nicht eingebettet werden."
+
+#: adaptation.py:362
+msgid "{n} fichier UDP ignoré : les variantes TCP du fournisseur sont utilisées."
+msgid_plural "{n} fichiers UDP ignorés : les variantes TCP du fournisseur sont utilisées."
+msgstr[0] "{n} UDP-Datei übersprungen: Die TCP-Varianten des Anbieters werden verwendet."
+msgstr[1] "{n} UDP-Dateien übersprungen: Die TCP-Varianten des Anbieters werden verwendet."
+
+#: adaptation.py:384
+msgid "(ordre ou nombre de lignes)"
+msgstr "(Reihenfolge oder Zeilenzahl)"
+
+#: adaptation.py:408
+msgid "Configuration adaptée par Katakomba ({date})"
+msgstr "Konfiguration angepasst von Katakomba ({date})"
+
+#: adaptation.py:526
+msgid "{fichier} : aucun .ovpn ni .conf dans l'archive."
+msgstr "{fichier}: keine .ovpn oder .conf im Archiv."
+
+#: adaptation.py:173
+msgid "{fichier} : configuration de SERVEUR OpenVPN (« {directive} ») — il faut le fichier client du fournisseur."
+msgstr "{fichier}: OpenVPN-SERVER-Konfiguration („{directive}“) — nötig ist die Client-Datei des Anbieters."
+
+#: adaptation.py:180
+msgid "le daemon impose le passage par Tor"
+msgstr "der Daemon erzwingt den Weg über Tor"
+
+#: adaptation.py:256 adaptation.py:258
+msgid "« {ligne} » ajouté"
+msgstr "„{ligne}“ ergänzt"
+
+#: adaptation.py:405
+msgid "{n} serveur distinct"
+msgid_plural "{n} serveurs distincts"
+msgstr[0] "{n} eindeutiger Server"
+msgstr[1] "{n} eindeutige Server"
+
+#: adaptation.py:410
+msgid "Sources : {fichiers}"
+msgstr "Quellen: {fichiers}"
+
+#: adaptation.py:450
+msgid "{fichier} : trop volumineux pour un .ovpn."
+msgstr "{fichier}: zu groß für eine .ovpn."
+
+#: adaptation.py:485
+msgid "{fichier} : archive illisible ({erreur})."
+msgstr "{fichier}: Archiv nicht lesbar ({erreur})."
+
+#: adaptation.py:492
+msgid "{fichier} : trop de fichiers dans l'archive."
+msgstr "{fichier}: zu viele Dateien im Archiv."
+
+#: adaptation.py:312
+msgid "{fichier} : « {annexe} » n'est pas un fichier texte."
+msgstr "{fichier}: „{annexe}“ ist keine Textdatei."
+
+#: adaptation.py:337
+msgid "(×{n} fichiers)"
+msgstr "(×{n} Dateien)"
+
+#: adaptation.py:385
+msgid "{fichier} ne peut pas être fusionné avec {reference} : leur configuration diffère au-delà des serveurs (par exemple « {difference} »). Importez chaque fichier comme un fournisseur distinct."
+msgstr "{fichier} kann nicht mit {reference} zusammengeführt werden: Ihre Konfiguration unterscheidet sich über die Server hinaus (zum Beispiel „{difference}“). Importieren Sie jede Datei als eigenen Anbieter."
+
+#: adaptation.py:404
+msgid "{n} fichiers fusionnés"
+msgstr "{n} Dateien zusammengeführt"
+
+#: adaptation.py:411
+msgid "({n} fichiers)"
+msgstr "({n} Dateien)"
+
+#: adaptation.py:446
+msgid "{fichier} : lecture impossible ({erreur})."
+msgstr "{fichier}: nicht lesbar ({erreur})."
+
+#: adaptation.py:501
+msgid "{fichier} : archive trop volumineuse."
+msgstr "{fichier}: Archiv zu groß."
+
+#: adaptation.py:186
+msgid "option propre à Windows, refusée par OpenVPN sous Linux"
+msgstr "nur unter Windows gültige Option, von OpenVPN unter Linux abgelehnt"
+
+#: adaptation.py:189
+msgid "option supprimée des versions récentes d'OpenVPN"
+msgstr "Option wurde aus aktuellen OpenVPN-Versionen entfernt"
+
+#: adaptation.py:191
+msgid "réservée à l'UDP ; Tor impose le TCP"
+msgstr "nur für UDP; Tor erfordert TCP"
+
+#: adaptation.py:193
+msgid "empêcherait le VPN de pousser ses serveurs DNS, dont le daemon a besoin"
+msgstr "würde verhindern, dass das VPN seine DNS-Server übermittelt, die der Daemon braucht"
+
+#: adaptation.py:201
+msgid "{fichier} : « proto tcp-server » — configuration de serveur."
+msgstr "{fichier}: „proto tcp-server“ — Serverkonfiguration."
+
+#: adaptation.py:205
+msgid "« {ligne} » remplacé par « proto tcp » (Tor ne transporte que du TCP)"
+msgstr "„{ligne}“ durch „proto tcp“ ersetzt (Tor transportiert nur TCP)"
+
+#: adaptation.py:218
+msgid "protocole retiré de « {ligne} » (fixé par « proto tcp »)"
+msgstr "Protokoll aus „{ligne}“ entfernt (durch „proto tcp“ festgelegt)"
+
+#: adaptation.py:233
+msgid "{fichier} : interface TAP (« {ligne} ») — le daemon ne gère que TUN."
+msgstr "{fichier}: TAP-Schnittstelle („{ligne}“) — der Daemon unterstützt nur TUN."
+
+#: adaptation.py:238
+msgid "« {ligne} » : fichier d'identifiants ignoré, le daemon fournit les siens"
+msgstr "„{ligne}“: Datei mit Zugangsdaten ignoriert, der Daemon liefert eigene"
+
+#: adaptation.py:243
+msgid "directive non prise en charge par le daemon"
+msgstr "vom Daemon nicht unterstützte Direktive"
+
+#: katakomba-cli.sh:230
+msgid "reporté — le tunnel se reconnecte"
+msgstr "verschoben — der Tunnel verbindet sich neu"
+
+#: katakomba-cli.sh:273 katakomba-cli.sh:271
+msgid "Service"
+msgstr "Dienst"
+
+#: katakomba-cli.sh:273
+msgid "actif"
+msgstr "aktiv"
+
+#: katakomba-cli.sh:271
+msgid "katakomba n'est pas actif — sudo katakomba start"
+msgstr "katakomba ist nicht aktiv — sudo katakomba start"
+
+#: katakomba-cli.sh:292
+msgid "Version du daemon"
+msgstr "Daemon-Version"
+
+#: katakomba-cli.sh:339 katakomba-cli.sh:341 katakomba-cli.sh:344
+msgid "Route par défaut"
+msgstr "Standardroute"
+
+#: katakomba-cli.sh:339
+msgid "absente"
+msgstr "fehlt"
+
+#: katakomba-cli.sh:380 katakomba-cli.sh:382
+msgid "Redirection du trafic"
+msgstr "Umleitung des Verkehrs"
+
+#: katakomba-cli.sh:392 katakomba-cli.sh:396
+msgid "Réseaux locaux"
+msgstr "Lokale Netze"
+
+#: katakomba-cli.sh:424
+msgid "serveur"
+msgstr "Server"
+
+#: katakomba-cli.sh:426
+msgid "domaine ~."
+msgstr "Domain ~."
+
+#: katakomba-cli.sh:430 katakomba-cli.sh:432 katakomba-cli.sh:436 katakomba-cli.sh:440
+msgid "DNS du tunnel"
+msgstr "DNS des Tunnels"
+
+#: katakomba-cli.sh:443
+msgid "DNS split"
+msgstr "Split-DNS"
+
+#: katakomba-cli.sh:443
+msgid "drop-in en place"
+msgstr "Drop-in vorhanden"
+
+#: katakomba-cli.sh:464 katakomba-cli.sh:466 katakomba-cli.sh:471
+msgid "Chemin des requêtes DNS"
+msgstr "Weg der DNS-Anfragen"
+
+#: katakomba-cli.sh:475
+msgid "bloqué"
+msgstr "blockiert"
+
+#: katakomba-cli.sh:477
+msgid "non bloqué (option désactivée dans les paramètres)"
+msgstr "nicht blockiert (Option in den Einstellungen deaktiviert)"
+
+#: katakomba-cli.sh:487 katakomba-cli.sh:495 katakomba-cli.sh:499
+msgid "Sortie Internet"
+msgstr "Ausgang ins Internet"
+
+#: katakomba-cli.sh:510
+msgid "C'est normal et passager : relancez le diagnostic dans 30 s."
+msgstr "Das ist normal und vorübergehend: Starten Sie die Diagnose in 30 s erneut."
+
+#: katakomba-cli.sh:272
+msgid "Le service est arrêté : aucun autre contrôle n'a de sens."
+msgstr "Der Dienst ist beendet: Keine weitere Prüfung ist sinnvoll."
+
+#: katakomba-cli.sh:282
+msgid "Socket de statut"
+msgstr "Status-Socket"
+
+#: katakomba-cli.sh:294
+msgid "bootstrap terminé"
+msgstr "Bootstrap abgeschlossen"
+
+#: katakomba-cli.sh:300 katakomba-cli.sh:304 katakomba-cli.sh:309
+msgid "Tunnel"
+msgstr "Tunnel"
+
+#: katakomba-cli.sh:313 katakomba-cli.sh:318
+msgid "Qualité du circuit"
+msgstr "Kanalqualität"
+
+#: katakomba-cli.sh:327
+msgid "Comptes en quarantaine"
+msgstr "Konten in Quarantäne"
+
+#: katakomba-cli.sh:329
+msgid "Comptes"
+msgstr "Konten"
+
+#: katakomba-cli.sh:329
+msgid "aucun écarté"
+msgstr "keines zurückgestellt"
+
+#: katakomba-cli.sh:355 katakomba-cli.sh:371 katakomba-cli.sh:375 katakomba-cli.sh:361 katakomba-cli.sh:363
+msgid "Protection des guards Tor"
+msgstr "Schutz der Tor-Guards"
+
+#: katakomba-cli.sh:376
+msgid "aucune route /32 — Tor risque de joindre ses relais par le tunnel"
+msgstr "keine /32-Route — Tor könnte seine Relais durch den Tunnel erreichen"
+
+#: katakomba-cli.sh:467
+msgid "trop rapide pour passer par Tor — vérifiez une éventuelle fuite"
+msgstr "zu schnell für den Weg über Tor — prüfen Sie auf ein mögliches Leck"
+
+#: katakomba-cli.sh:520
+msgid "Piste : sudo katakomba restart (3 s de coupure), puis relancez ce diagnostic."
+msgstr "Tipp: sudo katakomba restart (3 s Unterbrechung), dann diese Diagnose erneut starten."
+
+#: katakomba-cli.sh:296
+msgid "démarrage en cours"
+msgstr "startet gerade"
+
+#: katakomba-cli.sh:298
+msgid "pas prêt"
+msgstr "nicht bereit"
+
+#: katakomba-cli.sh:318
+msgid "aucune mesure pour ce tunnel"
+msgstr "keine Messung für diesen Tunnel"
+
+#: katakomba-cli.sh:327
+msgid " — essayés en dernier"
+msgstr " — werden zuletzt versucht"
+
+#: katakomba-cli.sh:364
+msgid "aucun relais protégé dans la table de routage — Tor risque de joindre ses relais par le tunnel"
+msgstr "kein geschütztes Relais in der Routingtabelle — Tor könnte seine Relais durch den Tunnel erreichen"
+
+#: katakomba-cli.sh:383
+msgid "{n}/2 routes def1 présentes"
+msgstr "{n}/2 def1-Routen vorhanden"
+
+#: katakomba-cli.sh:393
+msgid "détourné(s) par une route via : {reseaux} — casse l'accès aux machines du segment"
+msgstr "durch eine via-Route umgeleitet: {reseaux} — unterbricht den Zugriff auf Rechner in diesem Segment"
+
+#: katakomba-cli.sh:397
+msgid "{n} réseau en accès direct"
+msgid_plural "{n} réseaux en accès direct"
+msgstr[0] "{n} Netz mit direktem Zugang"
+msgstr[1] "{n} Netze mit direktem Zugang"
+
+#: katakomba-cli.sh:508
+msgid "Reconnexion en cours ({raison}) : les contrôles du tunnel sont reportés."
+msgstr "Neuverbindung läuft ({raison}): Die Tunnelprüfungen werden verschoben."
+
+#: katakomba-cli.sh:527
+msgid "Tout est conforme."
+msgstr "Alles in Ordnung."
+
+#: katakomba-cli.sh:282
+msgid "injoignable ({erreur})"
+msgstr "nicht erreichbar ({erreur})"
+
+#: katakomba-cli.sh:300
+msgid "{iface} depuis {duree} ({fournisseur}, compte {n})"
+msgstr "{iface} seit {duree} ({fournisseur}, Konto {n})"
+
+#: katakomba-cli.sh:316
+msgid " — mesure ancienne, le circuit a pu se dégrader"
+msgstr " — alte Messung, der Kanal kann schlechter geworden sein"
+
+#: katakomba-cli.sh:342
+msgid "pointe sur {tun} — boucle de routage probable"
+msgstr "zeigt auf {tun} — wahrscheinlich eine Routing-Schleife"
+
+#: katakomba-cli.sh:345
+msgid "{route} (hors tunnel)"
+msgstr "{route} (außerhalb des Tunnels)"
+
+#: katakomba-cli.sh:356
+msgid "{n}/{total} relais routé hors tunnel"
+msgid_plural "{n}/{total} relais routés hors tunnel"
+msgstr[0] "{n}/{total} Relais außerhalb des Tunnels geroutet"
+msgstr[1] "{n}/{total} Relais außerhalb des Tunnels geroutet"
+
+#: katakomba-cli.sh:372
+msgid "{n} route /32 hors tunnel"
+msgid_plural "{n} routes /32 hors tunnel"
+msgstr[0] "{n} /32-Route außerhalb des Tunnels"
+msgstr[1] "{n} /32-Routen außerhalb des Tunnels"
+
+#: katakomba-cli.sh:433
+msgid "incomplet ({manquants}) — risque de requêtes hors tunnel"
+msgstr "unvollständig ({manquants}) — Anfragen könnten am Tunnel vorbeigehen"
+
+#: katakomba-cli.sh:469
+msgid " (résolveur local via {uplink} : {ms} ms)"
+msgstr " (lokaler Resolver über {uplink}: {ms} ms)"
+
+#: katakomba-cli.sh:497
+msgid " — adresse privée, sortie anormale"
+msgstr " — private Adresse, ungewöhnlicher Ausgang"
+
+#: katakomba-cli.sh:499
+msgid "aucune réponse via {tun}"
+msgstr "keine Antwort über {tun}"
+
+#: katakomba-cli.sh:512
+msgid "{n} autre problème bloquant ci-dessus, à revoir ensuite."
+msgid_plural "{n} autres problèmes bloquants ci-dessus, à revoir ensuite."
+msgstr[0] "{n} weiteres blockierendes Problem oben, danach prüfen."
+msgstr[1] "{n} weitere blockierende Probleme oben, danach prüfen."
+
+#: katakomba-cli.sh:257
+msgid "Diagnostic Katakomba"
+msgstr "Katakomba-Diagnose"
+
+#: katakomba-cli.sh:304
+msgid "reconnexion en cours depuis {s} s ({raison})"
+msgstr "Neuverbindung seit {s} s ({raison})"
+
+#: katakomba-cli.sh:307
+msgid " depuis {m} min {s:02d} s"
+msgstr " seit {m} Min. {s:02d} s"
+
+#: katakomba-cli.sh:308
+msgid " — dernière cause : {raison}"
+msgstr " — letzte Ursache: {raison}"
+
+#: katakomba-cli.sh:309
+msgid "fermé{depuis}{cause}"
+msgstr "geschlossen{depuis}{cause}"
+
+#: katakomba-cli.sh:314
+msgid "{kbs} Ko/s (~{mbps} Mb/s), mesuré il y a {age}"
+msgstr "{kbs} KB/s (~{mbps} Mbit/s), gemessen vor {age}"
+
+#: katakomba-cli.sh:325
+msgid "compte {n} ({min} min)"
+msgstr "Konto {n} ({min} Min.)"
+
+#: katakomba-cli.sh:437
+msgid "{serveurs} · ~. — default-route non vérifiable (format resolvectl inconnu)"
+msgstr "{serveurs} · ~. — default-route nicht prüfbar (unbekanntes resolvectl-Format)"
+
+#: katakomba-cli.sh:496
+msgid "IP publique {ip}"
+msgstr "Öffentliche IP {ip}"
+
+#: katakomba-cli.sh:518
+msgid "{n} avertissement."
+msgid_plural "{n} avertissements."
+msgstr[0] "{n} Warnung."
+msgstr[1] "{n} Warnungen."
+
+#: katakomba-cli.sh:523
+msgid "Aucun problème bloquant, {n} avertissement à surveiller."
+msgid_plural "Aucun problème bloquant, {n} avertissements à surveiller."
+msgstr[0] "Kein blockierendes Problem, {n} Warnung im Blick behalten."
+msgstr[1] "Kein blockierendes Problem, {n} Warnungen im Blick behalten."
+
+#: katakomba-cli.sh:516
+msgid "{n} problème bloquant"
+msgid_plural "{n} problèmes bloquants"
+msgstr[0] "{n} blockierendes Problem"
+msgstr[1] "{n} blockierende Probleme"
