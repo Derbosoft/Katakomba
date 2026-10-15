@@ -219,5 +219,87 @@ class ProtectedRoutesTest(unittest.TestCase):
         self.assertEqual(d._protected_routes, set())
 
 
+class MontageTunnelTest(unittest.TestCase):
+    """OpenVPN ne touche plus au réseau : le daemon pose adresse et routes."""
+
+    REGLAGES = {"ifconfig": ("10.8.0.2", "255.255.255.0"), "topology": "subnet",
+                "tun_mtu": None, "routes": [], "dns": [], "refus": []}
+
+    def _monter(self, reglages=None, rec=None, **cfg):
+        import ipaddress
+        d = FakeDaemon(config=cfg, _tun_iface="tun-katakomba",
+                       _orig_gw="192.168.1.1", _orig_iface="eth0")
+        d.ordre = []
+        d._protect_tor_routes = lambda: d.ordre.append("guards")
+        d._connected_networks = lambda: [ipaddress.ip_network("192.168.1.0/24")]
+        r = rec or Recorder()
+        vrai = r.__call__
+
+        def espion(*cmd, **kw):
+            d.ordre.append(" ".join(cmd))
+            return vrai(*cmd, **kw)
+        with patched_run(espion):
+            ok = d._monter_tunnel({**self.REGLAGES, **(reglages or {})})
+        return d, r, ok
+
+    def test_guards_proteges_avant_toute_route_du_tunnel(self):
+        """Sinon Tor joindrait ses relais par le tunnel qui dépend d'eux."""
+        d, r, ok = self._monter()
+        self.assertTrue(ok)
+        self.assertEqual(d.ordre[0], "guards")
+        self.assertTrue(r.ran("ip addr add 10.8.0.2/24 dev tun-katakomba"))
+        self.assertTrue(r.ran("ip link set dev tun-katakomba up"))
+        for moitie in ("0.0.0.0/1", "128.0.0.0/1"):
+            # Portée globale : sinon elles passeraient pour des réseaux locaux.
+            self.assertTrue(r.ran(f"ip route replace {moitie} dev tun-katakomba scope global"),
+                            moitie)
+
+    def test_point_a_point(self):
+        _, r, _ = self._monter({"ifconfig": ("10.8.0.6", "10.8.0.5"), "topology": "net30"})
+        self.assertTrue(r.ran("ip addr add 10.8.0.6 peer 10.8.0.5 dev tun-katakomba"))
+
+    def test_exclusions_via_la_passerelle_d_origine(self):
+        d, r, _ = self._monter(excluded_ips=["203.0.113.0/24"])
+        self.assertTrue(r.ran("ip route replace 203.0.113.0/24 via 192.168.1.1 dev eth0"))
+        self.assertEqual(d._routes_exclues, ["203.0.113.0/24"])
+
+    def test_route_poussee_vers_le_lan_ignoree(self):
+        """Elle détournerait le trafic du réseau local vers le fournisseur VPN."""
+        import ipaddress
+        d, r, _ = self._monter({"routes": [ipaddress.ip_network("192.168.1.0/24"),
+                                           ipaddress.ip_network("10.9.0.0/16")]})
+        self.assertFalse(r.ran("192.168.1.0/24 dev tun-katakomba"))
+        self.assertTrue(r.ran("ip route replace 10.9.0.0/16 dev tun-katakomba"))
+        self.assertTrue(d.has_log("recouvre un réseau local", "WARN"))
+
+    def test_refus_journalises(self):
+        d, _, _ = self._monter({"refus": ["route poussée refusée : x via net_gateway"]})
+        self.assertTrue(d.has_log("via net_gateway", "WARN"))
+
+    def test_sans_adresse_rien_n_est_monte(self):
+        d, r, ok = self._monter({"ifconfig": None})
+        self.assertFalse(ok)
+        self.assertEqual(r.calls, [])
+        self.assertTrue(d.has_log("aucune adresse", "ERROR"))
+
+    def test_echec_de_l_adresse_arrete_le_montage(self):
+        d, r, ok = self._monter(rec=Recorder({"addr add": (1, "")}))
+        self.assertFalse(ok)
+        self.assertFalse(r.ran("0.0.0.0/1"), "routes posées sur un tunnel sans adresse")
+
+    def test_creation_et_suppression_de_l_interface(self):
+        d = FakeDaemon(_tun_iface="tun-katakomba")
+        r = Recorder()
+        with patched_run(r):
+            self.assertTrue(d._creer_tun("katakomba-vpn"))
+            d._routes_exclues = ["203.0.113.0/24"]
+            d._demonter_tunnel()
+        self.assertTrue(r.ran("ip tuntap add dev tun-katakomba mode tun user katakomba-vpn "
+                              "group katakomba-vpn"))
+        self.assertTrue(r.ran("ip route del 203.0.113.0/24"))
+        self.assertEqual(r.calls[-1], "ip link del dev tun-katakomba")
+        self.assertEqual(d._routes_exclues, [])
+
+
 if __name__ == "__main__":
     unittest.main()

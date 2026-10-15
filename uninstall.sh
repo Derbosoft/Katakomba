@@ -69,6 +69,8 @@ if [ "$PURGE" = "1" ]; then
     echo "Effacement des réglages, fournisseurs, comptes et données Tor …"
     rm -rf /etc/katakomba /var/lib/katakomba \
            "$INSTALL_DIR/providers"
+    userdel katakomba-vpn 2>/dev/null || true
+    groupdel katakomba-vpn 2>/dev/null || true
     groupdel katakomba 2>/dev/null || true
 fi
 

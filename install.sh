@@ -255,6 +255,14 @@ echo "[2/7] Répertoire de configuration …"
 # Groupe katakomba : permet au GUI de tourner SANS root (config + providers
 # accessibles en écriture, actions systemctl via pkexec/polkit).
 groupadd -f katakomba
+# Utilisateur système d'OpenVPN (v3.9.0) : OpenVPN tourne sans aucun droit,
+# sur une interface tunnel que le daemon crée à son nom.  Ni shell ni
+# répertoire personnel.
+if ! id katakomba-vpn &>/dev/null; then
+    useradd --system --user-group --no-create-home --home-dir /nonexistent \
+            --shell /usr/sbin/nologin katakomba-vpn
+    echo "    Utilisateur système katakomba-vpn créé (OpenVPN sans privilège)"
+fi
 if [ "$PAQUET" = "1" ]; then
     # Installation graphique (logithèque) : pas de SUDO_USER.  Les
     # administrateurs de la machine (groupes sudo/admin) reçoivent l'accès —
@@ -447,6 +455,8 @@ for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" 
     $1 -F "$3" 2>/dev/null
     $1 -X "$3" 2>/dev/null
 done
+# Interface tunnel créée par le daemon : son adresse et ses routes partent avec.
+ip link del dev tun-katakomba 2>/dev/null
 while ip6tables -D OUTPUT  -j KATAKOMBA_KS6     2>/dev/null; do :; done
 ip6tables -F KATAKOMBA_KS6                 2>/dev/null
 ip6tables -X KATAKOMBA_KS6                 2>/dev/null
@@ -466,6 +476,7 @@ CONFIG_JSON="/etc/katakomba/config.json"
 if [ -f "$CONFIG_JSON" ]; then
     LAN_SUBNET=$(python3 -c "import json; d=json.load(open('$CONFIG_JSON')); print(d.get('lan_subnet',''))" 2>/dev/null)
     if [ -n "$LAN_SUBNET" ]; then
+        iptables -t nat -D POSTROUTING -s "$LAN_SUBNET" -o tun-katakomba -j MASQUERADE 2>/dev/null
         iptables -t nat -D POSTROUTING -s "$LAN_SUBNET" -o tun0 -j MASQUERADE 2>/dev/null
         iptables -t nat -D POSTROUTING -s "$LAN_SUBNET" -o tun1 -j MASQUERADE 2>/dev/null
     fi
@@ -503,9 +514,11 @@ RestartSec=20
 # 78 = aucun fournisseur configuré : une erreur de configuration, pas une
 # panne.  Relancer toutes les 20 s ne ferait que remplir le journal.
 RestartPreventExitStatus=78
-# /run/katakomba (0700 root) : auth.tmp, copies validées du .ovpn et du
-# torrc, pid de dnsmasq.  Supprimé par systemd à l'arrêt, même après un crash.
-RuntimeDirectory=katakomba
+# /run/katakomba (0700 root) : copie validée du torrc, pid de dnsmasq.
+# /run/katakomba-vpn : copie validée du .ovpn et auth.tmp, que le daemon ouvre
+# en lecture au groupe katakomba-vpn (0750) pour OpenVPN sans privilège.
+# Supprimés par systemd à l'arrêt, même après un crash.
+RuntimeDirectory=katakomba katakomba-vpn
 RuntimeDirectoryMode=0700
 # Durcissement : le daemon n'a besoin d'écrire que dans ces répertoires-là.
 NoNewPrivileges=yes

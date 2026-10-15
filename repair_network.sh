@@ -24,8 +24,9 @@ CONFIG_JSON="/etc/katakomba/config.json"
 TOR_ROUTES_FILE="/var/lib/katakomba/tor-routes.txt"
 # Emplacements d'avant la v3.7.0, encore nettoyés après une mise à jour.
 LEGACY_ROUTES_FILE="/etc/katakomba/tor-routes.txt"
-# Les .ovpn utilisent « dev tun » : le tunnel peut être tun0 comme tun1.
-TUNS=(tun0 tun1)
+# tun-katakomba depuis la v3.9.0 (interface créée par le daemon) ; tun0 et
+# tun1 avant, quand OpenVPN prenait la première interface libre.
+TUNS=(tun-katakomba tun0 tun1)
 
 if [[ $INTERNAL -eq 0 ]]; then
   echo "[1/8] Arrêt du service katakomba si actif..."
@@ -36,7 +37,7 @@ fi
 echo "[2/8] Arrêt des processus OpenVPN/Tor restants..."
 # Uniquement ceux de ce programme, reconnus à leur ligne de commande :
 # « pkill -x openvpn » couperait un autre VPN, « pkill -x tor » Tor Browser.
-pkill -f -- "^openvpn .*--auth-user-pass [^ ]*katakomba/auth\.tmp" 2>/dev/null || true
+pkill -f -- "^openvpn .*--auth-user-pass [^ ]*katakomba(-vpn)?/auth\.tmp" 2>/dev/null || true
 pkill -f -- "^tor .*katakomba/tor(rc|_data)" 2>/dev/null || true
 
 echo "[3/8] Nettoyage du blocage hors tunnel et des règles IPv6..."
@@ -110,6 +111,7 @@ for T in "${TUNS[@]}"; do
   ip route del 128.0.0.0/1 dev "$T" 2>/dev/null || true
   ip route del default     dev "$T" 2>/dev/null || true
 done
+ip link del dev tun-katakomba 2>/dev/null || true
 
 echo "[8/8] Vérification rapide de la connectivité..."
 ip route get 1.1.1.1 2>/dev/null || true

@@ -65,8 +65,9 @@ class RepairCompletenessTest(unittest.TestCase):
         self.assertRegex(REPAIR, r'ip route del "\$\{?IP\}?/32"')
 
     def test_traite_tun0_et_tun1(self):
-        """Les .ovpn utilisent « dev tun » : le tunnel peut être tun0 ou tun1."""
-        self.assertIn("TUNS=(tun0 tun1)", REPAIR)
+        """tun-katakomba depuis la v3.9.0 ; tun0 ou tun1 avant (« dev tun »)."""
+        self.assertIn("TUNS=(tun-katakomba tun0 tun1)", REPAIR)
+        self.assertIn("ip link del dev tun-katakomba", REPAIR)
         for bloc in ("resolvectl revert", "ip route del 0.0.0.0/1"):
             self.assertIn(bloc, REPAIR)
         self.assertGreaterEqual(REPAIR.count('for T in "${TUNS[@]}"'), 3,
@@ -137,6 +138,16 @@ class InstallServiceUnitTest(unittest.TestCase):
             self.assertRegex(cleanup, rf"{chaine}[\" ]")
         self.assertIn('while $1 -D "$2" -j "$3"', cleanup)
         self.assertIn('$1 -X "$3"', cleanup)
+
+    def test_openvpn_sans_privilege(self):
+        """Utilisateur dédié, répertoire d'exécution à part, interface retirée
+        à chaque arrêt, utilisateur effacé à la purge."""
+        self.assertIn("useradd --system --user-group --no-create-home", INSTALL)
+        self.assertIn("RuntimeDirectory=katakomba katakomba-vpn", INSTALL)
+        cleanup = INSTALL[INSTALL.index("CLEANUP_EOF"):]
+        self.assertIn("ip link del dev tun-katakomba", cleanup[:cleanup.index("CLEANUP_EOF", 20)])
+        for script in (UNINSTALL, (PAQ / "postrm").read_text()):
+            self.assertIn("userdel katakomba-vpn", script)
 
     def test_cleanup_purge_en_boucle(self):
         """Des crashs répétés peuvent empiler plusieurs jumps identiques."""

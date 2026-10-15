@@ -394,3 +394,135 @@ def interface_lan_admissible(nom) -> bool:
     nom = str(nom)
     return (bool(_INTERFACE.fullmatch(nom)) and nom != "lo"
             and not nom.startswith(INTERFACES_EXCLUES))
+
+
+# ── OpenVPN sans privilège (v3.9.0) ───────────────────────────────────────────
+#
+# OpenVPN tourne sous un utilisateur dédié, sans aucun droit, sur une
+# interface tunnel créée par le daemon (--ifconfig-noexec --route-noexec).
+# C'est le daemon qui pose l'adresse et les routes, d'après ce que le serveur
+# a poussé : il décide donc de ce qu'il accepte.
+
+# Directives neutralisées dans la copie du .ovpn : elles exigeraient des
+# droits qu'OpenVPN n'a plus (changer d'utilisateur, verrouiller la mémoire,
+# régler l'interface), ou désignent l'interface, que le daemon impose.  Les
+# fichiers des fournisseurs pour Linux contiennent souvent « user nobody » :
+# sans root, OpenVPN échouerait au démarrage.
+OVPN_GEREES_PAR_LE_DAEMON = frozenset("""
+    user group dev dev-type dev-node lladdr mark bind-dev txqueuelen mlock
+    nice persist-tun tun-ipv6
+""".split())
+
+
+def preparer_copie_ovpn(texte: str) -> str:
+    """Copie d'un .ovpn déjà validé, ces directives mises en commentaire.
+    Le contenu des blocs de données (<ca>, <key>…) n'est jamais touché."""
+    sortie, bloc = [], None
+    for brute in texte.splitlines():
+        ligne = brute.strip()
+        if bloc is not None:
+            if ligne == f"</{bloc}>":
+                bloc = None
+            sortie.append(brute)
+            continue
+        if ligne.startswith("<") and ligne.endswith(">") and ligne[1:-1] in OVPN_BLOCS:
+            bloc = ligne[1:-1]
+            sortie.append(brute)
+            continue
+        p = _jetons(ligne) if ligne and ligne[0] not in "#;<" else []
+        nom = (p[0][2:] if p[0].startswith("--") else p[0]) if p else ""
+        if nom in OVPN_GEREES_PAR_LE_DAEMON:
+            sortie.append(f"# {ligne}    # katakomba : géré par le daemon")
+        else:
+            sortie.append(brute)
+    return "\n".join(sortie) + "\n"
+
+
+def _ipv4(valeur):
+    try:
+        return ipaddress.IPv4Address(valeur)
+    except ValueError:
+        return None
+
+
+def analyser_push(options, texte_ovpn: str = "") -> dict:
+    """Réglages du tunnel d'après les options poussées par le serveur
+    (PUSH_REPLY) et le .ovpn.  Fonction pure : le daemon applique le résultat.
+
+    Renvoie un dict : ifconfig (local, masque ou pair) ou None, topology,
+    tun_mtu (ou None), routes (réseaux IPv4 à router DANS le tunnel), dns
+    (adresses), refus (messages, à journaliser).
+
+    Une route poussée n'est acceptée que si elle passe par le tunnel :
+    « net_gateway », « remote_host » ou une passerelle hors du tunnel
+    feraient sortir ce trafic par la connexion normale, et un serveur
+    malveillant apprendrait l'adresse réelle.  « redirect-gateway » est
+    ignoré : le daemon route toujours tout le trafic dans le tunnel."""
+    r = {"ifconfig": None, "topology": "net30", "tun_mtu": None,
+         "routes": [], "dns": [], "refus": []}
+    route_gateway = None
+    poussees = []
+    # Le .ovpn d'abord, le serveur ensuite : ce qui est poussé l'emporte.
+    for brute in texte_ovpn.splitlines():
+        p = _jetons(brute.strip()) if brute.strip()[:1] not in ("#", ";", "<", "") else []
+        if p and p[0] in ("topology", "tun-mtu"):
+            poussees.append(p)
+    poussees += [_jetons(o.strip()) for o in options if o.strip()]
+
+    routes = []
+    for p in poussees:
+        if not p:
+            continue
+        nom, args = p[0], p[1:]
+        if nom == "topology" and args and args[0] in ("net30", "p2p", "subnet"):
+            r["topology"] = args[0]
+        elif nom == "tun-mtu" and args and args[0].isdigit() and 576 <= int(args[0]) <= 65535:
+            r["tun_mtu"] = int(args[0])
+        elif nom == "ifconfig" and len(args) >= 2 and _ipv4(args[0]) and _ipv4(args[1]):
+            r["ifconfig"] = (args[0], args[1])
+        elif nom == "route-gateway" and args and _ipv4(args[0]):
+            route_gateway = args[0]
+        elif nom == "route" and args:
+            routes.append(args)
+        elif nom == "dhcp-option" and len(args) >= 2 and args[0].upper() == "DNS" \
+                and _ipv4(args[1]):
+            r["dns"].append(args[1])
+        elif nom == "dns" and len(args) >= 4 and args[0] == "server" \
+                and args[2] == "address":
+            ip = args[3].split(":")[0] if args[3].count(":") == 1 else args[3]
+            if _ipv4(ip):
+                r["dns"].append(ip)
+
+    # Réseau du tunnel : ce qui y est joignable sans sortir de l'interface.
+    tunnel = None
+    if r["ifconfig"]:
+        local, second = r["ifconfig"]
+        if r["topology"] == "subnet":
+            try:
+                tunnel = ipaddress.IPv4Network(f"{local}/{second}", strict=False)
+            except ValueError:
+                r["refus"].append(f"masque du tunnel invalide : {second}")
+                r["ifconfig"] = None
+        else:
+            tunnel = ipaddress.IPv4Network(f"{second}/32")
+    for args in routes:
+        try:
+            masque = args[1] if len(args) > 1 and args[1] != "default" else "255.255.255.255"
+            net = ipaddress.IPv4Network(f"{args[0]}/{masque}", strict=False)
+        except ValueError:
+            r["refus"].append(f"route poussée illisible : {' '.join(args)}")
+            continue
+        passerelle = args[2] if len(args) > 2 else "vpn_gateway"
+        dans_le_tunnel = passerelle in ("vpn_gateway", "default") or (
+            _ipv4(passerelle) is not None and (
+                passerelle == route_gateway
+                or (tunnel is not None and _ipv4(passerelle) in tunnel)))
+        if not dans_le_tunnel:
+            r["refus"].append(f"route poussée refusée : {net} via {passerelle} — "
+                              "elle sortirait hors du tunnel")
+            continue
+        if net.prefixlen == 0:
+            continue            # route par défaut : le daemon la pose lui-même
+        if net not in r["routes"]:
+            r["routes"].append(net)
+    return r

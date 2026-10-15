@@ -166,5 +166,60 @@ class ReglagesConfigTest(unittest.TestCase):
             self.assertFalse(validation.interface_lan_admissible(mauvais), repr(mauvais))
 
 
+class PushTest(unittest.TestCase):
+    """Ce que le serveur VPN pousse : le daemon décide de ce qu'il accepte."""
+
+    PUSH = ["redirect-gateway def1", "dhcp-option DNS 10.8.0.1", "route-gateway 10.8.0.1",
+            "topology subnet", "ping 10", "ifconfig 10.8.0.2 255.255.255.0"]
+
+    def test_reglages_du_tunnel(self):
+        r = validation.analyser_push(self.PUSH + ["tun-mtu 1400"])
+        self.assertEqual(r["ifconfig"], ("10.8.0.2", "255.255.255.0"))
+        self.assertEqual((r["topology"], r["tun_mtu"], r["dns"]), ("subnet", 1400, ["10.8.0.1"]))
+        self.assertEqual(r["refus"], [])
+
+    def test_route_hors_du_tunnel_refusee(self):
+        """Un serveur malveillant apprendrait l'adresse réelle."""
+        for route in ("route 192.0.2.0 255.255.255.0 net_gateway",
+                      "route 192.0.2.0 255.255.255.0 remote_host",
+                      "route 198.51.100.7 255.255.255.255 203.0.113.1"):
+            r = validation.analyser_push(self.PUSH + [route])
+            self.assertEqual(r["routes"], [], route)
+            self.assertTrue(r["refus"], route)
+
+    def test_route_dans_le_tunnel_admise(self):
+        r = validation.analyser_push(self.PUSH + ["route 10.9.0.0 255.255.0.0",
+                                                  "route 10.10.0.0 255.255.0.0 10.8.0.1",
+                                                  "route 10.11.0.0 255.255.0.0 vpn_gateway"])
+        self.assertEqual([str(n) for n in r["routes"]],
+                         ["10.9.0.0/16", "10.10.0.0/16", "10.11.0.0/16"])
+
+    def test_topologie_net30_et_ovpn(self):
+        r = validation.analyser_push(["ifconfig 10.8.0.6 10.8.0.5", "route 10.8.0.1"],
+                                     "client\ntun-mtu 1300\n")
+        self.assertEqual((r["topology"], r["tun_mtu"]), ("net30", 1300))
+        self.assertEqual([str(n) for n in r["routes"]], ["10.8.0.1/32"])
+
+    def test_dns_nouvelle_syntaxe(self):
+        r = validation.analyser_push(self.PUSH + ["dns server 0 address 10.8.0.53"])
+        self.assertIn("10.8.0.53", r["dns"])
+
+    def test_sans_ifconfig(self):
+        self.assertIsNone(validation.analyser_push(["redirect-gateway def1"])["ifconfig"])
+
+
+class CopieOvpnTest(unittest.TestCase):
+    """OpenVPN sans droit : « user nobody » le ferait échouer au démarrage."""
+
+    def test_directives_neutralisees_hors_des_blocs(self):
+        copie = validation.preparer_copie_ovpn(
+            "client\nuser nobody\ngroup nogroup\ndev tun\nmlock\nremote a 443\n"
+            "<key>\nuser x\n</key>\n")
+        for d in ("user nobody", "group nogroup", "dev tun", "mlock"):
+            self.assertIn(f"# {d}    # katakomba", copie, d)
+        self.assertIn("remote a 443\n", copie)
+        self.assertIn("<key>\nuser x\n</key>", copie, "contenu d'un bloc modifié")
+
+
 if __name__ == "__main__":
     unittest.main()

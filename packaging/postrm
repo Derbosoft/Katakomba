@@ -5,6 +5,8 @@ set -e
 case "$1" in
     purge)
         rm -rf /etc/katakomba /var/lib/katakomba /opt/katakomba
+        userdel katakomba-vpn 2>/dev/null || true
+        groupdel katakomba-vpn 2>/dev/null || true
         groupdel katakomba 2>/dev/null || true
         ;;
 esac

@@ -222,6 +222,10 @@ class CleanupStaleRulesTest(unittest.TestCase):
             self.assertIn("dnsmasq.pid", c,
                           "pkill trop large : tuerait les dnsmasq de libvirt")
 
+    def test_interface_tunnel_supprimee(self):
+        _, r = self._run()
+        self.assertTrue(r.ran("ip link del dev tun-katakomba"))
+
     def test_routes_tor_nettoyees(self):
         d, _ = self._run()
         self.assertTrue(any("_cleanup_tor_routes" in m for _, m in d.logs))
@@ -266,7 +270,7 @@ class HandleSignalTest(unittest.TestCase):
         for nom in ("_stop_openvpn", "_stop_tor", "_revert_vpn_dns",
                     "_cleanup_tor_routes", "_teardown_lan_sharing",
                     "_ipv6_block_off", "_remove_dns_split", "_stop_status_server",
-                    "_kill_switch_off"):
+                    "_kill_switch_off", "_demonter_tunnel"):
             setattr(d, nom, (lambda n: lambda: d.appels.append(n))(nom))
         return d
 
@@ -289,6 +293,7 @@ class HandleSignalTest(unittest.TestCase):
                     "_ipv6_block_off", "_remove_dns_split", "_stop_status_server",
                     "_kill_switch_off"):
             self.assertIn(nom, d.appels, f"{nom} non appelé à l'arrêt")
+        self.assertIn("_demonter_tunnel", d.appels, "interface tunnel laissée en place")
         # Blocage levé seulement une fois le tunnel et Tor arrêtés.
         self.assertGreater(d.appels.index("_kill_switch_off"), d.appels.index("_stop_tor"))
 

@@ -170,9 +170,9 @@ PYEOF
             else
                 echo "  Tor        : inactif"
             fi
-            if pgrep -f -- "^openvpn .*katakomba/auth" &>/dev/null; then
-                if ip link show tun0 &>/dev/null 2>&1; then
-                    echo "  VPN        : actif  (tun0 UP)"
+            if pgrep -f -- "^openvpn .*katakomba(-vpn)?/auth" &>/dev/null; then
+                if ip link show tun-katakomba up 2>/dev/null | grep -q .; then
+                    echo "  VPN        : actif  (tun-katakomba UP)"
                 else
                     echo "  VPN        : connexion en cours"
                 fi
@@ -329,7 +329,7 @@ if st:
     else:
         note(OK, _("Comptes"), _("aucun écarté"))
 
-tun = st.get("tunnel_iface", "tun0")
+tun = st.get("tunnel_iface", "tun-katakomba")
 
 # ── 3. Routage ────────────────────────────────────────────────────────────────
 _rc, routes = sh("ip", "-4", "route", "show")

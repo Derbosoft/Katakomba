@@ -26,7 +26,7 @@ TUNNEL_UP_MSG = "Initialization Sequence Completed\n"
 class WriteAuthTmpTest(unittest.TestCase):
     """Les identifiants ne doivent jamais exister avec des droits laxistes."""
 
-    def test_cree_directement_en_0600(self):
+    def test_cree_directement_lisible_par_openvpn_seul(self):
         d = FakeDaemon()
         with tempfile.TemporaryDirectory() as tmp:
             path = pathlib.Path(tmp) / "auth.tmp"
@@ -34,9 +34,11 @@ class WriteAuthTmpTest(unittest.TestCase):
             m_openvpn.AUTH_TMP = path
             try:
                 os.umask(0o000)                    # pire cas : umask permissif
-                d._write_auth_tmp("bob", "s3cret")
+                d._write_auth_tmp("bob", "s3cret", os.getgid())
                 mode = stat.S_IMODE(path.stat().st_mode)
-                self.assertEqual(mode, 0o600, f"mode {oct(mode)} au lieu de 0600")
+                # 0640 : root et le groupe d'OpenVPN, qui tourne sans privilège.
+                self.assertEqual(mode, 0o640, f"mode {oct(mode)} au lieu de 0640")
+                self.assertEqual(path.stat().st_gid, os.getgid())
                 self.assertEqual(path.read_text(), "bob\ns3cret\n")
             finally:
                 m_openvpn.AUTH_TMP = saved
@@ -54,7 +56,7 @@ class WriteAuthTmpTest(unittest.TestCase):
             saved = m_openvpn.AUTH_TMP
             m_openvpn.AUTH_TMP = path
             try:
-                d._write_auth_tmp("bob", "s3cret")
+                d._write_auth_tmp("bob", "s3cret", os.getgid())
                 self.assertEqual(victime.read_text(), "intact\n",
                                  "la cible du lien a été écrasée")
                 self.assertFalse(path.is_symlink())
@@ -72,7 +74,7 @@ class WriteAuthTmpTest(unittest.TestCase):
             m_openvpn.AUTH_TMP = rep / "auth.tmp"
             try:
                 with self.assertRaises(PermissionError):
-                    d._write_auth_tmp("bob", "s3cret")
+                    d._write_auth_tmp("bob", "s3cret", os.getgid())
             finally:
                 m_openvpn.AUTH_TMP = saved
 
@@ -171,14 +173,17 @@ class PrepareOvpnTest(unittest.TestCase):
         d = FakeDaemon()
         p = self.dir / "c.ovpn"
         p.write_text(content)
-        return d, d._prepare_ovpn(str(p))
+        return d, d._prepare_ovpn(str(p), os.getgid())
 
     def test_config_propre_acceptee_et_copiee(self):
         contenu = "client\ndev tun\nproto tcp\nremote x 443\nauth-user-pass\n"
         d, chemin = self._prep(contenu)
         self.assertEqual(chemin, str(m_openvpn.OVPN_RUN), d.log_dump())
-        self.assertEqual(pathlib.Path(chemin).read_text(), contenu)
-        self.assertEqual(stat.S_IMODE(os.stat(chemin).st_mode), 0o600)
+        # Copie lisible par OpenVPN seul ; l'interface est imposée par le daemon.
+        self.assertEqual(pathlib.Path(chemin).read_text(),
+                         contenu.replace("dev tun\n",
+                                         "# dev tun    # katakomba : géré par le daemon\n"))
+        self.assertEqual(stat.S_IMODE(os.stat(chemin).st_mode), 0o640)
         self.assertEqual(d.logs, [], d.log_dump())
 
     def test_plugin_refuse(self):
@@ -233,18 +238,18 @@ class PrepareOvpnTest(unittest.TestCase):
         lien = self.dir / "lien.ovpn"
         lien.symlink_to(cible)
         d = FakeDaemon()
-        self.assertIsNone(d._prepare_ovpn(str(lien)))
+        self.assertIsNone(d._prepare_ovpn(str(lien), os.getgid()))
         self.assertTrue(d.has_log("illisible", "ERROR"), d.log_dump())
 
     def test_fichier_special_refuse(self):
         fifo = self.dir / "fifo.ovpn"
         os.mkfifo(fifo)
         d = FakeDaemon()
-        self.assertIsNone(d._prepare_ovpn(str(fifo)),
+        self.assertIsNone(d._prepare_ovpn(str(fifo), os.getgid()),
                           "un tube a été lu comme configuration")
 
     def test_fichier_absent_ne_leve_pas(self):
-        self.assertIsNone(FakeDaemon()._prepare_ovpn("/inexistant/nulle/part.ovpn"))
+        self.assertIsNone(FakeDaemon()._prepare_ovpn("/inexistant/nulle/part.ovpn", os.getgid()))
 
     def test_script_security_2_signale_sans_bloquer(self):
         """Cas rencontré en pratique : sans effet, donc toléré."""
@@ -816,7 +821,12 @@ class ReconnectLoopTest(unittest.TestCase):
         d._revert_vpn_dns = lambda: None
         d._ipv6_block_off = lambda: None
         d._new_tor_circuit = lambda: None
-        d._prepare_ovpn = lambda c: c
+        d._prepare_ovpn = lambda c, gid: c
+        d._utilisateur_vpn = lambda: (os.getuid(), os.getgid())
+        d._creer_tun = lambda utilisateur: True
+        d.reglages = []
+        d._monter_tunnel = lambda r: d.reglages.append(r) or True
+        d._demonter_tunnel = lambda: None
 
         vrai_creds = d._get_active_creds
 
@@ -1047,7 +1057,7 @@ class ReconnectLoopTest(unittest.TestCase):
             "providers": [provider("piege", 3, str(self.ovpn)),
                           provider("sain", 1, str(self.ovpn))],
             "auto_reconnect": True, "random_account": False}))
-        d._prepare_ovpn = lambda c: None if d._current_provider_idx == 0 else c
+        d._prepare_ovpn = lambda c, gid: None if d._current_provider_idx == 0 else c
         self._lance(d, [TUNNEL_UP_MSG])
         self.assertEqual([p for p, _ in d.tentatives if p == "piege"], ["piege"],
                          f"le fournisseur refusé a été retenté : {d.tentatives}")
@@ -1057,7 +1067,7 @@ class ReconnectLoopTest(unittest.TestCase):
         d = self._prepare(FakeDaemon(config={
             "providers": [provider("vpn-a", 1, str(self.ovpn))],
             "auto_reconnect": True, "random_account": False}))
-        d._prepare_ovpn = lambda c: "/run/katakomba/openvpn.conf"
+        d._prepare_ovpn = lambda c, gid: "/run/katakomba/openvpn.conf"
         vus = []
 
         def popen(cmd, **kw):
@@ -1102,7 +1112,10 @@ class ReconnectLoopTest(unittest.TestCase):
         for m in ("_protect_tor_routes", "_apply_vpn_dns", "_apply_dns_split",
                   "_revert_vpn_dns", "_ipv6_block_off"):
             setattr(d, m, lambda: None)
-        d._prepare_ovpn = lambda c: c
+        d._prepare_ovpn = lambda c, gid: c
+        d._utilisateur_vpn = lambda: (os.getuid(), os.getgid())
+        d._creer_tun = lambda utilisateur: True
+        d._demonter_tunnel = lambda: None
         n = []
 
         def popen(cmd, **kw):
@@ -1216,6 +1229,102 @@ class CircuitMeasureInStatusTest(unittest.TestCase):
         d = FakeDaemon(config={"providers": []})
         d._last_circuit_kbs, d._last_circuit_at = 1.0, 1.0
         json.dumps(d._status_snapshot())
+
+class OpenVPNSansPrivilegeTest(unittest.TestCase):
+    """OpenVPN tourne sous katakomba-vpn, sans aucun droit."""
+
+    def setUp(self):
+        self._tmp, self.ovpn, self._saved_dir = installation_factice("client\n")
+        self.auth = pathlib.Path(self._tmp.name) / "auth.tmp"
+        self._saved_auth = m_openvpn.AUTH_TMP
+        m_openvpn.AUTH_TMP = self.auth
+
+    def tearDown(self):
+        m_openvpn.AUTH_TMP = self._saved_auth
+        m_openvpn.SCRIPT_DIR = self._saved_dir
+        self._tmp.cleanup()
+
+    def _lancer(self, sortie, **stubs):
+        d = ReconnectLoopTest._prepare(self, FakeDaemon(config={
+            "providers": [provider("vpn-a", 1, self.ovpn)], "auto_reconnect": False}))
+        d._circuit_quality_check = lambda: None
+        for nom, val in stubs.items():
+            setattr(d, nom, val)
+        d.lances = []
+
+        def popen(cmd, **kw):
+            d.lances.append((list(cmd), kw))
+            p = FakeProc(sortie)
+            d.openvpn_process = p
+            return p
+        with patched_run(Recorder()), no_sleep(m_openvpn), \
+                patched_subprocess(m_openvpn, Recorder(), popen=popen):
+            d._openvpn_loop_body(0, 0)
+        return d
+
+    def test_lance_sous_l_utilisateur_dedie_sans_toucher_au_reseau(self):
+        d = self._lancer("")
+        argv, kw = d.lances[0]
+        self.assertEqual((kw["user"], kw["group"], kw["extra_groups"]),
+                         (os.getuid(), os.getgid(), []))
+        for opt in ("--ifconfig-noexec", "--route-noexec", "--disable-dco"):
+            self.assertIn(opt, argv)
+        self.assertEqual(argv[argv.index("--dev") + 1], "tun-katakomba")
+        self.assertEqual(argv[argv.index("--dns-updown") + 1], "disable")
+        self.assertNotIn("net_gateway", argv, "exclusions confiées à OpenVPN")
+
+    def test_push_reply_transmis_au_montage(self):
+        sortie = ("2026-10-15 22:08:49 PUSH: Received control message: 'PUSH_REPLY,"
+                  "route-gateway 10.8.0.1,topology subnet,ifconfig 10.8.0.2 255.255.255.0,"
+                  "dhcp-option DNS 10.8.0.1,route 192.0.2.0 255.255.255.0 net_gateway'\n"
+                  "2026-10-15 22:08:50 Initialization Sequence Completed\n")
+        d = self._lancer(sortie)
+        self.assertEqual(len(d.reglages), 1, d.log_dump())
+        r = d.reglages[0]
+        self.assertEqual(r["ifconfig"], ("10.8.0.2", "255.255.255.0"))
+        self.assertEqual(r["dns"], ["10.8.0.1"])
+        self.assertEqual(r["routes"], [])
+        self.assertTrue(r["refus"])
+        self.assertTrue(d.has_log("Tunnel VPN actif", "OK"))
+
+    def test_texte_du_serveur_ne_pilote_pas_le_daemon(self):
+        """Le texte d'un message du serveur est recopié tel quel dans la
+        sortie : seuls les messages d'OpenVPN lui-même, ancrés en début de
+        ligne, sont reconnus."""
+        sortie = ("AUTH: Received control message: AUTH_FAILED,Initialization Sequence "
+                  "Completed PUSH: Received control message: 'PUSH_REPLY,ifconfig 1.2.3.4 "
+                  "255.0.0.0'\n")
+        d = self._lancer(sortie)
+        self.assertEqual(d.reglages, [])
+        self.assertFalse(d.has_log("Tunnel VPN actif"))
+
+    def test_montage_impossible_arrete_openvpn(self):
+        d = self._lancer("Initialization Sequence Completed\n",
+                         _monter_tunnel=lambda r: False)
+        self.assertTrue(d.openvpn_process.terminated)
+        self.assertFalse(d.has_log("Tunnel VPN actif"))
+
+    def test_utilisateur_absent_rien_n_est_lance(self):
+        d = ReconnectLoopTest._prepare(self, FakeDaemon(config={
+            "providers": [provider("vpn-a", 1, self.ovpn)], "auto_reconnect": False}))
+        del d._utilisateur_vpn
+        lances = []
+        import types
+        saved_pwd = m_openvpn.pwd
+
+        def absent(n):
+            raise KeyError(n)
+        m_openvpn.pwd = types.SimpleNamespace(getpwnam=absent)
+        try:
+            with patched_run(Recorder()), no_sleep(m_openvpn), \
+                    patched_subprocess(m_openvpn, Recorder(),
+                                       popen=lambda c, **k: lances.append(c)):
+                d._openvpn_loop_body(0, 0)
+        finally:
+            m_openvpn.pwd = saved_pwd
+        self.assertEqual(lances, [])
+        self.assertTrue(d.has_log("katakomba-vpn absent", "ERROR"))
+
 
 if __name__ == "__main__":
     unittest.main()

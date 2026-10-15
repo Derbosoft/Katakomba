@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from constants import (                                        # noqa: E402
     CONFIG_DIR, CONFIG_FILE, AUTH_TMP, PROVIDERS_DIR, SCRIPT_DIR,
     DEFAULT_CONFIG, TORRC_FILE, VERSION, RUN_DIR, STATE_DIR,
+    TUN_IFACE, VPN_RUN_DIR, VPN_USER,
 )
 
 # ── Constantes daemon ─────────────────────────────────────────────────────────
@@ -29,7 +30,7 @@ TOR_DATA_DIR      = STATE_DIR / "tor_data"
 LEGACY_TOR_DATA   = CONFIG_DIR / "tor_data"          # avant la v3.7.0
 TOR_COOKIE        = TOR_DATA_DIR / "control_auth_cookie"
 TORRC_RUN         = RUN_DIR / "torrc"                # copie validée du torrc
-OVPN_RUN          = RUN_DIR / "openvpn.conf"         # copie validée du .ovpn
+OVPN_RUN          = VPN_RUN_DIR / "openvpn.conf"     # copie validée du .ovpn
 TOR_USER          = "debian-tor"                     # Tor abandonne root
 RESOLVED_DROP_IN  = Path("/etc/systemd/resolved.conf.d/katakomba-split.conf")
 LAN_DNSMASQ_PID   = RUN_DIR / "dnsmasq.pid"
@@ -39,7 +40,7 @@ TOR_ROUTES_FILE   = STATE_DIR / "tor-routes.txt"
 # Processus orphelins d'une session précédente, reconnus à leur ligne de
 # commande.  Jamais « pkill -x openvpn » ni « pkill -x tor » : ce serait
 # couper un autre VPN de la machine, ou le Tor de Tor Browser.
-OPENVPN_PATTERN   = r"^openvpn .*--auth-user-pass [^ ]*katakomba/auth\.tmp"
+OPENVPN_PATTERN   = r"^openvpn .*--auth-user-pass [^ ]*katakomba(-vpn)?/auth\.tmp"
 TOR_PATTERN       = r"^tor .*katakomba/tor(rc|_data)"
 
 # Sortie « aucun fournisseur configuré » : systemd ne relance pas
@@ -102,13 +103,15 @@ def _run(*cmd) -> subprocess.CompletedProcess:
               flush=True)
         return subprocess.CompletedProcess(argv, 124, b"", b"timeout")
 
-def _ensure_private_dir(d: Path, mode: int = 0o700):
+def _ensure_private_dir(d: Path, mode: int = 0o700, gid=None):
     """Crée `d` si besoin et vérifie qu'on peut y écrire en confiance.
 
     Refuse un lien symbolique, un répertoire d'un autre propriétaire, ou un
     répertoire inscriptible par le groupe ou par tous : dans chacun de ces
     cas, quelqu'un d'autre pourrait y préparer un lien vers un fichier
-    système que le daemon écraserait en root."""
+    système que le daemon écraserait en root.
+
+    gid : groupe autorisé à LIRE le répertoire (OpenVPN, sans privilège)."""
     try:
         os.mkdir(d, mode)
     except FileExistsError:
@@ -119,22 +122,28 @@ def _ensure_private_dir(d: Path, mode: int = 0o700):
         raise PermissionError(
             f"{d} n'est pas un répertoire sûr (lien symbolique, propriétaire "
             "ou droits d'écriture de groupe)")
+    if gid is not None and (st.st_gid != gid or stat.S_IMODE(st.st_mode) != mode):
+        os.chown(d, -1, gid, follow_symlinks=False)
+        os.chmod(d, mode)
 
 
 def _write_private(path: Path, data: str, mode: int = 0o600,
-                   dir_mode: int = 0o700):
+                   dir_mode: int = 0o700, gid=None):
     """Écrit un fichier neuf, sans jamais suivre un lien symbolique.
 
     O_EXCL après suppression : le fichier est forcément créé par cet appel,
     avec ses droits définitifs dès la création (aucune fenêtre où il
-    existerait avec les droits de l'umask)."""
-    _ensure_private_dir(path.parent, dir_mode)
+    existerait avec les droits de l'umask).  gid : groupe autorisé à le
+    lire, posé avant la moindre écriture."""
+    _ensure_private_dir(path.parent, dir_mode, gid)
     try:
         os.unlink(path)
     except FileNotFoundError:
         pass
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                  mode)
+    if gid is not None:
+        os.fchown(fd, -1, gid)
     with os.fdopen(fd, "w") as f:
         f.write(data)
 
@@ -258,7 +267,7 @@ class DaemonCore:
 
         self._vpn_dns_ips    = []
 
-        self._tun_iface      = "tun0"
+        self._tun_iface      = TUN_IFACE
         self._tunnel_up      = False
         self._tunnel_up_time = 0.0
         # Tunnel absent : depuis quand, et pourquoi.  Exposé au statut pour
@@ -271,6 +280,8 @@ class DaemonCore:
         self._orig_iface = None
 
         self._protected_routes: set = set()
+        self._routes_exclues = []      # posées par _monter_tunnel
+        self._ovpn_texte     = ""      # .ovpn validé (topologie, MTU)
 
         # deque bornée : l'ajout chasse le plus ancien, sans recopier la liste
         # à chaque tick du watchdog (toutes les 3 s).
@@ -323,6 +334,7 @@ class DaemonCore:
         self._stop_openvpn()
         self._stop_tor()
         self._revert_vpn_dns()
+        self._demonter_tunnel()
         self._cleanup_tor_routes()
         self._teardown_lan_sharing()
         self._ipv6_block_off()
@@ -370,7 +382,7 @@ class DaemonCore:
             try:
                 import ipaddress as _ip
                 net = _ip.ip_network(lan_subnet, strict=False)
-                for tun in {self._tun_iface, "tun0", "tun1"}:
+                for tun in {self._tun_iface, TUN_IFACE, "tun0", "tun1"}:
                     _run("iptables", "-t", "nat", "-D", "POSTROUTING",
                          "-s", str(net), "-o", tun, "-j", "MASQUERADE")
             except Exception:
@@ -385,6 +397,9 @@ class DaemonCore:
         _run("pkill", "-f", str(LEGACY_DNSMASQ_PID))
 
         self._cleanup_tor_routes()
+        # Interface tunnel d'une session précédente : la supprimer emporte
+        # son adresse et ses routes.
+        _run("ip", "link", "del", "dev", TUN_IFACE)
         self._log("Nettoyage terminé.", "OK")
 
     # ── Démarrage des services ────────────────────────────────────────────────

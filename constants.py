@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "3.8.1"
+VERSION       = "3.9.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")
@@ -14,7 +14,13 @@ TORRC_FILE    = CONFIG_DIR / "torrc"
 # symlinks ne couvre que les répertoires sticky ouverts à tous.
 RUN_DIR       = Path("/run/katakomba")        # 0700 root, volatil
 STATE_DIR     = Path("/var/lib/katakomba")    # 0755 root, persistant
-AUTH_TMP      = RUN_DIR / "auth.tmp"
+# OpenVPN tourne sans aucun droit (v3.9.0) : utilisateur dédié, interface
+# tunnel créée par le daemon et qui lui appartient.  Ses fichiers (copie du
+# .ovpn, identifiants) vivent à part, lisibles par lui seul en plus de root.
+VPN_USER      = "katakomba-vpn"
+TUN_IFACE     = "tun-katakomba"
+VPN_RUN_DIR   = Path("/run/katakomba-vpn")    # 0750 root:katakomba-vpn, volatil
+AUTH_TMP      = VPN_RUN_DIR / "auth.tmp"
 
 # Clés de config.json laissées par d'anciennes versions (surveillance de débit
 # supprimée, mode unique).  Sans effet ; le GUI les retire à la sauvegarde.

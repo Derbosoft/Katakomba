@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.8.1
+# Katakomba — v3.9.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.8.1-blue)
+![Version](https://img.shields.io/badge/Version-3.9.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -64,7 +64,7 @@ Utilisateur
                                          │         └── torrc optionnel
                                          │
                                          ├── OpenVPN ──► SOCKS5 127.0.0.1:9050 ──► Tor ──► Internet
-                                         │              (tunX, redirect-gateway)
+                                         │              (katakomba-vpn user, no privileges; tun-katakomba)
                                          │
                                          ├── iptables  (kill switch, IPv6 block, LAN sharing)
                                          │
@@ -140,6 +140,7 @@ apt install tor openvpn python3 curl python3-gi python3-gi-cairo gir1.2-gtk-4.0 
 
 **2. Répertoire de configuration**
 - Crée `/etc/katakomba/` en `root:katakomba 2770` (groupe katakomba : GUI sans root)
+- Crée l'utilisateur système `katakomba-vpn`, sans shell ni répertoire personnel : OpenVPN tourne sous cet utilisateur, sans aucun privilège (v3.9.0)
 - Crée `/var/lib/katakomba/` (`root`, 0755) et y déplace les données Tor d'une version antérieure (guards conservés)
 - Installe un **torrc par défaut** (circuits longs et stables) s'il n'en existe pas déjà un — un torrc personnalisé n'est jamais écrasé
 - Migration automatique si une config d'avant la v3.2 existe dans `/root/.config/tor-vpn-manager/` ou `/opt/tor-vpn-manager/`
@@ -165,7 +166,7 @@ Crée `/etc/systemd/system/katakomba.service` :
 - `KillMode=control-group` : systemd tue tout le groupe (Tor, OpenVPN, dnsmasq inclus)
 - `TimeoutStopSec=30`
 - `RestartPreventExitStatus=78` : sans fournisseur configuré, le daemon sort en 78 et n'est pas relancé toutes les 20 s
-- `RuntimeDirectory=katakomba` (0700) : `auth.tmp`, copies validées du `.ovpn` et du torrc, pid de dnsmasq — supprimé par systemd à l'arrêt, même après un crash
+- `RuntimeDirectory=katakomba katakomba-vpn` : `/run/katakomba` (0700) contient le torrc validé et le pid de dnsmasq ; `/run/katakomba-vpn` (0750, groupe `katakomba-vpn`) contient le `.ovpn` validé et `auth.tmp`, lisibles par OpenVPN seul. Les deux sont supprimés par systemd à l'arrêt, même après un crash
 - Durcissement : `NoNewPrivileges`, `PrivateTmp`, `ProtectHome`, `ProtectSystem=full` avec `ReadWritePaths` limité à `/etc/katakomba` et `/etc/systemd/resolved.conf.d`
 
 **6. Hook veille/réveil**
@@ -273,10 +274,12 @@ katakomba/
 └── torrc                     Configuration Tor personnalisée (mode 660, optionnel)
 
 /run/katakomba/         Écrit par le daemon (root, 0700, volatil)
-├── auth.tmp                  Credentials OpenVPN temporaires (créé/supprimé à chaque connexion)
-├── openvpn.conf              Copie validée du .ovpn, lue par OpenVPN
 ├── torrc                     Copie validée du torrc, lue par Tor
 └── dnsmasq.pid               Partage LAN
+
+/run/katakomba-vpn/     Écrit par le daemon (root:katakomba-vpn, 0750, volatil)
+├── auth.tmp                  Identifiants OpenVPN temporaires (0640, créé/supprimé à chaque connexion)
+└── openvpn.conf              Copie validée du .ovpn, lue par OpenVPN (0640)
 
 /var/lib/katakomba/     Écrit par le daemon (root, 0755, persistant)
 ├── tor-routes.txt        Routes /32 Tor actives (persistance inter-redémarrages)
@@ -610,17 +613,23 @@ Si Tor crash, il est redémarré automatiquement (jusqu'à 5 fois avec délai de
 
 ```
 openvpn
-  --config            /run/katakomba/openvpn.conf   ← copie validée du .ovpn
-  --auth-user-pass    /run/katakomba/auth.tmp
-  --verb              3          ← requis pour net_addr_v4_add dans les logs
+  --config            /run/katakomba-vpn/openvpn.conf   ← copie validée du .ovpn
+  --auth-user-pass    /run/katakomba-vpn/auth.tmp
+  --verb              3          ← requis pour le PUSH_REPLY dans la sortie
   --ping              10
   --ping-exit         60
   --connect-timeout   60         ← allongé car les circuits Tor peuvent être lents
   --connect-retry     1
   --connect-retry-max 1
   --socks-proxy       127.0.0.1 9050
-  [--route <ip> <mask> net_gateway ...]
+  --dev tun-katakomba --dev-type tun   ← interface créée par le daemon
+  --ifconfig-noexec --route-noexec     ← le daemon pose adresse et routes
+  --disable-dco --dns-updown disable
 ```
+
+> **OpenVPN tourne sans aucun privilège (v3.9.0).** Il analyse des données reçues du réseau (TLS, messages du serveur) : une faille de sa part, ou un serveur malveillant, donnait la machine entière, puisqu'il tournait en root. Il démarre désormais directement sous l'utilisateur système `katakomba-vpn`, sans aucune capacité. Le daemon lui crée l'interface `tun-katakomba`, qui appartient à cet utilisateur : c'est tout ce dont OpenVPN a besoin pour l'ouvrir. OpenVPN ne touche plus à la configuration réseau : le daemon lit ce que le serveur a poussé (`PUSH_REPLY`) et pose lui-même l'adresse et les routes (voir *Montage du tunnel* ci-dessous). Dans la copie du `.ovpn`, les directives qui exigeraient des droits sont mises en commentaire (`user`, `group`, `dev`, `mlock`…) : les fichiers des fournisseurs pour Linux contiennent souvent `user nobody`, qui ferait échouer un OpenVPN sans privilège au démarrage. Les chemins d'un `.ovpn` (`ca /chemin`…) sont désormais lus sous `katakomba-vpn` : les fichiers réservés à root sont hors de portée.
+>
+> Vérifié de bout en bout sur un vrai noyau, dans un espace réseau isolé, face à un vrai serveur OpenVPN qui pousse une route malveillante : OpenVPN sans aucune capacité, tunnel monté, trafic réel à travers lui, route malveillante refusée, reconnexion sur une interface recréée, tout retiré à l'arrêt.
 
 > **`--script-security 1` imposé, après `--config` (v3.6.4).** Aucun fichier `.ovpn` n'a besoin de scripts — le daemon applique lui-même le DNS du VPN via `resolvectl`. Autoriser l'exécution de scripts permet en revanche à quiconque peut écrire un `.ovpn` (le groupe `katakomba`) de faire exécuter du code **par le daemon, en root**, via une simple directive `up`.
 >
@@ -643,12 +652,21 @@ openvpn
 >
 > Le `.ovpn` passe donc par une **liste blanche** (`validation.py`) avant chaque lancement. Une directive absente de la liste fait **refuser le fichier** : le fournisseur est ignoré et le suivant prend le relais. Les directives de script (`up`, `down`, `route-up`, `tls-verify`…) sont refusées de la même façon. Les formes détournées sont couvertes : `--plugin`, `"plugin"`, `setenv opt plugin …`, directive dans un bloc `<connection>`. Le GUI applique les mêmes règles au choix d'un `.ovpn` et à l'import d'une sauvegarde `.katakomba`.
 >
-> OpenVPN lit ensuite une **copie** de ce qui a été contrôlé (`/run/katakomba/openvpn.conf`), jamais le fichier d'origine, qui pourrait changer entre le contrôle et la lecture. Celui-ci est lu **sans suivre de lien symbolique**. Un lien vers `/etc/shadow` aurait sinon fait recopier ce fichier, ligne à ligne, dans les messages d'erreur d'OpenVPN, donc dans le journal. Pour la même raison, les messages du daemon ne citent jamais le contenu d'une ligne refusée.
+> OpenVPN lit ensuite une **copie** de ce qui a été contrôlé (`/run/katakomba-vpn/openvpn.conf`), jamais le fichier d'origine, qui pourrait changer entre le contrôle et la lecture. Celui-ci est lu **sans suivre de lien symbolique**. Un lien vers `/etc/shadow` aurait sinon fait recopier ce fichier, ligne à ligne, dans les messages d'erreur d'OpenVPN, donc dans le journal. Pour la même raison, les messages du daemon ne citent jamais le contenu d'une ligne refusée.
 >
 > `script-security N` dans un `.ovpn` reste toléré (sans effet, signalé dans le journal).
 
-**Protection des routes Tor :**
-Dès qu'OpenVPN assigne une IP au tunnel (`net_addr_v4_add`, visible grâce à `--verb 3`), le daemon ajoute de façon **synchrone** des routes `/32` statiques vers toutes les IP de guards Tor actifs via la passerelle locale originale. Cela doit s'exécuter *avant* que le script `up` n'installe les routes `redirect-gateway`. Sans cette protection, Tor tenterait de joindre ses guards via le tunnel, créant une boucle qui coupe la connexion. Les routes sont persistées dans `/var/lib/katakomba/tor-routes.txt` et supprimées proprement à chaque arrêt.
+**Montage du tunnel (v3.9.0) :**
+Quand OpenVPN annonce `Initialization Sequence Completed`, le daemon lit les options poussées par le serveur et monte lui-même le tunnel, dans cet ordre :
+
+1. **Routes des guards Tor** : routes `/32` statiques vers toutes les IP de guards Tor actifs, via la passerelle locale d'origine. Sans elles, Tor tenterait de joindre ses guards par le tunnel qui dépend d'eux, une boucle qui coupe la connexion. OpenVPN posait autrefois ses routes lui-même : le daemon devait guetter `net_addr_v4_add` dans sa sortie pour passer avant lui. Il n'y a plus de course.
+2. **Adresse** (`ifconfig`, topologie `subnet` ou point à point), MTU, interface levée.
+3. **Exclusions**, via la passerelle d'origine.
+4. **Routes poussées**, seulement si elles passent par le tunnel, puis `0.0.0.0/1` et `128.0.0.0/1` dans le tunnel. Une route poussée via `net_gateway`, `remote_host` ou une passerelle hors du tunnel est **refusée** : un serveur malveillant pourrait sinon faire sortir du trafic par votre connexion normale et apprendre votre adresse réelle. Une route poussée qui recouvre votre réseau local ou une exclusion est aussi ignorée. `redirect-gateway` est inutile : Katakomba envoie toujours tout le trafic dans le tunnel.
+
+Seuls les messages d'OpenVPN lui-même sont reconnus, à leur forme exacte en début de ligne : le texte d'un message envoyé par le serveur est recopié tel quel dans la sortie, et une recherche de mot-clé laissait le serveur piloter le daemon. Quand OpenVPN s'arrête, le daemon supprime l'interface (son adresse et ses routes partent avec elle) et les routes d'exclusion : Tor rejoint ses relais par la route par défaut pour la connexion suivante. Le tunnel ne transporte que l'IPv4 : les réglages IPv6 poussés sont ignorés.
+
+Les routes des guards sont persistées dans `/var/lib/katakomba/tor-routes.txt` et supprimées proprement à chaque arrêt.
 
 Les IP des relais viennent du ControlPort (`GETINFO orconn-status`), avec `ss` en repli. **v3.7.0 :** deux défauts de lecture corrigés. Avec une seule connexion, Tor répond sur une ligne (`250-orconn-status=$FP~nom CONNECTED`), forme qui n'était pas lue. Et une erreur `552` en première ligne (relais absent du consensus) n'était pas reconnue comme fin de réponse : la lecture attendait le timeout (8 s, pendant qu'OpenVPN installe ses routes) puis perdait toute la liste.
 
@@ -667,7 +685,7 @@ Le DNS du VPN est géré nativement par le daemon : les serveurs poussés par le
 
 **Séquence à la connexion :**
 Quand `Initialization Sequence Completed` est détecté — y compris sous la forme `… With Errors`, émise quand une route ou l'interface n'a pu être posée. Jusqu'à la v3.6.4, cette variante contenait « error » et tombait dans la branche d'erreur : le tunnel fonctionnait mais n'était jamais déclaré actif (ni DNS du VPN, ni blocage IPv6, ni watchdog).
-1. DNS split appliqué (après le script up d'OpenVPN)
+1. DNS du VPN et DNS split appliqués
 2. Blocage IPv6 activé (si configuré)
 3. Partage LAN démarré (si `lan_auto = true`)
 
@@ -1129,7 +1147,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **671 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **693 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout
@@ -1149,7 +1167,7 @@ Ce qui est couvert, au-delà des chemins nominaux :
 | Pare-feu | `DROP` toujours en dernière règle, refus de flusher l'uplink, reconstruction si le tunnel change de nom |
 | Qualité de circuit | seuil exact, plafond d'essais, thread périmé qui ne doit pas tuer le tunnel suivant |
 | Reconnexion | identifiants refusés vs coupure réseau, nombre de tentatives borné |
-| Sécurité | `auth.tmp` en 0600 même sous umask permissif et jamais écrit à travers un lien symbolique, `plugin` et consorts refusés dans un `.ovpn`, `exec` refusé dans un torrc, aucun contenu de fichier recopié au journal, aucun identifiant dans le socket de statut, anti-path-traversal de l'import |
+| Sécurité | `auth.tmp` en 0640 (groupe `katakomba-vpn`) même sous umask permissif et jamais écrit à travers un lien symbolique, `plugin` et consorts refusés dans un `.ovpn`, `exec` refusé dans un torrc, aucun contenu de fichier recopié au journal, aucun identifiant dans le socket de statut, anti-path-traversal de l'import |
 | Cohérence | version identique dans `constants.py` et les deux READMEs, `--script-security 1` imposé **après** `--config` |
 
 Plusieurs tests exercent aussi le système en **lecture seule** pour valider les parseurs contre la réalité plutôt que contre un échantillon figé (format de `/proc/net/dev`, sortie de `resolvectl status`).
@@ -1179,7 +1197,9 @@ python3 outils/traductions.py verifier        # manques, {champs} incohérents (
 
 **Blocage hors tunnel :** tant que le service tourne, rien ne sort hors du tunnel, sauf Tor et le réseau local, reconnexions comprises (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)).
 
-**auth.tmp :** créé directement en mode `600` (jamais exposé à l'umask) juste avant de lancer OpenVPN, dans `/run/katakomba` (root seul), sans jamais suivre de lien symbolique ; supprimé dans le bloc `finally` dès qu'OpenVPN a lu le fichier.
+**auth.tmp :** créé directement en mode `640`, groupe `katakomba-vpn` (jamais exposé à l'umask), juste avant de lancer OpenVPN, dans `/run/katakomba-vpn` (root et OpenVPN seuls), sans jamais suivre de lien symbolique ; supprimé à l'arrêt d'OpenVPN.
+
+**OpenVPN sans privilège (v3.9.0) :** OpenVPN tourne sous `katakomba-vpn`, sans aucune capacité ; le daemon pose l'adresse et les routes, et refuse toute route poussée qui sortirait du tunnel (voir *Montage du tunnel*).
 
 **torrc :** mode `660 root:katakomba`, validé par liste blanche avant chaque démarrage de Tor.
 
@@ -1192,6 +1212,7 @@ python3 outils/traductions.py verifier        # manques, {champs} incohérents (
 | `ClientTransportPlugin … exec` dans le torrc | liste blanche, copie validée ; Tor tourne sous `debian-tor` |
 | Lien symbolique à la place d'`auth.tmp` ou du fichier de routes | fichiers du daemon dans `/run` et `/var/lib` (root seul), écriture `O_EXCL \| O_NOFOLLOW` |
 | `install_dir` lu par `katakomba gui` | chemin fixe `/opt/katakomba` |
+| OpenVPN en root (v3.9.0) | tourne sous `katakomba-vpn`, sans aucune capacité ; les fichiers réservés à root cités par un `.ovpn` sont hors de portée |
 
 **v3.8.1 : le daemon ne fait plus confiance à `config.json`.** Tout programme lancé sous un compte membre peut le modifier, et l'import d'une sauvegarde le remplace. Chaque valeur utilisée par le daemon est désormais revérifiée de son côté, avec les mêmes fonctions que l'interface et l'import (`validation.py`) :
 

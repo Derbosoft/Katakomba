@@ -1,15 +1,20 @@
 """
 OpenVPN : gestion du processus, failover, boucle de reconnexion.
 
-Corrections critiques appliquées :
-  - --verb 3  : requis pour que net_addr_v4_add apparaisse dans les logs
+Depuis la v3.9.0, OpenVPN tourne sans aucun droit : sous l'utilisateur
+katakomba-vpn, sur une interface tunnel créée par le daemon, avec
+--ifconfig-noexec et --route-noexec.  Il analyse des données reçues du réseau
+(TLS, messages du serveur) : une faille, ou un serveur malveillant, ne donne
+plus la machine.  Le daemon lit ce que le serveur a poussé et pose lui-même
+l'adresse et les routes (NetworkMixin._monter_tunnel).
+
+  - --verb 3 : requis pour que le PUSH_REPLY apparaisse dans la sortie
   - --connect-timeout 60 : évite les faux échecs lors d'un circuit Tor lent
-  - _protect_tor_routes() synchrone à net_addr_v4_add : évite la boucle de routage
-  - _apply_dns_split() après "Initialization Sequence Completed" : évite que le
-    script up d'OpenVPN écrase la config DNS split appliquée au démarrage
 """
 
+import grp
 import os
+import pwd
 import random
 import re
 import subprocess
@@ -20,17 +25,38 @@ from pathlib import Path
 from .core import (
     _run, _deobf, _read_regular, _write_private, AUTH_TMP, OVPN_RUN,
     OPENVPN_PATTERN, SCRIPT_DIR, RECONNECT_DELAY, RECONNECT_MAX,
-    AUTH_COOLDOWN, AUTH_PASS_MAX, AUTH_PASS_DELAY,
+    AUTH_COOLDOWN, AUTH_PASS_MAX, AUTH_PASS_DELAY, VPN_USER,
 )
-from validation import analyser_ovpn, chemin_ovpn_sur
+from validation import analyser_ovpn, analyser_push, chemin_ovpn_sur, preparer_copie_ovpn
+
+# Messages d'OpenVPN reconnus à leur forme EXACTE, ancrée en début de ligne
+# (horodatage facultatif).  Chercher un mot-clé n'importe où dans la ligne
+# laissait le serveur piloter le daemon : le texte d'un message qu'il envoie
+# (« AUTH: Received control message: AUTH_FAILED,… ») est recopié tel quel.
+_HORODATAGE = r"(?:\d{4}-\d\d-\d\d \d\d:\d\d:\d\d |\w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d \d{4} )?"
+_PUSH_REPLY = re.compile(rf"^{_HORODATAGE}PUSH: Received control message: '(PUSH_REPLY,.*)'$")
+# « With Errors » est suivi d'un renvoi vers la FAQ d'OpenVPN.
+_INIT_OK    = re.compile(rf"^{_HORODATAGE}Initialization Sequence Completed( With Errors\b.*)?$")
 
 
 class OpenVPNMixin:
 
-    def _write_auth_tmp(self, username: str, password: str):
-        # Création directe en 0600, sans suivre de lien symbolique, dans un
-        # répertoire réservé à root (voir _write_private).
-        _write_private(AUTH_TMP, f"{username}\n{password}\n")
+    def _write_auth_tmp(self, username: str, password: str, gid: int):
+        # Création directe en 0640, sans suivre de lien symbolique, dans un
+        # répertoire réservé à root et au groupe d'OpenVPN (voir _write_private).
+        _write_private(AUTH_TMP, f"{username}\n{password}\n", mode=0o640,
+                       dir_mode=0o750, gid=gid)
+
+    def _utilisateur_vpn(self):
+        """(uid, gid) de l'utilisateur d'OpenVPN, ou None (journalisé)."""
+        try:
+            return pwd.getpwnam(VPN_USER).pw_uid, grp.getgrnam(VPN_USER).gr_gid
+        except KeyError:
+            self._log(f"Utilisateur {VPN_USER} absent : OpenVPN ne tourne plus en "
+                      "root et a besoin de lui. Réinstallez Katakomba (sudo apt "
+                      "install --reinstall katakomba, ou sudo bash install.sh).",
+                      "ERROR")
+            return None
 
     def _stop_openvpn(self):
         self._stop_vpn = True
@@ -182,12 +208,9 @@ class OpenVPNMixin:
         self._plan_accounts()
         return True
 
-    _PUSH_DNS_RE = re.compile(r"dhcp-option\s+DNS\s+(\d{1,3}(?:\.\d{1,3}){3})",
-                              re.IGNORECASE)
-
     _OVPN_MAX = 1_000_000     # octets ; un .ovpn réel en fait quelques Ko
 
-    def _prepare_ovpn(self, cur_conf: str):
+    def _prepare_ovpn(self, cur_conf: str, gid: int):
         """Valide le .ovpn et en écrit une copie privée pour OpenVPN.
 
         Renvoie le chemin de la copie, ou None si le fichier est refusé.
@@ -224,8 +247,12 @@ class OpenVPNMixin:
                 "root, sur une configuration capable d'exécuter du code ou "
                 "d'écrire des fichiers.", "ERROR")
             return None
+        # Copie lisible par OpenVPN seul (en plus de root), directives qui
+        # exigeraient des droits neutralisées.
+        self._ovpn_texte = texte
         try:
-            _write_private(OVPN_RUN, texte)
+            _write_private(OVPN_RUN, preparer_copie_ovpn(texte), mode=0o640,
+                           dir_mode=0o750, gid=gid)
         except OSError as e:
             self._log(f"[provider] Copie privée du .ovpn impossible : {e}",
                       "ERROR")
@@ -479,9 +506,15 @@ class OpenVPNMixin:
             cur_conf, username, password, prov_name, acc_idx = result
             self._log(f"Fournisseur : {prov_name}  (compte {acc_idx+1})", "INFO")
 
+            ids = self._utilisateur_vpn()
+            if ids is None:
+                self._reconnect_reason = f"utilisateur {VPN_USER} absent"
+                break
+            vpn_uid, vpn_gid = ids
+
             # Refus = défaut du fournisseur entier (tous ses comptes partagent
             # le même .ovpn) : on passe directement au suivant.
-            conf_run = self._prepare_ovpn(cur_conf)
+            conf_run = self._prepare_ovpn(cur_conf, vpn_gid)
             if conf_run is None:
                 if self._try_next_provider():
                     continue
@@ -517,9 +550,11 @@ class OpenVPNMixin:
                     "boucle de routage. Vérifiez « ip route show default » "
                     "(une route sans « via » n'est pas reconnue).", "ERROR")
 
-            self._write_auth_tmp(username, password)
+            self._write_auth_tmp(username, password, vpn_gid)
+            if not self._creer_tun(VPN_USER):
+                self._reconnect_reason = "interface tunnel impossible à créer"
+                break
 
-            route_args = self._build_route_args()
             cmd = [
                 "openvpn",
                 "--config",            conf_run,
@@ -539,15 +574,26 @@ class OpenVPNMixin:
                 # --config ne l'exécute pas.  Le niveau 1 laisse passer les
                 # exécutables intégrés d'OpenVPN, dont dns-updown.
                 "--script-security",   "1",
-                "--verb",              "3",   # requis pour net_addr_v4_add
+                "--verb",              "3",   # requis pour le PUSH_REPLY
                 "--ping",              "10",
                 "--ping-exit",         "60",
                 "--connect-timeout",   "60",  # Tor peut être lent à établir un circuit
                 "--connect-retry",     "1",
                 "--connect-retry-max", "1",
                 "--socks-proxy",       "127.0.0.1", "9050",
+                # Sans aucun droit : interface créée par le daemon, qui pose
+                # aussi l'adresse et les routes.  Pas de DCO (module noyau,
+                # exige des droits ; inutilisable via un proxy de toute façon)
+                # ni de hook DNS (le daemon applique le DNS).  dns-updown
+                # n'existe qu'à partir d'OpenVPN 2.7 : ignoré par la 2.6.
+                "--dev",               self._tun_iface,
+                "--dev-type",          "tun",
+                "--ifconfig-noexec",
+                "--route-noexec",
+                "--disable-dco",
+                "--ignore-unknown-option", "dns-updown",
+                "--dns-updown",        "disable",
             ]
-            cmd += route_args
 
             self._log(f"OpenVPN : {os.path.basename(cur_conf)} via Tor …")
             tunnel_up = False
@@ -556,31 +602,20 @@ class OpenVPNMixin:
             self._vpn_dns_ips = []
             try:
                 self.openvpn_process = subprocess.Popen(
-                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    user=vpn_uid, group=vpn_gid, extra_groups=[], cwd="/",
+                    env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"})
 
+                pousse = []        # options du PUSH_REPLY (éventuellement en plusieurs messages)
                 for line in self.openvpn_process.stdout:
                     line = line.strip()
                     if not line:
                         continue
                     low = line.lower()
 
-                    if "tun/tap device" in low and "opened" in low:
-                        for word in line.split():
-                            if word.startswith("tun") and word != "tun/tap":
-                                self._tun_iface = word
-                                self._log(f"[openvpn] Interface tunnel : {self._tun_iface}", "INFO")
-                                break
-
-                    # Synchrone — doit s'exécuter avant que le script up
-                    # installe redirect-gateway.
-                    elif "net_addr_v4_add" in low:
-                        self._protect_tor_routes()
-
-                    # DNS poussés par le serveur (PUSH_REPLY, visible en --verb 3)
-                    elif "push" in low and "dhcp-option" in low:
-                        found = self._PUSH_DNS_RE.findall(line)
-                        if found:
-                            self._vpn_dns_ips.extend(found)
+                    m = _PUSH_REPLY.match(line)
+                    if m:
+                        pousse += m.group(1).split(",")[1:]
 
                     # Refus des identifiants par le serveur.  Deux signatures
                     # indépendantes, toutes deux observées en production :
@@ -598,17 +633,21 @@ class OpenVPNMixin:
                     # n'était jamais déclaré actif : ni DNS du VPN (requêtes
                     # vers le DNS local, hors tunnel), ni blocage IPv6, ni
                     # watchdog.
-                    if "initialization sequence completed" in low:
-                        if "with errors" in low:
+                    init = _INIT_OK.match(line)
+                    if init:
+                        if init.group(1):
                             self._log(
                                 "OpenVPN signale une erreur d'initialisation "
                                 "(route ou interface, voir les lignes "
                                 "précédentes) — tunnel monté malgré tout, pris "
                                 "en charge normalement.", "WARN")
                         if not tunnel_up:
-                            # Filet de sécurité si net_addr_v4_add a été manqué.
-                            threading.Thread(
-                                target=self._protect_tor_routes, daemon=True).start()
+                            reglages = analyser_push(pousse, self._ovpn_texte)
+                            self._vpn_dns_ips = list(reglages["dns"])
+                            if not self._monter_tunnel(reglages):
+                                self._reconnect_reason = "tunnel impossible à monter"
+                                self.openvpn_process.terminate()
+                                continue
                             tunnel_up = True
                             self._tunnel_up      = True
                             self._tunnel_up_time = time.time()
@@ -643,8 +682,7 @@ class OpenVPNMixin:
                             threading.Thread(
                                 target=self._circuit_quality_check,
                                 daemon=True).start()
-                        self._log(f"[openvpn] {line}",
-                                  "WARN" if "with errors" in low else "OK")
+                        self._log(f"[openvpn] {line}", "WARN" if init.group(1) else "OK")
                     elif "error" in low or "failed" in low:
                         self._log(f"[openvpn] {line}", "ERROR")
                     elif "warning" in low:
@@ -658,6 +696,7 @@ class OpenVPNMixin:
                         self._reconnect_reason = "connexion VPN interrompue"
                 self._tunnel_up = False
                 self._revert_vpn_dns()
+                self._demonter_tunnel()
                 self._log("Processus OpenVPN terminé.", "WARN")
 
             except FileNotFoundError:

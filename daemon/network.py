@@ -1,5 +1,7 @@
 """
-Réseau : gateway, SOCKS, routes Tor, routes exclues.
+Réseau : gateway, SOCKS, routes Tor, routes exclues, et montage du tunnel
+(adresse et routes), que le daemon pose lui-même depuis la v3.9.0 :
+OpenVPN tourne sans aucun droit et ne touche plus au réseau.
 """
 
 import ipaddress
@@ -47,7 +49,15 @@ class NetworkMixin:
         return nets
 
     def _build_route_args(self) -> list:
+        """Exclusions sous forme d'options « --route … net_gateway »."""
         args = []
+        for net in self._reseaux_exclus():
+            args += ["--route", str(net.network_address), str(net.netmask), "net_gateway"]
+        return args
+
+    def _reseaux_exclus(self) -> list:
+        """Exclusions à router hors du tunnel, validées (voir verifier_exclusion)."""
+        nets = []
         connected = self._connected_networks()
         for entry in self.config.get("excluded_ips", []):
             # Même contrôle que le GUI : invalide, IPv6 (« --route » est une
@@ -76,9 +86,105 @@ class NetworkMixin:
                     "L'exclure casserait l'accès aux machines de ce LAN.",
                     "INFO")
                 continue
-            args += ["--route", str(net.network_address),
-                     str(net.netmask), "net_gateway"]
-        return args
+            nets.append(net)
+        return nets
+
+    # ── Montage du tunnel (OpenVPN sans privilège) ───────────────────────────
+
+    def _creer_tun(self, utilisateur: str) -> bool:
+        """Interface tunnel neuve, propriété de l'utilisateur d'OpenVPN : il
+        l'ouvre sans aucun droit.  Une interface restée d'une session
+        précédente est supprimée, avec ses adresses et ses routes."""
+        tun = self._tun_iface
+        _run("ip", "link", "del", "dev", tun)
+        r = _run("ip", "tuntap", "add", "dev", tun, "mode", "tun",
+                 "user", utilisateur, "group", utilisateur)
+        if r.returncode != 0:
+            self._log(f"Interface {tun} impossible à créer : "
+                      f"{r.stderr.decode(errors='ignore').strip()}", "ERROR")
+            return False
+        return True
+
+    def _monter_tunnel(self, reglages: dict) -> bool:
+        """Pose l'adresse et les routes du tunnel, dans l'ordre qui protège.
+
+        1. Routes /32 des relais Tor, AVANT toute route du tunnel : sinon Tor
+           joindrait ses relais par le tunnel qui dépend d'eux.  OpenVPN
+           posant lui-même ses routes, le daemon devait guetter
+           « net_addr_v4_add » dans sa sortie pour passer avant lui ; il
+           n'y a plus de course.
+        2. Adresse, MTU, interface levée.
+        3. Exclusions, via la passerelle d'origine.
+        4. Routes poussées acceptées (toutes dans le tunnel), puis les deux
+           moitiés d'Internet (0/1 et 128/1) dans le tunnel."""
+        tun = self._tun_iface
+        for msg in reglages["refus"]:
+            self._log(f"[tunnel] {msg}", "WARN")
+        if not reglages["ifconfig"]:
+            self._log("[tunnel] Le serveur VPN n'a fourni aucune adresse (ifconfig) "
+                      "— tunnel non monté.", "ERROR")
+            return False
+        self._protect_tor_routes()
+
+        local, second = reglages["ifconfig"]
+        if reglages["topology"] == "subnet":
+            prefixe = ipaddress.IPv4Network(f"{local}/{second}", strict=False).prefixlen
+            adresse = ["ip", "addr", "add", f"{local}/{prefixe}", "dev", tun]
+        else:
+            adresse = ["ip", "addr", "add", local, "peer", second, "dev", tun]
+        etapes = [["ip", "addr", "flush", "dev", tun], adresse]
+        if reglages["tun_mtu"]:
+            etapes.append(["ip", "link", "set", "dev", tun, "mtu", str(reglages["tun_mtu"])])
+        etapes.append(["ip", "link", "set", "dev", tun, "up"])
+        for cmd in etapes:
+            r = _run(*cmd)
+            if r.returncode != 0:
+                self._log(f"[tunnel] « {' '.join(cmd)} » : "
+                          f"{r.stderr.decode(errors='ignore').strip()}", "ERROR")
+                return False
+
+        self._routes_exclues = []
+        exclus = self._reseaux_exclus()
+        if exclus and not self._orig_gw:
+            self._log("[tunnel] Passerelle d'origine inconnue — exclusions non "
+                      "routées hors du tunnel.", "WARN")
+        elif exclus:
+            for net in exclus:
+                _run("ip", "route", "replace", str(net),
+                     "via", self._orig_gw, "dev", self._orig_iface)
+                self._routes_exclues.append(str(net))
+
+        # Une route poussée vers un réseau local ou exclu détournerait ce
+        # trafic dans le tunnel, vers le fournisseur VPN.
+        locaux = self._connected_networks() + exclus
+        for net in reglages["routes"]:
+            if any(net.overlaps(n) for n in locaux):
+                self._log(f"[tunnel] Route poussée ignorée : {net} recouvre un "
+                          "réseau local ou exclu.", "WARN")
+                continue
+            _run("ip", "route", "replace", str(net), "dev", tun, "scope", "global")
+        # « scope global » : sans passerelle, une route prendrait la portée
+        # « link », celle des réseaux directement connectés — que le daemon
+        # et `katakomba doctor` repèrent justement par elle.  Les deux
+        # moitiés d'Internet passeraient pour un réseau local.
+        for moitie in ("0.0.0.0/1", "128.0.0.0/1"):
+            r = _run("ip", "route", "replace", moitie, "dev", tun, "scope", "global")
+            if r.returncode != 0:
+                self._log(f"[tunnel] Route {moitie} impossible : "
+                          f"{r.stderr.decode(errors='ignore').strip()}", "ERROR")
+                return False
+        self._log(f"[tunnel] {tun} : {local} ({reglages['topology']}), tout le "
+                  "trafic dans le tunnel.", "OK")
+        return True
+
+    def _demonter_tunnel(self):
+        """Supprime l'interface tunnel (adresse et routes partent avec elle)
+        et les routes d'exclusion.  Sans elles, Tor rejoint ses relais par la
+        route par défaut pour la reconnexion suivante."""
+        for net in self._routes_exclues:
+            _run("ip", "route", "del", net)
+        self._routes_exclues = []
+        _run("ip", "link", "del", "dev", self._tun_iface)
 
     def _add_protected_routes(self, ips, source: str):
         """Route en /32 via la gateway originale chaque IP IPv4 valide et

@@ -92,6 +92,17 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.9.0" date="2026-10-15">
+      <description>
+        <p>OpenVPN no longer runs as root. It parses data received from the network; a flaw in it, or a malicious VPN server, could take over the machine. It now runs as a dedicated user with no privileges at all, and Katakomba sets up the tunnel itself.</p>
+        <ul>
+          <li>Routes pushed by the VPN server that would leave the tunnel are refused</li>
+          <li>Tor relay routes are always set before the tunnel routes</li>
+          <li>Only OpenVPN's own messages are recognised, never text sent by the server</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.9.0</url>
+    </release>
     <release version="3.8.1" date="2026-10-15" urgency="high">
       <description>
         <p>Security fixes from an audit. The service no longer trusts its configuration file, which programs running in your session can edit.</p>

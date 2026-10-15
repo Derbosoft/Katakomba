@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 
-from .core import _run, _sd_notify, CONN_FAIL_MAX, REPAIR_THRESHOLD, SCRIPT_DIR
+from .core import _run, _sd_notify, CONN_FAIL_MAX, REPAIR_THRESHOLD, SCRIPT_DIR, TUN_IFACE
 
 
 class WatchdogMixin:
@@ -134,7 +134,7 @@ class WatchdogMixin:
         self._tunnel_up            = False
         self._tunnel_up_time       = 0.0
         self._tunnel_down_at       = time.time()
-        self._tun_iface            = "tun0"
+        self._tun_iface            = TUN_IFACE
         self._light_restart_done   = False
         self._light_restart_at     = 0.0
         self._tor_ready.clear()
