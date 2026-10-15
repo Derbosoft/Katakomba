@@ -3,9 +3,11 @@ Statut : socket Unix en lecture seule exposant l'état du daemon en JSON.
 
 Protocole volontairement minimal : à chaque connexion, le daemon écrit un
 objet JSON suivi d'un saut de ligne puis ferme.  Aucune commande n'est
-acceptée (pas de surface d'attaque en écriture).  Le socket est en 0666 :
-il n'expose aucun secret (ni identifiant ni mot de passe), uniquement de
-l'état opérationnel, et doit être lisible par le GUI non-root et le CLI.
+acceptée (pas de surface d'attaque en écriture).  Le socket n'expose aucun
+secret (ni identifiant ni mot de passe), mais l'état décrit l'usage de la
+machine : relais d'entrée Tor, fournisseur, compte.  Connaître les guards de
+quelqu'un aide à le désanonymiser.  Il est donc réservé au groupe katakomba
+(0660) : le GUI et `katakomba doctor`, lancés par ses membres.
 
 Consommation côté client :
     python3 -c "import socket,sys; s=socket.socket(socket.AF_UNIX);
@@ -13,6 +15,7 @@ Consommation côté client :
                 sys.stdout.write(s.makefile().readline())"
 """
 
+import grp
 import json
 import os
 import socket
@@ -20,6 +23,7 @@ import threading
 import time
 
 from constants import STATUS_SOCKET, VERSION
+from validation import exclusion_locale, verifier_exclusion
 
 
 class StatusMixin:
@@ -84,7 +88,26 @@ class StatusMixin:
             "ipv6_blocked":   self._ipv6_blocked,
             "kill_switch":    self._kill_active,
             "kill_switch_config": bool(self.config.get("kill_switch", True)),
+            "public_exclusions": self._exclusions_publiques(),
         }
+
+    def _restreindre_socket(self):
+        """0660, groupe katakomba ; 0600 si c'est impossible.  Le
+        propriétaire reste celui qui a créé le socket : root, pour le daemon."""
+        try:
+            os.chown(STATUS_SOCKET, -1, grp.getgrnam("katakomba").gr_gid)
+        except (KeyError, OSError) as e:
+            os.chmod(STATUS_SOCKET, 0o600)
+            self._log(f"Socket de statut réservé à root (groupe katakomba "
+                      f"inutilisable : {e}).", "WARN")
+            return
+        os.chmod(STATUS_SOCKET, 0o660)
+
+    def _exclusions_publiques(self) -> list:
+        """Exclusions admises qui mènent à Internet : ce trafic sort avec
+        l'adresse réelle.  Signalées par `katakomba doctor`."""
+        nets = (verifier_exclusion(e)[0] for e in self.config.get("excluded_ips", []))
+        return [n for n in nets if n and not exclusion_locale(n)]
 
     def _start_status_server(self):
         """Démarre le serveur de statut sur le socket Unix (thread daemon)."""
@@ -93,7 +116,7 @@ class StatusMixin:
             STATUS_SOCKET.unlink(missing_ok=True)
             srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             srv.bind(str(STATUS_SOCKET))
-            os.chmod(STATUS_SOCKET, 0o666)   # lecture seule, aucune donnée sensible
+            self._restreindre_socket()
             srv.listen(4)
         except Exception as e:
             if srv is not None:

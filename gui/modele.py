@@ -31,7 +31,9 @@ from constants import (
     SCRIPT_DIR, SERVICE_NAME, STATUS_SOCKET, TORRC_FILE,
 )
 from i18n import LANGUES, N_, _, ngettext, nombre
-from validation import analyser_ovpn, analyser_torrc
+from validation import (analyser_ovpn, analyser_torrc, chemin_ovpn_sur, composant_sur,
+                        interface_lan_admissible, verifier_dns, verifier_domaine,
+                        verifier_exclusion)
 
 OVPN_MAX = 1_000_000      # octets, comme le daemon
 
@@ -48,12 +50,6 @@ def deobf(s: str) -> str:
         return base64.b64decode(s.encode()).decode()
     except Exception:
         return s
-
-
-def composant_sur(c: str) -> bool:
-    """Composant de chemin simple : anti path-traversal (import de sauvegarde)."""
-    return bool(c) and c not in (".", "..") \
-        and "/" not in c and "\\" not in c and not c.startswith(".")
 
 
 def _insecable(texte: str) -> str:
@@ -155,14 +151,7 @@ def mode_avance_initial(config: dict) -> bool:
 # ── Saisies ──────────────────────────────────────────────────────────────────
 
 def erreur_dns(dns: str) -> str:
-    dns = dns.strip()
-    if not dns:
-        return ""
-    try:
-        ipaddress.ip_address(dns)
-    except ValueError:
-        return _("« {valeur} » n'est pas une adresse IP.").format(valeur=dns)
-    return ""
+    return verifier_dns(dns)[1]
 
 
 def erreurs_lan(passerelle: str, sous_reseau: str) -> list:
@@ -188,6 +177,10 @@ def erreurs_config(config: dict) -> list:
     e = erreur_dns(config.get("local_dns", ""))
     if e:
         erreurs.append(_("Serveur DNS local : {erreur}").format(erreur=e))
+    erreurs += [e for e in (verifier_exclusion(x)[1] for x in config.get("excluded_ips", []))
+                if e]
+    erreurs += [e for e in (verifier_domaine(x)[1] for x in config.get("excluded_domains", []))
+                if e]
     try:
         cmin = int(config.get("circuit_min_kbs", 250))
         cret = int(config.get("circuit_max_retries", 3))
@@ -204,26 +197,13 @@ def erreurs_config(config: dict) -> list:
 
 
 def normaliser_ip(saisie: str):
-    """(réseau normalisé, erreur).  L'exclusion repose sur « --route », une
-    option IPv4 uniquement : une entrée IPv6 serait acceptée puis ignorée par
-    OpenVPN, en laissant croire que le réseau est exclu du tunnel."""
-    saisie = saisie.strip()
-    if not saisie:
-        return "", ""
-    try:
-        net = ipaddress.ip_network(saisie, strict=False)
-    except ValueError:
-        return "", _("« {valeur} » n'est pas une adresse ou un réseau "
-                     "valide.").format(valeur=saisie)
-    if net.version != 4:
-        return "", _("« {valeur} » est une adresse IPv6 : l'exclusion du tunnel "
-                     "ne gère que l'IPv4.").format(valeur=saisie)
-    return str(net), ""
+    """(réseau normalisé, erreur) : mêmes règles que le daemon."""
+    return verifier_exclusion(saisie)
 
 
 def normaliser_domaine(saisie: str) -> str:
-    saisie = saisie.strip()
-    return ("." + saisie.lstrip(".")).lower() if saisie else ""
+    """« .domaine », ou "" si vide ou invalide (voir verifier_domaine)."""
+    return verifier_domaine(saisie)[0]
 
 
 # ── Fournisseurs ─────────────────────────────────────────────────────────────
@@ -529,13 +509,53 @@ def lire_sauvegarde(chemin):
     with zipfile.ZipFile(chemin, "r") as zf:
         if "config.json" not in zf.namelist():
             raise ValueError(_("Ce fichier n'est pas une sauvegarde Katakomba."))
-        nouvelle = json.loads(zf.read("config.json").decode())
+        nouvelle = json.loads(_lire_membre(zf, "config.json").decode())
         if not isinstance(nouvelle, dict):
             raise ValueError(_("config.json ne contient pas un objet JSON"))
         for k in OBSOLETE_CONFIG_KEYS:
             nouvelle.pop(k, None)
         ecartes = importer_fichiers(zf, nouvelle)
+        ecartes += assainir_reglages(nouvelle)
     return {**copy.deepcopy(DEFAULT_CONFIG), **nouvelle}, ecartes
+
+
+def _lire_membre(zf, nom: str) -> bytes:
+    """Contenu d'un fichier de l'archive, taille contrôlée AVANT lecture : une
+    archive piégée peut annoncer quelques Ko et en décompresser des Go."""
+    if zf.getinfo(nom).file_size > OVPN_MAX:
+        raise ValueError(_("{fichier} : trop volumineux").format(fichier=nom))
+    with zf.open(nom) as f:
+        data = f.read(OVPN_MAX + 1)
+    if len(data) > OVPN_MAX:
+        raise ValueError(_("{fichier} : trop volumineux").format(fichier=nom))
+    return data
+
+
+def assainir_reglages(config: dict) -> list:
+    """Retire d'une configuration importée les réglages que le daemon
+    refuserait ; renvoie ce qui a été retiré, en clair.  Une sauvegarde
+    reçue d'un tiers pourrait sinon exclure tout Internet du tunnel."""
+    ecartes = []
+    for cle, verifier in (("excluded_ips", verifier_exclusion),
+                          ("excluded_domains", verifier_domaine)):
+        gardes = []
+        valeurs = config.get(cle, [])
+        for v in valeurs if isinstance(valeurs, list) else []:
+            norm, erreur = verifier(v)
+            if erreur:
+                ecartes.append(erreur)
+            elif norm and norm not in gardes:
+                gardes.append(norm)
+        config[cle] = gardes
+    dns, erreur = verifier_dns(config.get("local_dns", ""))
+    if erreur:
+        ecartes.append(_("Serveur DNS local : {erreur}").format(erreur=erreur))
+    config["local_dns"] = dns
+    iface = config.get("lan_iface", "")
+    if iface and not interface_lan_admissible(iface):
+        ecartes.append(_("Partage LAN : interface « {nom} » refusée").format(nom=iface))
+        config["lan_iface"] = ""
+    return ecartes
 
 
 def importer_fichiers(zf, nouvelle: dict) -> list:
@@ -548,10 +568,14 @@ def importer_fichiers(zf, nouvelle: dict) -> list:
         if not (nom.startswith("providers/") and nom.endswith((".ovpn", ".conf"))):
             continue
         parts = nom.split("/")
-        if len(parts) != 3 or not all(map(composant_sur, parts[1:])):
+        if not chemin_ovpn_sur(nom):
             ecartes.append(_("{fichier} : chemin refusé").format(fichier=nom))
             continue
-        data = zf.read(nom)
+        try:
+            data = _lire_membre(zf, nom)
+        except ValueError as e:
+            ecartes.append(str(e))
+            continue
         refus, _avert = analyser_ovpn(data.decode("utf-8", errors="replace"))
         if len(data) > OVPN_MAX or refus:
             ecartes.append(_("{fichier} : {raison}").format(
@@ -565,14 +589,16 @@ def importer_fichiers(zf, nouvelle: dict) -> list:
     # absolu ferait lire au daemon, en root, un fichier arbitraire.
     for p in nouvelle.get("providers", []):
         ovpn = p.get("ovpn_file", "")
-        parts = Path(ovpn).parts
-        if ovpn and not (len(parts) == 3 and parts[0] == "providers"
-                         and all(map(composant_sur, parts[1:]))):
+        if ovpn and not chemin_ovpn_sur(ovpn):
             p["ovpn_file"] = ""
             ecartes.append(_("{fournisseur} : chemin .ovpn refusé (hors de "
                              "providers/)").format(fournisseur=p.get("name", "?")))
     if "torrc" in zf.namelist():
-        texte = zf.read("torrc").decode("utf-8", errors="replace")
+        try:
+            texte = _lire_membre(zf, "torrc").decode("utf-8", errors="replace")
+        except ValueError as e:
+            ecartes.append(str(e))
+            return ecartes
         refus = analyser_torrc(texte)
         if refus:
             ecartes.append(_("{fichier} : {raison}").format(fichier="torrc", raison=refus[0]))
@@ -1066,8 +1092,7 @@ def interfaces_lan() -> list:
     sortie = interface_sortie()
     try:
         return [i for i in sorted(os.listdir("/sys/class/net"))
-                if i not in ("lo", sortie) and
-                not i.startswith(("tun", "virbr", "docker", "wg", "veth", "br-"))]
+                if i != sortie and interface_lan_admissible(i)]
     except OSError:
         return []
 

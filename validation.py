@@ -21,6 +21,8 @@ cette précaution, un fichier pointant sur /etc/shadow ferait recopier ses
 lignes dans le journal, lisible par le groupe adm.
 """
 
+import ipaddress
+import re
 import shlex
 
 from i18n import N_, _
@@ -280,3 +282,115 @@ def analyser_torrc(texte: str):
         else:
             refus.append(_("ligne {n} : option inconnue ou non autorisée").format(n=n))
     return refus
+
+
+# ── Réglages de config.json ───────────────────────────────────────────────────
+#
+# config.json est inscriptible par le groupe katakomba, donc par tout
+# programme lancé sous un compte membre, et il est remplacé par l'import
+# d'une sauvegarde.  Le daemon, en root, ne s'en remet donc pas aux contrôles
+# du GUI : chaque valeur qu'il utilise passe par les fonctions ci-dessous,
+# les mêmes que celles du GUI et de l'import.
+
+# Plages qui ne mènent pas à Internet : les exclure du tunnel ne fait rien
+# sortir à découvert.  100.64.0.0/10 : espace partagé (CGNAT, Tailscale).
+PLAGES_LOCALES = tuple(ipaddress.ip_network(n) for n in (
+    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16",
+    "100.64.0.0/10"))
+# Une exclusion vers Internet ne couvre jamais plus qu'un /16 (65 536
+# adresses).  Sans limite, quatre /2 — plus précis que les routes du tunnel —
+# faisaient sortir tout Internet hors du tunnel, avec l'adresse réelle, et le
+# kill switch les laissait passer puisqu'il autorise les exclusions.
+PREFIXE_PUBLIC_MIN = 16
+
+
+def verifier_exclusion(saisie):
+    """(réseau normalisé, erreur) ; erreur vide si l'exclusion est admise.
+
+    IPv4 seulement : l'exclusion repose sur « --route », une option IPv4 ;
+    une entrée IPv6 serait acceptée puis ignorée par OpenVPN, en laissant
+    croire que le réseau est exclu du tunnel."""
+    saisie = str(saisie).strip()
+    if not saisie:
+        return "", ""
+    try:
+        net = ipaddress.ip_network(saisie, strict=False)
+    except ValueError:
+        return "", _("« {valeur} » n'est pas une adresse ou un réseau "
+                     "valide.").format(valeur=saisie)
+    if net.version != 4:
+        return "", _("« {valeur} » est une adresse IPv6 : l'exclusion du tunnel "
+                     "ne gère que l'IPv4.").format(valeur=saisie)
+    if net.prefixlen < PREFIXE_PUBLIC_MIN and not exclusion_locale(net):
+        return "", _("« {valeur} » est trop large : vers Internet, une exclusion "
+                     "ne peut pas dépasser /{min}. Ce trafic sortirait avec votre "
+                     "adresse réelle.").format(valeur=net, min=PREFIXE_PUBLIC_MIN)
+    return str(net), ""
+
+
+def exclusion_locale(net) -> bool:
+    """Réseau entièrement contenu dans une plage qui ne mène pas à Internet."""
+    net = ipaddress.ip_network(net, strict=False)
+    return net.version == 4 and any(net.subnet_of(p) for p in PLAGES_LOCALES)
+
+
+def verifier_dns(saisie):
+    """(adresse normalisée, erreur) pour le serveur DNS local."""
+    saisie = str(saisie).strip()
+    if not saisie:
+        return "", ""
+    try:
+        return str(ipaddress.ip_address(saisie)), ""
+    except ValueError:
+        return "", _("« {valeur} » n'est pas une adresse IP.").format(valeur=saisie)
+
+
+# Étiquettes de 1 à 63 caractères, lettres, chiffres et tirets intérieurs.
+# Rien d'autre : la valeur est écrite telle quelle dans un fichier de
+# configuration de systemd-resolved, où un retour à la ligne ajouterait
+# n'importe quel réglage.
+_DOMAINE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+                      r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*")
+
+
+def verifier_domaine(saisie):
+    """(« .domaine » normalisé, erreur) pour le split DNS."""
+    brut = str(saisie).strip()
+    nom = brut.lower().lstrip(".")
+    if not nom:
+        return "", ""
+    if len(nom) > 253 or not _DOMAINE.fullmatch(nom):
+        return "", _("« {valeur} » n'est pas un nom de domaine valide.").format(
+            valeur=brut)
+    return "." + nom, ""
+
+
+def composant_sur(c: str) -> bool:
+    """Composant de chemin simple : ni remontée, ni séparateur, ni fichier
+    caché."""
+    return bool(c) and c not in (".", "..") and not c.startswith(".") \
+        and not any(x in c for x in ("/", "\\", "\0"))
+
+
+def chemin_ovpn_sur(chemin) -> bool:
+    """« providers/<fournisseur>/<fichier> », relatif, sans détour.
+
+    Tout autre chemin ferait lire au daemon, en root, un fichier arbitraire
+    de la machine."""
+    parts = str(chemin).split("/")
+    return (len(parts) == 3 and parts[0] == "providers"
+            and all(map(composant_sur, parts[1:])))
+
+
+_INTERFACE = re.compile(r"[A-Za-z0-9_.:-]{1,15}")
+# Interfaces que le partage LAN ne doit jamais prendre : il vide leurs
+# adresses.  « lo » couperait la machine de Tor (127.0.0.1:9050).
+INTERFACES_EXCLUES = ("tun", "virbr", "docker", "wg", "veth", "br-")
+
+
+def interface_lan_admissible(nom) -> bool:
+    """Nom d'interface valide, ni boucle locale ni interface virtuelle.
+    (L'interface de sortie est refusée à part : elle dépend de la route.)"""
+    nom = str(nom)
+    return (bool(_INTERFACE.fullmatch(nom)) and nom != "lo"
+            and not nom.startswith(INTERFACES_EXCLUES))

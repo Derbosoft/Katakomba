@@ -96,6 +96,13 @@ class StatusSnapshotTest(unittest.TestCase):
                     "kill_switch_config"):
             self.assertIn(cle, snap, f"champ {cle} absent du statut")
 
+    def test_exclusions_publiques_signalees(self):
+        """Visibles dans `katakomba doctor` : elles ont pu être ajoutées hors
+        de l'interface.  Les exclusions refusées n'y figurent pas."""
+        d = FakeDaemon(config={"excluded_ips": ["192.168.1.0/24", "203.0.113.0/24",
+                                                "0.0.0.0/2"]})
+        self.assertEqual(d._status_snapshot()["public_exclusions"], ["203.0.113.0/24"])
+
     def test_progression_tor(self):
         d, snap = self._snap()
         self.assertEqual(snap["tor_bootstrap"], 0)

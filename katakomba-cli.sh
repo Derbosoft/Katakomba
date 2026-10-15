@@ -489,6 +489,12 @@ elif st.get("kill_switch_config"):
 elif "kill_switch_config" in st:
     note(WARN, _("Blocage hors tunnel"),
          _("désactivé — pendant une reconnexion, le trafic peut sortir à découvert"))
+# Une exclusion vers Internet est légitime (un service qui refuse Tor), mais
+# elle doit rester visible : elle a pu être ajoutée hors de l'interface.
+if st.get("public_exclusions"):
+    note(WARN, _("Exclusions vers Internet"),
+         _("{reseaux} — ce trafic sort hors du tunnel, avec votre adresse "
+           "réelle").format(reseaux=", ".join(st["public_exclusions"])))
 
 # ── 6. Connectivité réelle à travers le tunnel ────────────────────────────────
 if en_cours:

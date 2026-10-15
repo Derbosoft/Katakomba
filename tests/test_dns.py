@@ -278,13 +278,31 @@ class EnsureDnsConfigTest(unittest.TestCase):
 
 class ApplyVpnDnsTest(unittest.TestCase):
 
-    def _apply(self, ips, rc=0):
+    def _apply(self, ips, rc=0, route="10.8.0.1 dev tun0 src 10.8.0.2 uid 0"):
         d = FakeDaemon()
         d._vpn_dns_ips, d._tun_iface = list(ips), "tun0"
         rec = Recorder({"resolvectl dns": (rc, "")})
-        with patched_subprocess(m_dns, rec):
+        with patched_subprocess(m_dns, rec), patched_run(Recorder({"route get": (0, route)})):
             d._apply_vpn_dns()
         return d, rec
+
+    def test_dns_pousse_hors_tunnel_ignore(self):
+        """Un serveur VPN qui annonce le routeur du LAN comme DNS ferait
+        partir les requêtes hors du tunnel, vers le FAI."""
+        d, rec = self._apply(["192.168.1.1"], route="192.168.1.1 dev eth0 src 192.168.1.5")
+        self.assertFalse(rec.ran("resolvectl dns"))
+        self.assertTrue(d.has_log("ne passe pas par le tunnel", "WARN"))
+        self.assertTrue(d.has_log("Aucun DNS du VPN utilisable", "ERROR"))
+        self.assertEqual(d._vpn_dns_ips, [], "le contrôle périodique le réappliquerait")
+
+    def test_seuls_les_dns_par_le_tunnel_sont_gardes(self):
+        d = FakeDaemon()
+        d._tun_iface = "tun0"
+        routes = Recorder({"route get 10.8.0.1": (0, "10.8.0.1 dev tun0 src 10.8.0.2"),
+                           "route get 192.168.1.1": (0, "192.168.1.1 dev eth0 src x")})
+        with patched_run(routes):
+            self.assertEqual(d._dns_par_le_tunnel(["10.8.0.1", "192.168.1.1", "999.1.1.1"]),
+                             ["10.8.0.1"])
 
     def test_pose_les_trois_reglages(self):
         d, rec = self._apply(["10.20.20.1"])
@@ -326,7 +344,8 @@ class ApplyVpnDnsTest(unittest.TestCase):
         def missing(*a, **k):
             raise FileNotFoundError()
 
-        with patched_subprocess(m_dns, missing):
+        with patched_subprocess(m_dns, missing), \
+                patched_run(Recorder({"route get": (0, "10.0.0.1 dev tun0")})):
             d._apply_vpn_dns()
         self.assertTrue(d.has_log("resolvectl introuvable", "ERROR"))
 
@@ -358,6 +377,19 @@ class SplitDnsTest(unittest.TestCase):
                       "le préfixe ~ (domaine de routage) est indispensable")
         self.assertTrue(rec.ran("systemctl reload-or-restart systemd-resolved"))
         self.assertTrue(d.has_log("DNS split actif", "OK"))
+
+    def test_injection_dans_le_dropin_impossible(self):
+        """config.json est modifiable par le groupe ; la valeur part, en root,
+        dans la configuration de systemd-resolved.  Un retour à la ligne y
+        ajouterait n'importe quel réglage."""
+        d, _ = self._apply("192.168.50.10\nDNSStubListenerExtra=0.0.0.0",
+                           [".lan\nDNSStubListenerExtra=0.0.0.0"])
+        self.assertFalse(self.dropin.exists(), "drop-in écrit avec des valeurs refusées")
+        self.assertTrue(d.has_log("serveur DNS local invalide", "ERROR"))
+        d, _ = self._apply("192.168.50.10", [".lan", "x\nDNSSEC=no", "bad domain"])
+        txt = self.dropin.read_text()
+        self.assertEqual(txt, "[Resolve]\nDNS=192.168.50.10\nDomains=~lan\n")
+        self.assertTrue(d.has_log("2 domaine(s) invalide(s)", "ERROR"))
 
     def test_sans_dns_supprime_le_dropin(self):
         self.dropin.parent.mkdir(parents=True, exist_ok=True)

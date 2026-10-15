@@ -472,6 +472,32 @@ class SauvegardeTest(Bac):
         self.assertEqual(nouvelle["local_dns"], "10.0.0.53")
         self.assertTrue((modele.PROVIDERS_DIR / "v" / "v.ovpn").exists())
 
+    def test_reglages_importes_assainis(self):
+        """Une sauvegarde reçue d'un tiers pourrait exclure tout Internet du
+        tunnel, ou injecter des réglages dans systemd-resolved."""
+        chemin = self.base / "piege.katakomba"
+        cfg = {"excluded_ips": ["0.0.0.0/2", "64.0.0.0/2", "192.168.1.0/24"],
+               "excluded_domains": [".lan", "x\nDNSSEC=no"],
+               "local_dns": "1.1.1.1\nDNSStubListenerExtra=0.0.0.0", "lan_iface": "lo"}
+        with zipfile.ZipFile(chemin, "w") as zf:
+            zf.writestr("config.json", json.dumps(cfg))
+        nouvelle, ecartes = modele.lire_sauvegarde(chemin)
+        self.assertEqual(nouvelle["excluded_ips"], ["192.168.1.0/24"])
+        self.assertEqual(nouvelle["excluded_domains"], [".lan"])
+        self.assertEqual(nouvelle["local_dns"], "")
+        self.assertEqual(nouvelle["lan_iface"], "")
+        self.assertEqual(len(ecartes), 5, ecartes)
+
+    def test_archive_piegee_refusee_avant_lecture(self):
+        """Taille contrôlée AVANT décompression : quelques Ko annoncent des Go."""
+        chemin = self.base / "bombe.katakomba"
+        with zipfile.ZipFile(chemin, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("config.json", "{}")
+            zf.writestr("providers/x/x.ovpn", "client\n" + " " * (modele.OVPN_MAX + 10))
+        _nouvelle, ecartes = modele.lire_sauvegarde(chemin)
+        self.assertTrue(any("trop volumineux" in e for e in ecartes), ecartes)
+        self.assertFalse((modele.PROVIDERS_DIR / "x" / "x.ovpn").exists())
+
     def test_pas_une_sauvegarde(self):
         chemin = self.base / "x.zip"
         with zipfile.ZipFile(chemin, "w") as zf:

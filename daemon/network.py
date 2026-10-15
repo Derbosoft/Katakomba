@@ -5,6 +5,8 @@ Réseau : gateway, SOCKS, routes Tor, routes exclues.
 import ipaddress
 import socket
 
+from validation import verifier_exclusion
+
 from .core import _run, _write_private, TOR_ROUTES_FILE
 
 
@@ -48,21 +50,16 @@ class NetworkMixin:
         args = []
         connected = self._connected_networks()
         for entry in self.config.get("excluded_ips", []):
-            try:
-                net = ipaddress.ip_network(entry, strict=False)
-            except ValueError:
-                self._log(f"Route ignorée (invalide) : {entry}", "WARN")
+            # Même contrôle que le GUI : invalide, IPv6 (« --route » est une
+            # option IPv4, l'exclusion serait ignorée en silence) ou trop
+            # large vers Internet (config.json modifiée hors du GUI).
+            valeur, erreur = verifier_exclusion(entry)
+            if erreur:
+                self._log(f"Exclusion ignorée : {erreur}", "WARN")
                 continue
-            # « --route » est une option IPv4 : une entrée IPv6 produirait
-            # « --route 2001:db8:: ffff:ffff:: net_gateway », un masque
-            # qu'OpenVPN ne sait pas appliquer.  L'exclusion serait sans
-            # effet — silencieusement.  (L'équivalent IPv6 est --route-ipv6,
-            # inutile ici : l'IPv6 est bloqué, pas routé.)
-            if net.version != 4:
-                self._log(
-                    f"Exclusion ignorée ({entry}) : IPv6 non supporté par "
-                    "--route. Utilisez une adresse ou un réseau IPv4.", "WARN")
+            if not valeur:
                 continue
+            net = ipaddress.ip_network(valeur)
             # Un réseau directement connecté ne doit JAMAIS être routé via
             # net_gateway : sa route kernel (scope link, /24 par ex.) prime
             # déjà sur redirect-gateway (0.0.0.0/1) par longest-prefix-match,

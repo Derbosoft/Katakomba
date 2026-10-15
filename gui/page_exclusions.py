@@ -87,7 +87,12 @@ class PageExclusions(Adw.PreferencesPage):
         self.fen.notifier(_("Serveur DNS local enregistré"))
 
     def _domaine_ajoute(self, _r):
-        d = modele.normaliser_domaine(self.nouveau_domaine.get_text())
+        d, erreur = modele.verifier_domaine(self.nouveau_domaine.get_text())
+        if erreur:
+            self.nouveau_domaine.add_css_class("error")
+            self.fen.notifier(erreur)
+            return
+        self.nouveau_domaine.remove_css_class("error")
         if not d:
             return
         liste = self.fen.config.setdefault("excluded_domains", [])

@@ -77,21 +77,35 @@ class WriteAuthTmpTest(unittest.TestCase):
                 m_openvpn.AUTH_TMP = saved
 
 
+def installation_factice(contenu: str):
+    """Répertoire d'installation temporaire avec providers/p/p.ovpn.
+
+    Le daemon n'accepte que des chemins relatifs sous providers/ : les tests
+    lui en donnent un, résolu dans ce répertoire.  Renvoie (répertoire
+    temporaire, chemin relatif, SCRIPT_DIR d'origine à restaurer)."""
+    tmp = tempfile.TemporaryDirectory()
+    racine = pathlib.Path(tmp.name)
+    (racine / "providers" / "p").mkdir(parents=True)
+    (racine / "providers" / "p" / "p.ovpn").write_text(contenu)
+    saved = m_openvpn.SCRIPT_DIR
+    m_openvpn.SCRIPT_DIR = racine
+    return tmp, "providers/p/p.ovpn", saved
+
+
 class GetActiveCredsTest(unittest.TestCase):
 
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.ovpn = pathlib.Path(self._tmp.name) / "p.ovpn"
-        self.ovpn.write_text("client\n")
+        self._tmp, self.ovpn, self._saved_dir = installation_factice("client\n")
 
     def tearDown(self):
+        m_openvpn.SCRIPT_DIR = self._saved_dir
         self._tmp.cleanup()
 
     def test_deobfusque_les_identifiants(self):
         d = FakeDaemon(config={"providers": [provider("vpn-a", 2, str(self.ovpn))]})
         conf, user, pwd, name, idx = d._get_active_creds()
         self.assertEqual((user, pwd, name, idx), ("user0", "pass0", "vpn-a", 0))
-        self.assertEqual(conf, str(self.ovpn))
+        self.assertEqual(conf, str(m_openvpn.SCRIPT_DIR / self.ovpn))
 
     def test_compte_courant_respecte(self):
         d = FakeDaemon(config={"providers": [provider("vpn-a", 3, str(self.ovpn))]})
@@ -99,9 +113,18 @@ class GetActiveCredsTest(unittest.TestCase):
         self.assertEqual(d._get_active_creds()[1], "user2")
 
     def test_ovpn_absent(self):
-        d = FakeDaemon(config={"providers": [provider("x", 1, "/inexistant.ovpn")]})
+        d = FakeDaemon(config={"providers": [provider("x", 1, "providers/x/absent.ovpn")]})
         self.assertIsNone(d._get_active_creds())
         self.assertTrue(d.has_log(".ovpn introuvable", "ERROR"))
+
+    def test_chemin_hors_de_providers_refuse(self):
+        """config.json est modifiable par le groupe : le daemon ne lit pas,
+        en root, un fichier arbitraire de la machine."""
+        for chemin in ("/etc/shadow", "providers/../../etc/shadow",
+                       "providers/x/../../y.ovpn", "providers/x/.cache/y.ovpn"):
+            d = FakeDaemon(config={"providers": [provider("x", 1, chemin)]})
+            self.assertIsNone(d._get_active_creds(), chemin)
+            self.assertTrue(d.has_log("chemin du .ovpn refusé", "ERROR"), chemin)
 
     def test_sans_ovpn_configure(self):
         p = provider("x", 1, "")
@@ -766,15 +789,14 @@ class ReconnectLoopTest(unittest.TestCase):
     """Boucle complète, avec un OpenVPN simulé : c'est le comportement observable."""
 
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.ovpn = pathlib.Path(self._tmp.name) / "p.ovpn"
-        self.ovpn.write_text("client\ndev tun\n")
+        self._tmp, self.ovpn, self._saved_dir = installation_factice("client\ndev tun\n")
         self.auth = pathlib.Path(self._tmp.name) / "auth.tmp"
         self._saved_auth = m_openvpn.AUTH_TMP
         m_openvpn.AUTH_TMP = self.auth
 
     def tearDown(self):
         m_openvpn.AUTH_TMP = self._saved_auth
+        m_openvpn.SCRIPT_DIR = self._saved_dir
         self._tmp.cleanup()
 
     def _prepare(self, d):

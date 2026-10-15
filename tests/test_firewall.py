@@ -111,13 +111,15 @@ class KillSwitchTest(unittest.TestCase):
 
     def test_dns_local_et_exclusions_avant_le_refus_dns(self):
         _, r, _ = self._poser(local_dns="192.168.1.53",
-                              excluded_ips=["203.0.113.0/24", "2001:db8::/32", "n'importe"])
+                              excluded_ips=["203.0.113.0/24", "2001:db8::/32", "n'importe",
+                                            "0.0.0.0/2"])
         v4 = self._chaine(r, "KATAKOMBA_KILL")
         refus = v4.index("-p udp --dport 53 -j REJECT")
         self.assertLess(v4.index("-d 192.168.1.53/32 -j RETURN"), refus)
         self.assertLess(v4.index("-d 203.0.113.0/24 -j RETURN"), refus)
-        self.assertIn("-d 2001:db8::/32 -j RETURN", self._chaine(r, "KATAKOMBA_KILL6"))
-        self.assertFalse(r.ran("n'importe"))
+        # Mêmes refus que pour les routes : IPv6, invalide, trop large.
+        for refusee in ("2001:db8::/32", "n'importe", "0.0.0.0/2"):
+            self.assertFalse(r.ran(refusee), refusee)
 
     def test_desactive_dans_les_reglages(self):
         d, r, ok = self._poser(kill_switch=False)
@@ -244,6 +246,7 @@ class LanSharingTest(unittest.TestCase):
     def _daemon(self, **cfg):
         d = FakeDaemon(config={**LAN_CFG, **cfg}, _tun_iface="tun0")
         d._get_default_gateway = lambda: ("192.168.50.1", "eth0")
+        d._interface_existe = lambda nom: nom in ("ens19", "eth0", "lo", "docker0")
         return d
 
     def test_activation_pose_les_regles(self):
@@ -277,6 +280,16 @@ class LanSharingTest(unittest.TestCase):
         self.assertFalse(d._lan_active)
         self.assertEqual(r.calls, [], "des commandes ont été exécutées malgré le refus")
         self.assertTrue(d.has_log("porte la route par défaut", "ERROR"))
+
+    def test_refuse_les_interfaces_systeme_ou_virtuelles(self):
+        """Vider les adresses de « lo » couperait Tor ; docker0, d'autres services."""
+        for iface in ("lo", "docker0", "absente0", "eth1\nx"):
+            d = self._daemon(lan_iface=iface)
+            r = lan_rec()
+            with patched_run(r):
+                self.assertFalse(d._setup_lan_sharing(), iface)
+            self.assertEqual(r.calls, [], iface)
+            self.assertTrue(d.has_log("refusée", "ERROR"), iface)
 
     def test_refuse_sans_interface(self):
         d = self._daemon(lan_iface="")

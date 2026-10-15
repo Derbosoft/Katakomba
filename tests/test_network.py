@@ -78,12 +78,24 @@ class BuildRouteArgsTest(unittest.TestCase):
         """#1 : --route est IPv4 ; une entrée v6 doit être écartée AVEC un avertissement."""
         args, d = self._args(["2001:db8::/32"])
         self.assertEqual(args, [], "une option --route IPv6 a été générée")
-        self.assertTrue(d.has_log("IPv6 non supporté", "WARN"), d.log_dump())
+        self.assertTrue(d.has_log("ne gère que l'IPv4", "WARN"), d.log_dump())
 
     def test_entree_invalide_rejetee(self):
         args, d = self._args(["pas-une-ip"])
         self.assertEqual(args, [])
-        self.assertTrue(d.has_log("Route ignorée (invalide)", "WARN"))
+        self.assertTrue(d.has_log("Exclusion ignorée", "WARN"))
+
+    def test_exclusion_trop_large_vers_internet_refusee(self):
+        """Quatre /2, plus précis que les routes du tunnel, faisaient sortir
+        tout Internet hors du tunnel — avec l'adresse réelle."""
+        args, d = self._args(["0.0.0.0/2", "64.0.0.0/2", "128.0.0.0/2", "192.0.0.0/2",
+                              "8.0.0.0/8"])
+        self.assertEqual(args, [])
+        self.assertTrue(d.has_log("trop large", "WARN"))
+
+    def test_exclusion_publique_etroite_admise(self):
+        args, _ = self._args(["203.0.113.0/24"])
+        self.assertEqual(args, ["--route", "203.0.113.0", "255.255.255.0", "net_gateway"])
 
     def test_reseau_directement_connecte_ignore(self):
         """Le piège scope-link : exclure son propre LAN casse le routage local."""

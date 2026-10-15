@@ -400,6 +400,9 @@ class StatusServerTest(unittest.TestCase):
             try:
                 d._start_status_server()
                 self.assertTrue(m_status.STATUS_SOCKET.exists())
+                # Guards Tor, fournisseur, compte : jamais lisibles par tous.
+                mode = m_status.STATUS_SOCKET.stat().st_mode & 0o777
+                self.assertIn(mode, (0o660, 0o600))
                 with pysocket.socket(pysocket.AF_UNIX) as c:
                     c.settimeout(3)
                     c.connect(str(m_status.STATUS_SOCKET))

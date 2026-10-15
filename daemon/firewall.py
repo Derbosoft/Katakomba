@@ -3,10 +3,13 @@ Pare-feu : blocage hors tunnel (kill switch), blocage IPv6, partage LAN.
 """
 
 import ipaddress
+import os
 import pwd
 import shutil
 import subprocess
 import threading
+
+from validation import interface_lan_admissible, verifier_dns, verifier_exclusion
 
 from .core import (
     _run,
@@ -49,14 +52,13 @@ class FirewallMixin:
 
     def _kill_switch_destinations(self, v6: bool) -> list:
         """Destinations voulues hors tunnel : DNS local (split DNS) et
-        exclusions, de la famille d'adresses demandée."""
+        exclusions, de la famille d'adresses demandée.  Mêmes contrôles que
+        pour les routes : une exclusion refusée là ne doit pas passer ici."""
+        entrees = [verifier_dns(self.config.get("local_dns", ""))[0]]
+        entrees += [verifier_exclusion(e)[0] for e in self.config.get("excluded_ips", [])]
         nets = []
-        for entry in [self.config.get("local_dns", "")] + \
-                list(self.config.get("excluded_ips", [])):
-            try:
-                net = ipaddress.ip_network(str(entry).strip(), strict=False)
-            except ValueError:
-                continue
+        for entree in filter(None, entrees):
+            net = ipaddress.ip_network(entree, strict=False)
             if (net.version == 6) == v6 and str(net) not in nets:
                 nets.append(str(net))
         return nets
@@ -227,6 +229,13 @@ class FirewallMixin:
         if not iface:
             self._log("Partage LAN : aucune interface configurée.", "ERROR")
             return False
+        # Le GUI ne propose que des cartes admissibles, mais config.json se
+        # modifie sans lui : vider les adresses de « lo » couperait Tor,
+        # celles de docker0 ou wg0 d'autres services.
+        if not interface_lan_admissible(iface) or not self._interface_existe(iface):
+            self._log(f"Partage LAN : interface {iface!r} refusée — absente, "
+                      "boucle locale ou interface virtuelle.", "ERROR")
+            return False
         # Refus catégorique : ne jamais flush l'interface qui porte la route
         # par défaut (uplink Internet) — cela couperait toute connectivité.
         _, uplink = self._get_default_gateway()
@@ -270,6 +279,10 @@ class FirewallMixin:
         except Exception as e:
             self._log(f"Partage LAN : {e}", "ERROR")
             return False
+
+    @staticmethod
+    def _interface_existe(nom: str) -> bool:
+        return os.path.isdir(f"/sys/class/net/{nom}")
 
     def _teardown_lan_sharing(self):
         if not self._lan_active:

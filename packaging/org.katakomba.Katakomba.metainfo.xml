@@ -92,6 +92,19 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.8.1" date="2026-10-15" urgency="high">
+      <description>
+        <p>Security fixes from an audit. The service no longer trusts its configuration file, which programs running in your session can edit.</p>
+        <ul>
+          <li>Exclusions towards the Internet are limited to /16: broader ones could take all traffic out of the tunnel</li>
+          <li>Local DNS settings are validated before being written into the system DNS configuration</li>
+          <li>DNS servers pushed by the VPN that would bypass the tunnel are ignored</li>
+          <li>The status socket is readable by Katakomba users only</li>
+          <li>Backups are size-checked and validated on import</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.8.1</url>
+    </release>
     <release version="3.8.0" date="2026-10-08">
       <description>
         <p>Kill switch, on by default: while the service runs, nothing leaves outside the tunnel, even during reconnections. Only Tor itself, the local network, the local DNS server and the excluded networks bypass it. It is lifted when you disconnect.</p>

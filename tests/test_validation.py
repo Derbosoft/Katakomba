@@ -3,6 +3,7 @@ est journalisé.  Le daemon et le GUI partagent ces règles (validation.py)."""
 
 import unittest
 
+import validation
 from validation import analyser_ovpn, analyser_torrc
 
 # Configuration de fournisseur réaliste (forme courante chez les fournisseurs grand public), sans secret.
@@ -122,6 +123,47 @@ class TorrcTest(unittest.TestCase):
         refus = analyser_torrc("root:$6$hashsecret:1:0:::\n")
         self.assertTrue(refus)
         self.assertFalse(any("hashsecret" in m for m in refus))
+
+
+class ReglagesConfigTest(unittest.TestCase):
+    """config.json est modifiable par le groupe et par l'import : le daemon
+    revalide tout avec ces fonctions, les mêmes que le GUI."""
+
+    def test_exclusion_trop_large_vers_internet(self):
+        for large in ("0.0.0.0/1", "0.0.0.0/2", "128.0.0.0/2", "8.0.0.0/8", "1.0.0.0/15"):
+            net, err = validation.verifier_exclusion(large)
+            self.assertEqual(net, "", large)
+            self.assertIn("trop large", err, large)
+
+    def test_exclusion_locale_sans_limite(self):
+        for local in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"):
+            self.assertEqual(validation.verifier_exclusion(local), (local, ""))
+
+    def test_exclusion_publique_etroite(self):
+        self.assertEqual(validation.verifier_exclusion("8.8.0.0/16"), ("8.8.0.0/16", ""))
+        self.assertEqual(validation.verifier_exclusion("1.2.3.4"), ("1.2.3.4/32", ""))
+
+    def test_domaine_sans_injection(self):
+        for mauvais in ("x\nDNSStubListenerExtra=0.0.0.0", "a b", "-a.com", "a..b", "é.fr",
+                        "a" * 64 + ".com"):
+            self.assertEqual(validation.verifier_domaine(mauvais)[0], "", repr(mauvais))
+        self.assertEqual(validation.verifier_domaine("..Corp.Example"), (".corp.example", ""))
+
+    def test_dns_local(self):
+        self.assertEqual(validation.verifier_dns("192.168.1.53"), ("192.168.1.53", ""))
+        self.assertEqual(validation.verifier_dns("192.168.1.53\nDNSSEC=no")[0], "")
+
+    def test_chemin_ovpn(self):
+        self.assertTrue(validation.chemin_ovpn_sur("providers/vpn-a/a.ovpn"))
+        for mauvais in ("/etc/shadow", "providers/../x/y", "providers/a/b/c.ovpn",
+                        "providers/.a/b.ovpn", "providers/a/b\0.ovpn", "autre/a/b.ovpn"):
+            self.assertFalse(validation.chemin_ovpn_sur(mauvais), mauvais)
+
+    def test_interface_lan(self):
+        self.assertTrue(validation.interface_lan_admissible("enp3s0"))
+        for mauvais in ("lo", "tun0", "docker0", "wg0", "virbr0", "br-1a2b", "veth9",
+                        "a\nb", "x" * 16, ""):
+            self.assertFalse(validation.interface_lan_admissible(mauvais), repr(mauvais))
 
 
 if __name__ == "__main__":

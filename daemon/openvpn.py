@@ -22,7 +22,7 @@ from .core import (
     OPENVPN_PATTERN, SCRIPT_DIR, RECONNECT_DELAY, RECONNECT_MAX,
     AUTH_COOLDOWN, AUTH_PASS_MAX, AUTH_PASS_DELAY,
 )
-from validation import analyser_ovpn
+from validation import analyser_ovpn, chemin_ovpn_sur
 
 
 class OpenVPNMixin:
@@ -59,9 +59,14 @@ class OpenVPNMixin:
         ovpn = p.get("ovpn_file", "")
         if not ovpn:
             return None
-        path = Path(ovpn)
-        if not path.is_absolute():
-            path = SCRIPT_DIR / path
+        # Chemin relatif sous providers/, rien d'autre : config.json est
+        # modifiable par le groupe, et tout autre chemin ferait lire au
+        # daemon, en root, un fichier arbitraire de la machine.
+        if not chemin_ovpn_sur(ovpn):
+            self._log(f"[provider] {p.get('name', '?')!r} : chemin du .ovpn "
+                      "refusé (hors de providers/<fournisseur>/).", "ERROR")
+            return None
+        path = SCRIPT_DIR / ovpn
         if not path.exists():
             self._log(f"[provider] Fichier .ovpn introuvable : {path}", "ERROR")
             return None

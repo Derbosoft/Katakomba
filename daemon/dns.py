@@ -3,8 +3,11 @@ DNS : split DNS via drop-in systemd-resolved, et DNS du VPN appliqué
 nativement par resolvectl (sans dépendre du script update-resolv-conf).
 """
 
+import ipaddress
 import shutil
 import subprocess
+
+from validation import verifier_dns, verifier_domaine
 
 from .core import _run, RESOLVED_DROP_IN
 
@@ -120,9 +123,8 @@ class DNSMixin:
                 self._apply_vpn_dns()
         # 2. Drop-in split DNS (persistant, mais un autre outil a pu le
         #    supprimer) : le réécrire s'il devrait exister et manque.
-        if (self.config.get("local_dns", "").strip()
-                and self.config.get("excluded_domains")
-                and not RESOLVED_DROP_IN.exists()):
+        dns, domaines = self._split_dns()
+        if dns and domaines and not RESOLVED_DROP_IN.exists():
             self._log("[dns] Drop-in split DNS disparu — réapplication.", "WARN")
             self._apply_dns_split()
 
@@ -133,7 +135,16 @@ class DNSMixin:
         dhcp-option DNS) sur l'interface tunnel via systemd-resolved.
         « ~. » fait de ces serveurs la destination DNS par défaut ; le
         drop-in du split DNS garde la priorité sur les domaines exclus."""
-        ips = list(dict.fromkeys(self._vpn_dns_ips))   # dédup, ordre conservé
+        pousses = list(dict.fromkeys(self._vpn_dns_ips))   # dédup, ordre conservé
+        ips = self._dns_par_le_tunnel(pousses)
+        # La liste filtrée devient la référence du contrôle périodique
+        # (_ensure_dns_config) : sinon il réappliquerait le DNS à chaque tick.
+        self._vpn_dns_ips = ips
+        if pousses and not ips:
+            self._log(
+                "Aucun DNS du VPN utilisable : aucun des serveurs poussés ne "
+                "passe par le tunnel — DNS système inchangé.", "ERROR")
+            return
         if not ips:
             if self._kill_active:
                 # Le DNS du système (le routeur, en général) est refusé par le
@@ -171,6 +182,43 @@ class DNSMixin:
         except Exception as e:
             self._log(f"DNS du VPN : {e}", "ERROR")
 
+    def _dns_par_le_tunnel(self, ips) -> list:
+        """Serveurs DNS poussés dont la route passe par le tunnel.
+
+        Le serveur VPN choisit ces adresses.  Malveillant ou mal configuré,
+        il peut annoncer une adresse du réseau local, le routeur par
+        exemple : la route la plus précise est alors celle du LAN, et les
+        requêtes partiraient hors du tunnel, vers le FAI.  Le kill switch
+        les bloquerait (panne DNS) ; sans lui, c'est une fuite."""
+        gardes = []
+        for ip in ips:
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+            r = _run("ip", "route", "get", ip)
+            mots = r.stdout.decode(errors="ignore").split()
+            dev = mots[mots.index("dev") + 1] if "dev" in mots[:-1] else ""
+            if r.returncode == 0 and dev == self._tun_iface:
+                gardes.append(ip)
+            else:
+                self._log(f"DNS poussé par le VPN ignoré : {ip} — sa route ne passe "
+                          f"pas par le tunnel ({dev or 'route inconnue'}).", "WARN")
+        return gardes
+
+    def _split_dns(self):
+        """(serveur, domaines) validés.  config.json est modifiable par le
+        groupe et la valeur part, en root, dans un fichier de configuration
+        de systemd-resolved : un retour à la ligne y ajouterait n'importe
+        quel réglage.  Rien n'y est écrit sans validation."""
+        dns, _erreur = verifier_dns(self.config.get("local_dns", ""))
+        domaines = []
+        for d in self.config.get("excluded_domains", []):
+            nom, _err = verifier_domaine(d)
+            if nom:
+                domaines.append(nom)
+        return dns, domaines
+
     def _revert_vpn_dns(self):
         """Retire la config DNS de l'interface tunnel (sans toucher au
         split DNS).  Sans effet si l'interface a déjà disparu."""
@@ -182,8 +230,14 @@ class DNSMixin:
         self._vpn_dns_ips = []
 
     def _apply_dns_split(self):
-        dns     = self.config.get("local_dns", "").strip()
-        domains = self.config.get("excluded_domains", [])
+        dns, domains = self._split_dns()
+        refuses = len(self.config.get("excluded_domains", [])) - len(domains)
+        if self.config.get("local_dns", "").strip() and not dns:
+            self._log("DNS split : serveur DNS local invalide dans config.json — "
+                      "ignoré.", "ERROR")
+        if refuses:
+            self._log(f"DNS split : {refuses} domaine(s) invalide(s) dans "
+                      "config.json — ignoré(s).", "ERROR")
         if not dns or not domains:
             self._remove_dns_split()
             return

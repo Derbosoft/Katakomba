@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.8.0
+# Katakomba — v3.8.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.8.0-blue)
+![Version](https://img.shields.io/badge/Version-3.8.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -383,6 +383,8 @@ Routes DNS queries for specific domains to your local DNS server, while everythi
 
 CIDRs and IPs that bypass the tunnel and go through the local gateway. The daemon injects `--route <ip> <mask> net_gateway` into the OpenVPN command.
 
+> **Towards the Internet, at most a `/16` (v3.8.1).** Excluded traffic leaves with your real address. Without a limit, four `/2` ranges were enough to take the whole Internet out of the tunnel. Private ranges (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`) have no limit, and `katakomba doctor` lists every public exclusion.
+
 > **IPv4 only.** `--route` is an IPv4 option; an IPv6 entry would be accepted then ignored by OpenVPN, wrongly suggesting the network is excluded. Since v3.6.1 the GUI rejects such input and the daemon discards these entries with a warning in the journal.
 
 **Typical use cases:**
@@ -516,6 +518,7 @@ Checks, in one command, the invariants that must hold when the connection is hea
 | DNS query path | resolution too fast to be going through Tor → likely leak |
 | Circuit quality | measurement older than 6 h → the circuit may have degraded since |
 | Kill switch | enabled in the settings but not in place → traffic may leave during reconnections |
+| Exclusions towards the Internet | listed as a warning: that traffic leaves with your real address, and may have been added outside the interface |
 | Internet egress | no answer through the tunnel, or a private address |
 
 **Reconnection in progress.** When the daemon is deliberately rebuilding the tunnel (slow circuit replaced, OpenVPN restarted after a connectivity loss, full restart, refused account), the tunnel is missing for a few seconds by design. `doctor` then shows the reason instead of false KOs, postpones the tunnel checks and does **not** suggest a restart, which would interrupt the reconnection:
@@ -1083,7 +1086,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 
 ## Tests
 
-The project is covered by a suite of **654 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **671 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything
@@ -1147,9 +1150,20 @@ python3 outils/traductions.py verifier        # missing entries, mismatched {fie
 | Symlink in place of `auth.tmp` or the routes file | daemon files in `/run` and `/var/lib` (root only), `O_EXCL \| O_NOFOLLOW` writes |
 | `install_dir` read by `katakomba gui` | fixed path `/opt/katakomba` |
 
+**v3.8.1: the daemon no longer trusts `config.json`.** Any program running under a member account can edit it, and importing a backup replaces it. Every value the daemon uses is now checked again on its side, with the same functions as the interface and the backup import (`validation.py`):
+
+| Value | Risk | Check |
+|---|---|---|
+| `excluded_ips` | Four `/2` ranges, more specific than the tunnel's routes, sent the whole Internet outside the tunnel, with your real address; the kill switch let them through | Towards the Internet, at most a `/16`; private ranges unrestricted; `doctor` lists the public exclusions |
+| `local_dns`, `excluded_domains` | Written as root into systemd-resolved's configuration: a line break added any setting | An IP address, a strict domain-name syntax |
+| `ovpn_file` | Any file of the machine read as root | `providers/<provider>/<file>` only |
+| `lan_iface` | Addresses of `lo`, `docker0`, `wg0`… flushed | Same filter as the interface; the interface must exist |
+
+Also in v3.8.1: DNS servers pushed by the VPN whose route does not go through the tunnel are ignored (a malicious server could announce your router), and the status socket is readable by the `katakomba` group only (`0660`), since it exposes your Tor guards.
+
 The group remains sensitive — it reads the VPN credentials and picks the servers —: only add trusted accounts.
 
-**polkit rule:** group members start, stop and restart `katakomba.service` **without a password**, and nothing more: from a local, active session, for this service, for these three verbs. Enabling autostart, repairing the network or touching any other service always asks for the administrator password. Stopping the tunnel exposes nothing: traffic that does not go through it stays blocked upstream. The group could already change everything the service reads at startup; now it can also choose when it starts. To go back to a password on every connection, delete `/usr/share/polkit-1/rules.d/50-katakomba.rules` (polkit reloads it immediately).
+**polkit rule:** group members start, stop and restart `katakomba.service` **without a password**, and nothing more: from a local, active session, for this service, for these three verbs. Enabling autostart, repairing the network or touching any other service always asks for the administrator password. Stopping the service lifts the kill switch and gives back the normal connection, by design: a program running in your session can therefore disconnect you, and the interface notifies any stop you did not ask for. The group could already change everything the service reads at startup; now it can also choose when it starts. To go back to a password on every connection, delete `/usr/share/polkit-1/rules.d/50-katakomba.rules` (polkit reloads it immediately).
 
 **`.ovpn` scripts:** execution of scripts declared in an `.ovpn` is disabled, and an `.ovpn` containing one is rejected before launch — remove the directive, the daemon handles DNS itself.
 
