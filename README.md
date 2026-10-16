@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.10.0
+# Katakomba — v3.11.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.10.0-blue)
+![Version](https://img.shields.io/badge/Version-3.11.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -117,9 +117,27 @@ bash packaging/build-deb.sh          # → dist/katakomba_<version>_all.deb
                                      #   dist/katakomba-headless_<version>_all.deb
 ```
 Both come from the same code. `katakomba-headless` leaves out the interface (GTK, launcher, AppStream metadata, icon, polkit); from `gui/` it keeps only `modele.py`, which the console commands use. The two packages replace each other (`Conflicts`/`Replaces`): installing one removes the other and keeps your settings.
-The `Maintainer` field comes from `DEB_MAINTAINER`, or else from `git config user.name` / `user.email`. It is visible to anyone inspecting the package.
+The `Maintainer` field comes from `DEB_MAINTAINER`, or else from the author of the current commit (so that every build of a commit is identical). It is visible to anyone inspecting the package.
 
 The package reuses `install.sh` in "package mode" (`KATAKOMBA_PAQUET=1`, called by `postinst`). There is therefore a single installation procedure, and both paths configure the system identically.
+
+### Verify a download
+
+*(v3.11.0)* Release packages are built by GitHub Actions from the tagged commit ([`publication.yml`](.github/workflows/publication.yml)), never on a personal computer. Three independent checks:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing                                   # 1. the file is intact
+gh attestation verify katakomba_<version>_all.deb -R Derbosoft/Katakomba   # 2. built by this repository, from which commit
+```
+
+3. **Rebuild it yourself.** The build is reproducible: dates set to the commit's, owners and permissions normalised, installed size computed from the content. From the tagged commit, `bash packaging/build-deb.sh` gives the same bytes as the release:
+
+```bash
+git clone https://github.com/Derbosoft/Katakomba && cd Katakomba && git checkout v<version>
+bash packaging/build-deb.sh && sha256sum dist/*.deb      # compare with SHA256SUMS
+```
+
+The GitHub actions used by the workflows are pinned by commit hash (a tag such as `v4` can be moved to other code; a hash cannot), and Dependabot proposes updates.
 
 ### From source
 
@@ -173,7 +191,14 @@ Creates `/etc/systemd/system/katakomba.service`:
 - `TimeoutStopSec=30`
 - `RestartPreventExitStatus=78`: with no provider configured, the daemon exits with 78 and is not relaunched every 20 s
 - `RuntimeDirectory=katakomba katakomba-vpn`: `/run/katakomba` (0700) holds the validated torrc and the dnsmasq pid; `/run/katakomba-vpn` (0750, group `katakomba-vpn`) holds the validated `.ovpn` and `auth.tmp`, readable by OpenVPN only. Both are removed by systemd on stop, even after a crash
-- Hardening: `NoNewPrivileges`, `PrivateTmp`, `ProtectHome`, `ProtectSystem=full` with `ReadWritePaths` limited to `/etc/katakomba` and `/etc/systemd/resolved.conf.d`
+- Hardening (v3.11.0, `systemd-analyze security` exposure **8.7 → 3.6**):
+  - root rights limited to networking and switching users (`CapabilityBoundingSet`: `NET_ADMIN`, `NET_RAW`, `NET_BIND_SERVICE`, `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE`, `DAC_READ_SEARCH`, `FOWNER`, `KILL`): no module loading, mounting, `ptrace`, raw disk access;
+  - read-only file system (`ProtectSystem=strict`) except `/etc/katakomba`, `/var/lib/katakomba`, `/run`, the DNS drop-in and dnsmasq leases;
+  - one device only, `/dev/net/tun` (`DevicePolicy=closed`);
+  - `SystemCallFilter=@system-service`, `RestrictAddressFamilies`, `RestrictNamespaces`, `ProtectKernelModules`, `ProtectKernelLogs`, `ProtectClock`, `ProtectHostname`, `ProtectControlGroups`, `LockPersonality`, `RestrictRealtime`, `RestrictSUIDSGID`, plus `NoNewPrivileges`, `PrivateTmp`, `ProtectHome`;
+  - deliberately left out: `ProtectKernelTunables` (the daemon writes to `/proc/sys/net`), `ProtectProc=invisible` (it must see Tor, which runs as `debian-tor`, to stop it), `PrivateDevices` (`/dev/net/tun`).
+
+  The kill switch, unprivileged OpenVPN and incoming connections were checked with exactly these rights and this system-call filter, in an isolated network namespace (54 checks); removing `CAP_NET_ADMIN` makes them fail, which shows the restriction really applied.
 
 **6. Sleep/wake hook**
 Installs `/lib/systemd/system-sleep/katakomba-sleep`: automatically restarts the daemon 3 seconds after each wake from sleep or hibernation — **if it was running** (`try-restart` since v3.7.0; `restart` also started a deliberately stopped service). Without this hook, Tor circuits are stale after wake but port 9050 is still open, causing OpenVPN to reconnect without going through Tor.
@@ -1198,7 +1223,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 
 ## Tests
 
-The project is covered by a suite of **746 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **754 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything
@@ -1221,6 +1246,7 @@ What is covered, beyond the happy paths:
 | Security | `auth.tmp` 0640 (group `katakomba-vpn`) even under a permissive umask and never written through a symlink, `plugin` and the like rejected in an `.ovpn`, `exec` rejected in a torrc, no file content copied to the journal, no credentials in the status socket, import path-traversal guard |
 | Console | same refusals as the interface, credentials never accepted as an argument, files `660` for the group, backup export `600` |
 | Incoming connections | rules set before the tunnel's routes, all-or-nothing, removed at teardown, connections from the tunnel excluded |
+| Hardening & releases | unit restrictions, only the needed rights, actions pinned by hash, tag matching the code version, reproducible build settings |
 | Packages | headless package without GUI dependencies, both variants replacing each other without stopping or erasing anything |
 | Consistency | version identical in `constants.py` and both READMEs, `--script-security 1` enforced **after** `--config` |
 
@@ -1256,6 +1282,10 @@ python3 outils/traductions.py verifier        # missing entries, mismatched {fie
 **OpenVPN without privileges (v3.9.0):** OpenVPN runs as `katakomba-vpn`, with no capability; the daemon sets the address and routes, and refuses any pushed route that would leave the tunnel (see *Tunnel setup*).
 
 **torrc:** mode `660 root:katakomba`, checked against an allowlist before every Tor start.
+
+**Service hardening (v3.11.0):** the daemon keeps only the root rights it needs (networking, switching users), sees a read-only file system outside its own folders, a single device and a filtered set of system calls (see *Installation*, step 5).
+
+**Release integrity (v3.11.0):** packages built by the CI, reproducible, with `SHA256SUMS` and a signed provenance attestation (see [Verify a download](#verify-a-download)).
 
 **Console run as root (v3.10.0):** on a server, configuration commands are often run with `sudo`, inside directories the `katakomba` group can modify. No write follows a symbolic link (`O_NOFOLLOW`, temporary file created with `O_EXCL`, atomic rename), and a backup export never copies a link planted in `providers/`.
 

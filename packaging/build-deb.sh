@@ -9,14 +9,24 @@
 # réglages conservés.  Aucun droit root nécessaire.  Installation :
 #     sudo apt install ./dist/katakomba_<version>_all.deb
 #
-# Le champ Maintainer vient de DEB_MAINTAINER, sinon de git config
-# (user.name / user.email) — il est visible de quiconque inspecte le paquet.
+# Construction reproductible (v3.11.0) : le même commit donne, avec les mêmes
+# outils, des paquets identiques à l'octet près — dates fixées à celle du
+# commit (SOURCE_DATE_EPOCH), propriétaires et droits normalisés, taille
+# calculée sur le contenu.  Les versions publiées sont construites par la CI
+# (.github/workflows/publication.yml) ; chacun peut les reconstruire et
+# comparer.
+#
+# Le champ Maintainer vient de DEB_MAINTAINER, sinon de l'auteur du commit —
+# il est visible de quiconque inspecte le paquet.
 set -euo pipefail
 umask 022
 
 RACINE="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(python3 -B -c "import sys; sys.path.insert(0, '$RACINE'); from constants import VERSION; print(VERSION)")"
-MAINTAINER="${DEB_MAINTAINER:-$(git -C "$RACINE" config user.name 2>/dev/null || echo "Katakomba") <$(git -C "$RACINE" config user.email 2>/dev/null || echo "root@localhost")>}"
+MAINTAINER="${DEB_MAINTAINER:-$(git -C "$RACINE" log -1 --format='%an <%ae>' 2>/dev/null || echo "Katakomba <root@localhost>")}"
+# Date du commit : celle de chaque fichier du paquet et de l'archive.
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$RACINE" log -1 --format=%ct 2>/dev/null || echo 0)}"
+export SOURCE_DATE_EPOCH
 
 # Mêmes fichiers que le déploiement d'install.sh (vérifié par les tests).
 FICHIERS_CODE=(constants.py main.py console.py validation.py adaptation.py i18n.py daemon gui
@@ -63,10 +73,15 @@ emballer() {
     nom="$(sed -n 's/^Package: //p' "$modele")"
     # Répertoires en 755, quel que soit l'umask de qui construit le paquet.
     find "$racine" -type d -exec chmod 755 {} +
+    # Taille installée calculée comme dpkg-gencontrol : Kio arrondis par
+    # fichier, 1 par entrée non régulière.  « du » dépendait du système de
+    # fichiers de construction (tmpfs, ext4) : paquets différents.
     local taille
-    taille="$(du -sk --exclude=DEBIAN "$racine" | cut -f1)"
+    taille="$(find "$racine" -path "$racine/DEBIAN" -prune -o -mindepth 1 -printf '%y %s\n' \
+              | awk '{ t += ($1 == "f") ? int(($2 + 1023) / 1024) : 1 } END { print t + 0 }')"
     sed -e "s|@VERSION@|$VERSION|" -e "s|@MAINTAINER@|$MAINTAINER|" \
         -e "s|@TAILLE@|$taille|" "$modele" > "$racine/DEBIAN/control"
+    find "$racine" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
     local sortie="$RACINE/dist/${nom}_${VERSION}_all.deb"
     dpkg-deb --root-owner-group -Zxz --build "$racine" "$sortie" >/dev/null
     echo "Paquet construit : $sortie"

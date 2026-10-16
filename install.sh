@@ -558,12 +558,44 @@ RestartPreventExitStatus=78
 # Supprimés par systemd à l'arrêt, même après un crash.
 RuntimeDirectory=katakomba katakomba-vpn
 RuntimeDirectoryMode=0700
-# Durcissement : le daemon n'a besoin d'écrire que dans ces répertoires-là.
+# ── Durcissement (v3.11.0) ── chaque ligne retire ce dont ni le daemon, ni
+# Tor, ni OpenVPN, ni dnsmasq n'ont besoin.  Vérifier : systemd-analyze
+# security katakomba.
+#
+# Droits root limités au réseau et au changement d'utilisateur (Tor →
+# debian-tor, OpenVPN → katakomba-vpn, dnsmasq) : plus de chargement de
+# module, de montage, de ptrace, d'accès brut aux disques…  DAC_* et CHOWN :
+# DataDirectory de Tor et son cookie, propriété de debian-tor.  KILL : arrêt
+# de processus d'un autre utilisateur.  NET_BIND_SERVICE : DHCP du partage LAN.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_KILL
 NoNewPrivileges=yes
-PrivateTmp=yes
+# Système de fichiers en lecture seule, sauf : réglages, état (données Tor),
+# /run (socket de statut, verrou xtables), drop-in DNS, baux de dnsmasq.
+ProtectSystem=strict
+ReadWritePaths=$CONFIG_DIR $STATE_DIR /run -/etc/systemd/resolved.conf.d -/var/lib/misc
 ProtectHome=yes
-ProtectSystem=full
-ReadWritePaths=$CONFIG_DIR -/etc/systemd/resolved.conf.d
+PrivateTmp=yes
+# Un seul périphérique : /dev/net/tun (interface du tunnel).
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# Pas ProtectKernelTunables : le daemon écrit dans /proc/sys/net
+# (src_valid_mark, ip_forward du partage LAN).  Pas ProtectProc=invisible :
+# il doit voir Tor (debian-tor) pour l'arrêter.
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# Code dans /opt en lecture seule : pas de __pycache__ à y écrire.
+Environment=PYTHONDONTWRITEBYTECODE=1
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=katakomba

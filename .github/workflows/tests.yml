@@ -14,7 +14,9 @@ jobs:
     name: Suite de tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       # Python système : python3-gi n'existe que pour lui.
       - name: Dépendances (GTK 4, libadwaita, écran virtuel)
@@ -40,7 +42,9 @@ jobs:
     name: Paquet .deb
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Validation AppStream et lanceur
         run: |
@@ -52,7 +56,18 @@ jobs:
       - name: build-deb.sh
         run: bash packaging/build-deb.sh
 
-      - uses: actions/upload-artifact@v4
+      # Construction reproductible : un second passage, depuis une autre copie
+      # et avec un autre umask, doit donner les mêmes octets.
+      - name: Reproductibilité
+        run: |
+          sha256sum dist/*.deb | sed 's| dist/| |' | sort > /tmp/premier
+          cp -a . /tmp/copie && rm -rf /tmp/copie/dist
+          (cd /tmp/copie && umask 077 && bash packaging/build-deb.sh >/dev/null)
+          sha256sum /tmp/copie/dist/*.deb | sed 's| /tmp/copie/dist/| |' | sort > /tmp/second
+          cat /tmp/premier
+          diff /tmp/premier /tmp/second
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: katakomba-deb
           path: dist/*.deb
@@ -65,7 +80,7 @@ jobs:
     needs: paquet
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: katakomba-deb
           path: dist

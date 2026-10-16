@@ -10,8 +10,8 @@ Only the latest release receives fixes.
 
 | Version | Supported |
 |---------|-----------|
-| 3.10.x  | ✅ |
-| < 3.10  | ❌ |
+| 3.11.x  | ✅ |
+| < 3.11  | ❌ |
 
 ## Reporting a vulnerability
 
@@ -24,6 +24,17 @@ Please include:
 - the impact as you understand it (privilege escalation, traffic leak outside the tunnel, credential exposure…).
 
 Strip your VPN credentials, real IP addresses and provider `.ovpn` files from anything you send.
+
+## Verifying a release
+
+Packages attached to a release are built by GitHub Actions from the tagged commit (`.github/workflows/publication.yml`), never on a personal computer:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing                                  # intact
+gh attestation verify katakomba_<version>_all.deb -R Derbosoft/Katakomba  # built here, from which commit
+```
+
+The build is reproducible: rebuilding the tagged commit gives the same bytes (see the README, *Verify a download*).
 
 ## Scope
 
@@ -45,5 +56,7 @@ Katakomba tourne en root et manipule des identifiants VPN : les signalements de 
 **[Security → Report a vulnerability](https://github.com/Derbosoft/Katakomba/security/advisories/new)**.
 
 Indiquez la version (`katakomba status`), la distribution, les étapes pour reproduire et l'impact. Retirez vos identifiants VPN, vos adresses IP réelles et les fichiers `.ovpn` de votre fournisseur.
+
+Les paquets joints à une version sont construits par GitHub Actions depuis le commit du tag, jamais sur un poste personnel : `sha256sum -c SHA256SUMS --ignore-missing` vérifie qu'ils sont intacts, `gh attestation verify <paquet> -R Derbosoft/Katakomba` qu'ils sortent bien de ce dépôt. La construction est reproductible (README, *Vérifier un téléchargement*).
 
 Seule la dernière version reçoit des correctifs. Les limites connues et documentées (blocage hors tunnel levé quand le service est arrêté ou en cours de relance après un plantage, identifiants en base64 dans `config.json`) ne sont pas des vulnérabilités : voir la section [Sécurité du README](README.fr.md#sécurité).

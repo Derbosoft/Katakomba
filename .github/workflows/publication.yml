@@ -1,0 +1,53 @@
+name: Publication
+
+# Les paquets d'une version publiée sont construits ICI, pas sur un poste :
+# chacun peut vérifier qu'un .deb téléchargé sort bien de ce dépôt, de ce
+# commit, par ce workflow (attestation de provenance signée, Sigstore), et
+# qu'il n'a pas été modifié depuis (SHA256SUMS).
+#
+#   gh release create vX.Y.Z --notes-file …   → ce workflow joint les paquets
+#
+# Vérifier un téléchargement : README, « Verify a download ».
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  paquets:
+    name: Paquets signés
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write        # joindre les fichiers à la version
+      id-token: write        # signature Sigstore de l'attestation
+      attestations: write
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+
+      - name: La version du code est celle du tag
+        run: |
+          VERSION="$(python3 -B -c 'from constants import VERSION; print(VERSION)')"
+          echo "tag $TAG, code $VERSION"
+          test "v$VERSION" = "$TAG"
+
+      - name: build-deb.sh
+        run: |
+          bash packaging/build-deb.sh
+          cd dist && sha256sum -- *.deb > SHA256SUMS && cat SHA256SUMS
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.deb
+
+      - name: Fichiers joints à la version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/*.deb dist/SHA256SUMS --clobber -R "$GITHUB_REPOSITORY"

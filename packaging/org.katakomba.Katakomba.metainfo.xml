@@ -92,6 +92,17 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.11.0" date="2026-10-16">
+      <description>
+        <p>The background service now runs with only the rights it needs, and every published package can be verified.</p>
+        <ul>
+          <li>The service can no longer load kernel modules, inspect other programs or write outside its own folders</li>
+          <li>Packages are built by GitHub from the published source, with checksums and a signed record of where they come from</li>
+          <li>Anyone can rebuild a package and get the very same file</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.11.0</url>
+    </release>
     <release version="3.10.0" date="2026-10-16">
       <description>
         <p>Katakomba now runs on servers and machines without a screen. A separate package leaves out the graphical interface, and every setting can be changed from the command line.</p>

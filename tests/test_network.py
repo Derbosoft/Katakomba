@@ -199,12 +199,36 @@ class ProtectedRoutesTest(unittest.TestCase):
               "0 0 192.168.50.20:41234 88.1.1.1:9001 users:((\"tor\",pid=99,fd=9))\n"
               "0 0 192.168.50.20:41235 [2001:db8::5]:443 users:((\"tor\",pid=99,fd=10))\n"
               "0 0 192.168.50.20:41236 99.9.9.9:443 users:((\"autre\",pid=7,fd=3))\n")
-        r = Recorder({"ss -tnp": (0, ss)})
+        d._uid_processus = lambda pid: 0          # Tor resté root
+        r = Recorder({"ss -tnpe": (0, ss)})
         with patched_run(r):
             d._protect_tor_routes()
         self.assertTrue(r.ran("route replace", "88.1.1.1/32"))
         self.assertFalse(r.ran("route replace", "99.9.9.9"), "socket d'un autre process pris")
         self.assertFalse(any("2001" in c for c in r.calls), "pair IPv6 pris en compte")
+
+    def test_repli_sur_ss_sans_cap_sys_ptrace(self):
+        """Tor sous debian-tor : sans CAP_SYS_PTRACE, ss n'affiche pas son
+        pid ; ses sockets sont reconnus à leur propriétaire."""
+        d = self._daemon(self.routes_file)
+        d.tor_process = type("P", (), {"pid": 99})()
+        d._tor_relay_ips = lambda: set()
+        d._uid_processus = lambda pid: 113
+        ss = ("Recv-Q Send-Q Local Address:Port Peer Address:Port\n"
+              "0 0 192.168.50.20:41234 88.1.1.1:9001 timer:(keepalive,1min,0) uid:113 ino:1 sk:1 <->\n"
+              "0 0 192.168.50.20:41236 99.9.9.9:443 uid:1130 ino:2 sk:2 <->\n"
+              "0 0 192.168.50.20:41237 77.7.7.7:443 users:((\"x\",pid=990,fd=3)) uid:0 ino:3 <->\n")
+        r = Recorder({"ss -tnpe": (0, ss)})
+        with patched_run(r):
+            d._protect_tor_routes()
+        self.assertTrue(r.ran("route replace", "88.1.1.1/32"))
+        self.assertFalse(r.ran("route replace", "99.9.9.9"), "uid voisin pris")
+        self.assertFalse(r.ran("route replace", "77.7.7.7"), "pid=990 pris pour pid=99")
+
+    def test_uid_d_un_processus(self):
+        import os
+        self.assertEqual(m_network.NetworkMixin._uid_processus(os.getpid()), os.geteuid())
+        self.assertEqual(m_network.NetworkMixin._uid_processus(10 ** 9), 0)
 
     def test_cleanup_supprime_courantes_et_persistees(self):
         d = self._daemon(self.routes_file)

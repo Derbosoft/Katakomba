@@ -1,0 +1,9 @@
+# Actions GitHub figées par empreinte (SHA) : une étiquette « v4 » peut être
+# déplacée par qui contrôle l'action, pas une empreinte.  Dependabot propose
+# les mises à jour, une par une, à relire.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

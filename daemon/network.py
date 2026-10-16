@@ -363,19 +363,25 @@ class NetworkMixin:
             return
 
         pid = self.tor_process.pid
+        # Tor abandonne root pour debian-tor : ses sockets sont reconnus à
+        # leur propriétaire (« uid: », colonne étendue de ss), visible sans
+        # aucun droit.  « pid= » (colonne Process) exige de pouvoir inspecter
+        # un processus d'un autre utilisateur, CAP_SYS_PTRACE, que le service
+        # n'a plus (v3.11.0) ; il reste valable pour un Tor resté root.
+        uid = self._uid_processus(pid)
         try:
-            # ss -tnp state established → colonnes :
-            #   Recv-Q Send-Q Local-Address:Port Peer-Address:Port Process
+            # ss -tnpe state established → colonnes :
+            #   Recv-Q Send-Q Local-Address:Port Peer-Address:Port [Process] …
             # On extrait l'adresse pair (relais Tor), colonne d'index 3.
-            r = _run("ss", "-tnp", "state", "established")
+            r = _run("ss", "-tnpe", "state", "established")
             peers = set()
             for line in r.stdout.decode().splitlines():
-                if f"pid={pid}" not in line:
+                champs = line.split()
+                if f"pid={pid}," not in line and not (uid and f"uid:{uid}" in champs):
                     continue
-                parts = line.split()
-                if len(parts) < 4:
+                if len(champs) < 4:
                     continue
-                peer = parts[3]
+                peer = champs[3]
                 # IPv6 entre crochets ([2001:db8::1]:443) → ignoré (tunnel IPv4).
                 if peer.startswith("["):
                     continue
@@ -383,6 +389,18 @@ class NetworkMixin:
             self._add_protected_routes(peers, "ss")
         except Exception as e:
             self._log(f"[route] {e}", "WARN")
+
+    @staticmethod
+    def _uid_processus(pid) -> int:
+        """Utilisateur effectif d'un processus (0 si inconnu : root ou
+        processus disparu).  /proc/<pid>/status est lisible sans droit."""
+        try:
+            for ligne in open(f"/proc/{int(pid)}/status"):
+                if ligne.startswith("Uid:"):
+                    return int(ligne.split()[2])
+        except (OSError, ValueError, IndexError):
+            pass
+        return 0
 
     def _cleanup_tor_routes(self):
         """Supprime les routes /32 Tor (session courante + fichier persistant)."""

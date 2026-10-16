@@ -169,14 +169,59 @@ class InstallServiceUnitTest(unittest.TestCase):
         self.assertIn("RuntimeDirectory=katakomba", INSTALL)
         self.assertIn("RuntimeDirectoryMode=0700", INSTALL)
 
-    def test_durcissement_de_l_unite(self):
-        for directive in ("NoNewPrivileges=yes", "ProtectHome=yes",
-                          "ProtectSystem=full", "PrivateTmp=yes"):
-            self.assertIn(directive, INSTALL)
-        # ProtectSystem=full rend /etc en lecture seule : le daemon y écrit
-        # sa config et le drop-in DNS.
-        self.assertRegex(INSTALL, r"ReadWritePaths=\$CONFIG_DIR .*resolved\.conf\.d")
+    def _unite(self):
+        """Directives de l'unité, sans les commentaires."""
+        bloc = INSTALL[INSTALL.index('cat > "$SERVICE_FILE" << SERVICE_EOF'):]
+        bloc = bloc[:bloc.index("\nSERVICE_EOF")]
+        return "\n".join(l for l in bloc.splitlines() if not l.startswith("#")) + "\n"
 
+    def test_durcissement_de_l_unite(self):
+        """v3.11.0 : exposition 8.7 → 3.6 (systemd-analyze security).  Le
+        comportement réel (blocage hors tunnel, OpenVPN sans droit, retour
+        des connexions entrantes) a été vérifié avec ces droits et ce filtre
+        d'appels système, dans un espace réseau isolé."""
+        unite = self._unite()
+        for directive in ("NoNewPrivileges=yes", "ProtectHome=yes", "ProtectSystem=strict",
+                          "PrivateTmp=yes", "DevicePolicy=closed",
+                          "DeviceAllow=/dev/net/tun rw", "ProtectKernelModules=yes",
+                          "ProtectKernelLogs=yes", "ProtectControlGroups=yes",
+                          "ProtectClock=yes", "ProtectHostname=yes", "RestrictNamespaces=yes",
+                          "RestrictRealtime=yes", "RestrictSUIDSGID=yes", "LockPersonality=yes",
+                          "SystemCallArchitectures=native", "SystemCallFilter=@system-service",
+                          "SystemCallErrorNumber=EPERM"):
+            self.assertIn("\n" + directive + "\n", unite, directive)
+
+    def test_seulement_les_droits_utiles(self):
+        unite = self._unite()
+        ligne = next(l for l in unite.splitlines() if l.startswith("CapabilityBoundingSet="))
+        droits = set(ligne.split("=", 1)[1].split())
+        self.assertEqual(droits, {"CAP_NET_ADMIN", "CAP_NET_RAW", "CAP_NET_BIND_SERVICE",
+                                  "CAP_SETUID", "CAP_SETGID", "CAP_CHOWN", "CAP_DAC_OVERRIDE",
+                                  "CAP_DAC_READ_SEARCH", "CAP_FOWNER", "CAP_KILL"})
+        for interdit in ("CAP_SYS_ADMIN", "CAP_SYS_MODULE", "CAP_SYS_PTRACE", "CAP_SYS_RAWIO"):
+            self.assertNotIn(interdit, droits)
+
+    def test_ce_qui_casserait_le_daemon_reste_absent(self):
+        unite = self._unite()
+        # /proc/sys/net : src_valid_mark, ip_forward du partage LAN.
+        self.assertNotIn("ProtectKernelTunables=yes", unite)
+        # Tor tourne sous debian-tor : le daemon doit le voir pour l'arrêter.
+        self.assertNotIn("ProtectProc=invisible", unite)
+        # /dev/net/tun : interface du tunnel.
+        self.assertNotIn("PrivateDevices=yes", unite)
+        # Drop-in DNS lu par systemd-resolved (utilisateur systemd-resolve).
+        self.assertNotIn("UMask=", unite)
+        familles = next(l for l in unite.splitlines() if l.startswith("RestrictAddressFamilies="))
+        for f in ("AF_UNIX", "AF_INET", "AF_INET6", "AF_NETLINK", "AF_PACKET"):
+            self.assertIn(f, familles)
+
+    def test_ecritures_permises(self):
+        """Système de fichiers en lecture seule (strict) : seuls ces chemins."""
+        unite = self._unite()
+        ligne = next(l for l in unite.splitlines() if l.startswith("ReadWritePaths="))
+        self.assertEqual(ligne.split("=", 1)[1].split(),
+                         ["$CONFIG_DIR", "$STATE_DIR", "/run", "-/etc/systemd/resolved.conf.d",
+                          "-/var/lib/misc"])
 
     def test_tor_systeme_desactive(self):
         """Sinon conflit sur le port 9050."""
@@ -696,6 +741,45 @@ class SansInterfaceTest(unittest.TestCase):
         self.assertIn("systemctl stop katakomba-essai.timer", confirmer)
         arret = CLI[CLI.index("    stop)"):CLI.index("    restart)")]
         self.assertIn("katakomba-essai.timer", arret, "un essai survivrait à l'arrêt")
+
+
+class IntegriteDesVersionsTest(unittest.TestCase):
+    """v3.11.0 : paquets construits par la CI, reproductibles, signés."""
+
+    WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+
+    def test_actions_figees_par_empreinte(self):
+        """Une étiquette (v4) peut être déplacée vers un autre code ; pas une
+        empreinte de commit."""
+        for f in self.WORKFLOWS:
+            for ligne in f.read_text().splitlines():
+                if "uses:" in ligne:
+                    self.assertRegex(ligne, r"uses: [\w./-]+@[0-9a-f]{40} # v[\d.]+$",
+                                     f"{f.name} : {ligne.strip()}")
+        self.assertIn("package-ecosystem: github-actions",
+                      (ROOT / ".github" / "dependabot.yml").read_text())
+
+    def test_publication_par_la_ci(self):
+        pub = (ROOT / ".github" / "workflows" / "publication.yml").read_text()
+        self.assertIn("types: [published]", pub)
+        self.assertIn('test "v$VERSION" = "$TAG"', pub, "tag et version du code non comparés")
+        self.assertIn("attest-build-provenance", pub)
+        self.assertIn("SHA256SUMS", pub)
+        self.assertIn("id-token: write", pub)
+        # Le nom du tag passe par l'environnement, jamais collé dans un script.
+        for ligne in pub.splitlines():
+            if "run:" in ligne:
+                self.assertNotIn("${{", ligne, ligne)
+
+    def test_construction_reproductible(self):
+        build = (PAQ / "build-deb.sh").read_text()
+        self.assertIn("export SOURCE_DATE_EPOCH", build)
+        self.assertIn('touch -h -d "@$SOURCE_DATE_EPOCH"', build)
+        self.assertIn("--root-owner-group", build)
+        self.assertNotIn("du -sk", build, "taille dépendante du système de fichiers")
+        self.assertIn("log -1 --format='%an <%ae>'", build)
+        ci = (ROOT / ".github" / "workflows" / "tests.yml").read_text()
+        self.assertIn("Reproductibilité", ci)
 
 
 class RetourEntrantScriptsTest(unittest.TestCase):
