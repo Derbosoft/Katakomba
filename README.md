@@ -130,6 +130,8 @@ sha256sum -c SHA256SUMS --ignore-missing                                   # 1. 
 gh attestation verify katakomba_<version>_all.deb -R Derbosoft/Katakomba   # 2. built by this repository, from which commit
 ```
 
+`gh attestation` needs GitHub CLI 2.49 or later (Ubuntu's `gh` package can be older); the attestations are also listed on the repository's [Attestations page](https://github.com/Derbosoft/Katakomba/attestations), with the workflow and commit each package comes from.
+
 3. **Rebuild it yourself.** The build is reproducible: dates set to the commit's, owners and permissions normalised, installed size computed from the content. From the tagged commit, `bash packaging/build-deb.sh` gives the same bytes as the release:
 
 ```bash
