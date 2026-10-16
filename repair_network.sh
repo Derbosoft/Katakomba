@@ -112,6 +112,16 @@ for T in "${TUNS[@]}"; do
   ip route del default     dev "$T" 2>/dev/null || true
 done
 ip link del dev tun-katakomba 2>/dev/null || true
+# Retour des connexions entrantes (v3.10.0) : marquage et règles de routage.
+for c in "PREROUTING KATAKOMBA_RETOUR" "OUTPUT KATAKOMBA_RETOUR_OUT"; do
+    set -- $c
+    while iptables -t mangle -D "$1" -j "$2" 2>/dev/null; do :; done
+    iptables -t mangle -F "$2" 2>/dev/null || true
+    iptables -t mangle -X "$2" 2>/dev/null || true
+done
+while ip rule del priority 30300 2>/dev/null; do :; done
+while ip rule del priority 30301 2>/dev/null; do :; done
+ip route flush table 19265 2>/dev/null || true
 
 echo "[8/8] Vérification rapide de la connectivité..."
 ip route get 1.1.1.1 2>/dev/null || true

@@ -9,7 +9,10 @@ import socket
 
 from validation import verifier_exclusion
 
-from .core import _run, _write_private, TOR_ROUTES_FILE
+from .core import (
+    _run, _write_private, TOR_ROUTES_FILE,
+    RETOUR_CHAINES, RETOUR_MARQUE, RETOUR_PRIORITES, RETOUR_TABLE, SRC_VALID_MARK,
+)
 
 
 class NetworkMixin:
@@ -154,6 +157,10 @@ class NetworkMixin:
                      "via", self._orig_gw, "dev", self._orig_iface)
                 self._routes_exclues.append(str(net))
 
+        # Avant les deux moitiés d'Internet : une session SSH déjà ouverte
+        # ne doit pas voir une seule de ses réponses partir dans le tunnel.
+        self._retour_entrant_on(local)
+
         # Une route poussée vers un réseau local ou exclu détournerait ce
         # trafic dans le tunnel, vers le fournisseur VPN.
         locaux = self._connected_networks() + exclus
@@ -185,6 +192,129 @@ class NetworkMixin:
             _run("ip", "route", "del", net)
         self._routes_exclues = []
         _run("ip", "link", "del", "dev", self._tun_iface)
+        self._retour_entrant_off()
+
+    # ── Retour des connexions entrantes ──────────────────────────────────────
+    #
+    # Une fois Internet routé dans le tunnel, la réponse à une connexion
+    # ENTRANTE — SSH sur un serveur, site web, partage de fichiers depuis
+    # Internet — partirait elle aussi dans le tunnel : elle arriverait au
+    # client depuis une autre adresse, et la session tomberait.  Sur un
+    # serveur administré à distance, démarrer le service coupait la main.
+    #
+    # Les connexions entrantes sont donc marquées (conntrack), et une règle
+    # de routage renvoie leurs paquets par la passerelle d'origine.  Le trafic
+    # que la machine ÉMET elle-même n'est jamais marqué : il reste dans le
+    # tunnel.  Rien ne fuit : ces réponses vont à qui a contacté la machine
+    # par son adresse réelle, et la connaît donc déjà.
+
+    def _retour_regles(self, local: str) -> dict:
+        """Règles de la table mangle, par chaîne : arguments après « -A »."""
+        tun, marque = self._tun_iface, RETOUR_MARQUE
+        poser = ["-j", "CONNMARK", "--set-xmark", marque]
+        restaurer = ["-m", "connmark", "--mark", marque,
+                     "-j", "MARK", "--set-xmark", marque]
+        return {
+            # Paquet reçu dans le sens « aller » d'une connexion, à destination
+            # de la machine : c'est le correspondant qui l'a ouverte.  Venue
+            # du tunnel (redirection de port du fournisseur), elle doit au
+            # contraire y répondre.  Le marquage du paquet lui-même sert au
+            # filtrage de chemin inverse (rp_filter strict, src_valid_mark)
+            # et aux réponses des conteneurs (Docker), qui sont routées.
+            "KATAKOMBA_RETOUR": [
+                ["-i", "lo", "-j", "RETURN"],
+                ["-i", tun, "-j", "RETURN"],
+                ["-m", "conntrack", "--ctdir", "ORIGINAL",
+                 "-m", "addrtype", "--dst-type", "LOCAL", *poser],
+                restaurer,
+            ],
+            # Paquet émis dans le sens « retour » : réponse de la machine à
+            # une connexion ouverte par un autre.  Couvre une session SSH
+            # ouverte AVANT ces règles : sa prochaine réponse est marquée sans
+            # attendre un paquet du client.  Les connexions venues du tunnel
+            # visent l'adresse du tunnel : exclues.
+            "KATAKOMBA_RETOUR_OUT": [
+                ["-o", "lo", "-j", "RETURN"],
+                ["-m", "conntrack", "--ctdir", "REPLY", "!", "--ctorigdst", local, *poser],
+                restaurer,
+            ],
+        }
+
+    def _retour_entrant_on(self, local: str) -> bool:
+        """Pose le retour des connexions entrantes, en tout ou rien.
+
+        Deux règles de routage pour les paquets marqués : la table principale
+        privée de ses routes de longueur 0 et 1 (route par défaut, 0/1 et
+        128/1 du tunnel) — réseaux locaux, exclusions et relais Tor restent
+        donc valables —, puis une table qui ne contient que l'ancienne route
+        par défaut."""
+        self._retour_entrant_off(force=True)
+        if not self._orig_gw:
+            self._log("[tunnel] Passerelle d'origine inconnue : les réponses aux "
+                      "connexions entrantes (SSH, services) partiront dans le "
+                      "tunnel — une session distante serait coupée.", "ERROR")
+            return False
+        regles = self._retour_regles(local)
+        etapes = []
+        for parent, chaine in RETOUR_CHAINES:
+            _run("iptables", "-t", "mangle", "-N", chaine)
+            _run("iptables", "-t", "mangle", "-F", chaine)
+            etapes += [["iptables", "-t", "mangle", "-A", chaine, *r] for r in regles[chaine]]
+            etapes.append(["iptables", "-t", "mangle", "-I", parent, "-j", chaine])
+        etapes += [
+            ["ip", "route", "replace", "default", "via", self._orig_gw,
+             "dev", self._orig_iface, "table", RETOUR_TABLE],
+            ["ip", "rule", "add", "priority", RETOUR_PRIORITES[0], "fwmark", RETOUR_MARQUE,
+             "lookup", "main", "suppress_prefixlength", "1"],
+            ["ip", "rule", "add", "priority", RETOUR_PRIORITES[1], "fwmark", RETOUR_MARQUE,
+             "lookup", RETOUR_TABLE],
+        ]
+        for cmd in etapes:
+            r = _run(*cmd)
+            if r.returncode != 0:
+                self._log(f"[tunnel] Retour des connexions entrantes impossible : "
+                          f"« {' '.join(cmd)} » ({r.stderr.decode(errors='ignore').strip()}) "
+                          "— une session SSH distante serait coupée.", "ERROR")
+                self._retour_entrant_off(force=True)
+                return False
+        # Filtrage de chemin inverse strict (rp_filter=1) : sans la marque,
+        # le noyau croirait qu'une réponse au client devait passer par le
+        # tunnel et jetterait ses paquets à l'arrivée.
+        try:
+            avant = SRC_VALID_MARK.read_text().strip()
+            if avant != "1":
+                SRC_VALID_MARK.write_text("1\n")
+                self._src_valid_mark = avant
+        except OSError as e:
+            self._log(f"[tunnel] src_valid_mark : {e}", "WARN")
+        self._retour_actif = True
+        self._log(f"[tunnel] Connexions entrantes : réponses par {self._orig_iface} "
+                  "(SSH et services restent joignables).", "OK")
+        return True
+
+    def _retour_entrant_off(self, force: bool = False):
+        """Retire marquage et règles de routage.  force : sans rien supposer de
+        l'état (session précédente, échec en cours de pose)."""
+        if not (self._retour_actif or force):
+            return
+        for parent, chaine in RETOUR_CHAINES:
+            for _ in range(25):
+                if _run("iptables", "-t", "mangle", "-D", parent, "-j", chaine).returncode != 0:
+                    break
+            _run("iptables", "-t", "mangle", "-F", chaine)
+            _run("iptables", "-t", "mangle", "-X", chaine)
+        for priorite in RETOUR_PRIORITES:
+            for _ in range(25):
+                if _run("ip", "rule", "del", "priority", priorite).returncode != 0:
+                    break
+        _run("ip", "route", "flush", "table", RETOUR_TABLE)
+        if self._src_valid_mark is not None:
+            try:
+                SRC_VALID_MARK.write_text(self._src_valid_mark + "\n")
+            except OSError:
+                pass
+            self._src_valid_mark = None
+        self._retour_actif = False
 
     def _add_protected_routes(self, ips, source: str):
         """Route en /32 via la gateway originale chaque IP IPv4 valide et

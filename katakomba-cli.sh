@@ -6,6 +6,19 @@ SERVICE="katakomba"
 # remplacer : « sudo katakomba gui » aurait alors exécuté n'importe quel code.
 DAEMON_DIR="/opt/katakomba"
 
+# Lancé depuis une session SSH ?  sudo efface SSH_CONNECTION : on remonte
+# aussi la lignée des processus jusqu'à sshd.
+_session_ssh() {
+    [ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}" ] && return 0
+    local pid=$$ i
+    for i in $(seq 30); do
+        pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+        if [ -z "$pid" ] || [ "$pid" -le 1 ]; then return 1; fi
+        case "$(cat "/proc/$pid/comm" 2>/dev/null)" in sshd*) return 0 ;; esac
+    done
+    return 1
+}
+
 _need_root() {
     if [ "$EUID" -ne 0 ]; then
         echo "Cette commande nécessite les droits root."
@@ -18,12 +31,56 @@ case "${1:-help}" in
 
     start)
         _need_root "$@"
+        # --essai [MIN] : mise en route à distance sans risque.  Le service
+        # s'arrête de lui-même au bout de MIN minutes (5 par défaut) sauf
+        # « katakomba confirm » — l'accès revient si quelque chose a coupé
+        # la session.
+        ESSAI=""
+        case "${2:-}" in
+            "") ;;
+            --essai|--trial)
+                ESSAI="${3:-5}"
+                if ! [[ "$ESSAI" =~ ^[0-9]{1,3}$ ]] || [ "$ESSAI" -lt 1 ] || [ "$ESSAI" -gt 120 ]; then
+                    echo "Durée de l'essai : de 1 à 120 minutes." >&2
+                    exit 2
+                fi
+                ;;
+            *) echo "Option inconnue : $2" >&2; exit 2 ;;
+        esac
+        if [ -z "$ESSAI" ] && _session_ssh; then
+            echo "Session SSH détectée : elle reste joignable une fois le tunnel monté."
+            echo "Par prudence, pour une première mise en route à distance :"
+            echo "    sudo katakomba start --essai     (arrêt automatique dans 5 min sauf"
+            echo "                                      « sudo katakomba confirm »)"
+        fi
         systemctl reset-failed "$SERVICE" 2>/dev/null || true
+        if [ -n "$ESSAI" ]; then
+            systemctl stop katakomba-essai.timer 2>/dev/null || true
+            systemctl reset-failed katakomba-essai.service 2>/dev/null || true
+            systemd-run --quiet --unit=katakomba-essai --on-active="${ESSAI}min" \
+                --description="Katakomba : fin de l'essai" \
+                /usr/bin/systemctl stop "$SERVICE" || exit 1
+        fi
         systemctl start "$SERVICE" && echo "Service démarré."
+        if [ -n "$ESSAI" ]; then
+            echo "À l'essai : arrêt automatique dans $ESSAI min."
+            echo "Vérifiez (katakomba doctor), puis gardez-le :  sudo katakomba confirm"
+        fi
+        ;;
+
+    confirm|confirmer)
+        _need_root "$@"
+        if systemctl is-active --quiet katakomba-essai.timer; then
+            systemctl stop katakomba-essai.timer
+            echo "Service gardé : l'arrêt automatique est annulé."
+        else
+            echo "Aucun essai en cours."
+        fi
         ;;
 
     stop)
         _need_root "$@"
+        systemctl stop katakomba-essai.timer 2>/dev/null || true
         systemctl stop "$SERVICE" && echo "Service arrêté."
         ;;
 
@@ -45,7 +102,10 @@ case "${1:-help}" in
 
     gui)
         if [ ! -f "$DAEMON_DIR/main.py" ]; then
-            echo "ERREUR : $DAEMON_DIR/main.py introuvable — lancez « sudo bash install.sh »." >&2
+            # Paquet katakomba-headless (serveur) : pas d'interface.
+            echo "Interface graphique non installée (version sans interface)." >&2
+            echo "Configuration en console : katakomba help" >&2
+            echo "Pour l'interface : installez le paquet katakomba (avec interface)." >&2
             exit 1
         fi
         # Le GUI tourne en utilisateur normal (groupe katakomba) ; les actions
@@ -90,18 +150,20 @@ case "${1:-help}" in
             exit 1
         fi
         usermod -aG katakomba "$CIBLE" \
-            && echo "« $CIBLE » peut maintenant ouvrir l'interface (katakomba gui)."
+            && echo "« $CIBLE » peut maintenant configurer Katakomba (katakomba gui, ou en console : katakomba help)."
         ;;
 
     uninstall|desinstaller)
         _need_root "$@"
-        if dpkg-query -W -f='${Status}' katakomba 2>/dev/null \
-                | grep -q "install ok installed"; then
-            echo "Installé par paquet — désinstallez avec :"
-            echo "    sudo apt remove katakomba    (garde vos réglages)"
-            echo "    sudo apt purge  katakomba    (efface tout)"
-            exit 1
-        fi
+        for PAQ in katakomba katakomba-headless; do
+            if dpkg-query -W -f='${Status}' "$PAQ" 2>/dev/null \
+                    | grep -q "install ok installed"; then
+                echo "Installé par paquet — désinstallez avec :"
+                echo "    sudo apt remove $PAQ    (garde vos réglages)"
+                echo "    sudo apt purge  $PAQ    (efface tout)"
+                exit 1
+            fi
+        done
         exec bash "$DAEMON_DIR/uninstall.sh" "${@:2}"
         ;;
 
@@ -155,6 +217,7 @@ try:
     if d["lan_sharing"]:  print("  Partage LAN: actif")
     if d["ipv6_blocked"]: print("  IPv6       : bloqué")
     if d.get("kill_switch"): print("  Hors tunnel: bloqué")
+    if d.get("incoming_return"): print("  Entrantes  : réponses hors tunnel (SSH joignable)")
 except Exception:
     pass
 PYEOF
@@ -489,6 +552,17 @@ elif st.get("kill_switch_config"):
 elif "kill_switch_config" in st:
     note(WARN, _("Blocage hors tunnel"),
          _("désactivé — pendant une reconnexion, le trafic peut sortir à découvert"))
+# Réponses aux connexions entrantes (SSH, services) : par la carte réseau.
+# Absent d'un daemon plus ancien : rien à vérifier.
+if st.get("tunnel_up") and "incoming_return" in st:
+    _rc, regles = sh("ip", "-4", "rule", "show")
+    if st["incoming_return"] and "lookup 19265" in regles:
+        note(OK, _("Connexions entrantes"),
+             _("réponses par la carte réseau — SSH et services restent joignables"))
+    else:
+        note(KO, _("Connexions entrantes"),
+             _("réponses envoyées dans le tunnel — une session SSH distante serait "
+               "coupée (cause dans le journal)"))
 # Une exclusion vers Internet est légitime (un service qui refuse Tor), mais
 # elle doit rester visible : elle a pu être ajoutée hors de l'interface.
 if st.get("public_exclusions"):
@@ -564,28 +638,16 @@ PYEOF
         if [ -n "$IP" ]; then echo "$IP"; else echo "Impossible de récupérer l'IP."; fi
         ;;
 
-    help|--help|-h|*)
-        echo "Usage : katakomba <commande>"
-        echo ""
-        echo "  Contrôle (nécessitent sudo) :"
-        echo "    start    Démarrer le daemon"
-        echo "    stop     Arrêter le daemon"
-        echo "    restart  Redémarrer le daemon"
-        echo "    enable   Activer au démarrage"
-        echo "    disable  Désactiver au démarrage"
-        echo ""
-        echo "  Interface graphique :"
-        echo "    gui      Ouvrir le panneau de configuration (assistant au 1er lancement)"
-        echo ""
-        echo "  Installation (nécessitent sudo) :"
-        echo "    autoriser <utilisateur>   Donner accès à l'interface à un autre compte"
-        echo "    uninstall [--purge]       Désinstaller (--purge : effacer aussi les réglages)"
-        echo ""
-        echo "  Surveillance :"
-        echo "    status   État complet"
-        echo "    doctor   Diagnostic des invariants (routage, DNS, fuites)"
-        echo "    logs [n] n dernières lignes (défaut : 60)"
-        echo "    follow   Logs en direct (Ctrl+C)"
-        echo "    ip       IP publique actuelle"
+    provider|fournisseur|account|compte|exclude|exclusion|set|reglage|backup|sauvegarde)
+        # Configuration sans interface graphique (serveur) : console.py,
+        # mêmes contrôles que l'interface.  Root ou groupe katakomba.
+        exec python3 -B "$DAEMON_DIR/console.py" "$@"
+        ;;
+
+    help|--help|-h|aide|*)
+        # Aide traduite (langue du système), tenue à jour dans console.py.
+        python3 -B "$DAEMON_DIR/console.py" help
+        # Commande inconnue : code 2, comme toute erreur d'usage.
+        case "${1:-help}" in help|--help|-h|aide) ;; *) exit 2 ;; esac
         ;;
 esac

@@ -58,6 +58,8 @@ _REDIRECTIONS = {
     "TOR_COOKIE":         _STATE / "tor_data" / "control_auth_cookie",
     "LEGACY_TOR_DATA":    _BAC_A_SABLE / "etc" / "tor_data",
     "LEGACY_DNSMASQ_PID": _BAC_A_SABLE / "etc" / "tor-vpn-dnsmasq.pid",
+    # Réglage noyau : lancés en root, les tests l'auraient modifié pour de bon.
+    "SRC_VALID_MARK":     _BAC_A_SABLE / "src_valid_mark",
 }
 for _m in RUN_MODULES:
     for _nom, _chemin in _REDIRECTIONS.items():

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Katakomba — Installation (Ubuntu/Debian)
-# Usage : sudo bash install.sh
+# Usage : sudo bash install.sh                      (avec interface graphique)
+#         sudo bash install.sh --sans-interface     (serveur, sans écran)
 #
 # Deux modes :
 #  - installation depuis les sources (usage ci-dessus) : copie le code dans
@@ -14,6 +15,19 @@ set -e
 PAQUET="${KATAKOMBA_PAQUET:-0}"
 if [ "$PAQUET" = "1" ]; then
     KATAKOMBA_SKIP_APT=1       # dépendances garanties par le champ Depends
+fi
+# Interface graphique : oui, sauf --sans-interface ou paquet
+# katakomba-headless (qui ne livre pas main.py).  Sans elle : ni GTK, ni
+# lanceur, ni polkit ; la configuration se fait en console (katakomba help).
+AVEC_GUI=1
+for a in "$@"; do
+    case "$a" in
+        --sans-interface|--headless) AVEC_GUI=0 ;;
+        *) echo "Option inconnue : $a" >&2; exit 2 ;;
+    esac
+done
+if [ "$PAQUET" = "1" ] && [ ! -f /opt/katakomba/main.py ]; then
+    AVEC_GUI=0
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -47,6 +61,7 @@ echo ""
 echo "  Source     : $SCRIPT_DIR"
 echo "  Déploiement: $INSTALL_DIR"
 echo "  Utilisateur: $REAL_USER"
+[ "$AVEC_GUI" = 1 ] || echo "  Interface  : aucune (configuration en console)"
 echo ""
 
 if [ "$EUID" -ne 0 ]; then
@@ -215,7 +230,9 @@ if [ "${KATAKOMBA_SKIP_APT:-0}" = "1" ]; then
     for bin in "${DEPS_BIN[@]}"; do
         command -v "$bin" &>/dev/null || manquants+=("$bin")
     done
-    gui_disponible || manquants+=("${DEPS_GUI[@]}")
+    if [ "$AVEC_GUI" = 1 ]; then
+        gui_disponible || manquants+=("${DEPS_GUI[@]}")
+    fi
     if [ ${#manquants[@]} -gt 0 ]; then
         echo "ERREUR : dépendances absentes : ${manquants[*]}"
         echo "  KATAKOMBA_SKIP_APT=1 suppose une machine déjà installée."
@@ -225,7 +242,11 @@ if [ "${KATAKOMBA_SKIP_APT:-0}" = "1" ]; then
     echo "    Toutes les dépendances sont présentes."
 else
     apt-get update -qq
-    apt-get install -y tor openvpn python3 curl "${DEPS_GUI[@]}"
+    if [ "$AVEC_GUI" = 1 ]; then
+        apt-get install -y tor openvpn python3 curl "${DEPS_GUI[@]}"
+    else
+        apt-get install -y tor openvpn python3 curl
+    fi
 fi
 
 # dnsmasq ne sert QU'au partage LAN (fonction optionnelle, désactivée par
@@ -355,9 +376,9 @@ echo "[3/7] Déploiement du code dans $INSTALL_DIR …"
 # Jusqu'à la v3.6.4, il s'exécutait depuis le clone de l'utilisateur —
 # n'importe quel programme lancé sous ce compte pouvait réécrire le daemon et
 # obtenir root au redémarrage suivant, sans mot de passe.
-FICHIERS_CODE=(constants.py main.py validation.py adaptation.py i18n.py daemon gui assets polkit po
-               repair_network.sh katakomba-cli.sh install.sh uninstall.sh template.ovpn
-               LICENSE README.md README.fr.md)
+FICHIERS_CODE=(constants.py main.py console.py validation.py adaptation.py i18n.py daemon gui
+               assets polkit po repair_network.sh katakomba-cli.sh install.sh uninstall.sh
+               template.ovpn LICENSE README.md README.fr.md)
 if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
     install -d -m 755 -o root -g root "$INSTALL_DIR"
     rm -rf "$INSTALL_DIR/daemon" "$INSTALL_DIR/gui" "$INSTALL_DIR/assets" \
@@ -370,6 +391,13 @@ if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
         mkdir -p "$INSTALL_DIR/providers"
         cp -rn "$SCRIPT_DIR/providers/." "$INSTALL_DIR/providers/"
     fi
+fi
+if [ "$AVEC_GUI" = 0 ] && [ "$PAQUET" != "1" ]; then
+    # Même contenu que le paquet katakomba-headless (packaging/build-deb.sh) :
+    # du dossier gui/, seul le modèle sert à la console.
+    rm -rf "$INSTALL_DIR/main.py" "$INSTALL_DIR/assets" "$INSTALL_DIR/polkit"
+    find "$INSTALL_DIR/gui" -mindepth 1 -maxdepth 1 ! -name modele.py ! -name __init__.py \
+         -exec rm -rf {} +
 fi
 find "$INSTALL_DIR" -name __pycache__ -prune -exec rm -rf {} +
 chown -R root:root "$INSTALL_DIR"
@@ -457,6 +485,16 @@ for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" 
 done
 # Interface tunnel créée par le daemon : son adresse et ses routes partent avec.
 ip link del dev tun-katakomba 2>/dev/null
+# Retour des connexions entrantes : marquage (mangle) et règles de routage.
+for c in "PREROUTING KATAKOMBA_RETOUR" "OUTPUT KATAKOMBA_RETOUR_OUT"; do
+    set -- $c
+    while iptables -t mangle -D "$1" -j "$2" 2>/dev/null; do :; done
+    iptables -t mangle -F "$2" 2>/dev/null
+    iptables -t mangle -X "$2" 2>/dev/null
+done
+while ip rule del priority 30300 2>/dev/null; do :; done
+while ip rule del priority 30301 2>/dev/null; do :; done
+ip route flush table 19265 2>/dev/null
 while ip6tables -D OUTPUT  -j KATAKOMBA_KS6     2>/dev/null; do :; done
 ip6tables -F KATAKOMBA_KS6                 2>/dev/null
 ip6tables -X KATAKOMBA_KS6                 2>/dev/null
@@ -583,6 +621,12 @@ else
 cp "$INSTALL_DIR/katakomba-cli.sh" "$CLI_BIN"
 chmod +x "$CLI_BIN"
 echo "    CLI : $CLI_BIN"
+if [ "$AVEC_GUI" = 0 ]; then
+    # Une installation précédente avec interface : son lanceur ne mènerait
+    # plus à rien.
+    rm -f "$DESKTOP_FILE" "$POLKIT_RULES" "$POLKIT_ACTIONS" "$ICON_FILE"
+    echo "    Sans interface : ni lanceur, ni règles polkit"
+else
 
 # Exec via le wrapper katakomba : il retrouve le répertoire d'installation
 # et lance le GUI en utilisateur normal (groupe katakomba).
@@ -614,6 +658,7 @@ install -D -m 644 "$INSTALL_DIR/polkit/50-katakomba.rules" "$POLKIT_RULES"
 install -D -m 644 "$INSTALL_DIR/polkit/org.katakomba.policy" "$POLKIT_ACTIONS"
 echo "    polkit  : $POLKIT_RULES"
 fi
+fi
 
 # ── Vérification ──────────────────────────────────────────────────────────────
 echo ""
@@ -636,9 +681,13 @@ else
     echo "  --  dnsmasq  absent — optionnel, requis seulement pour le partage LAN"
 fi
 
-gui_disponible \
-    && echo "  OK  interface graphique (GTK 4, libadwaita)" \
-    || { echo "  KO  interface graphique : GTK 4 / libadwaita 1.5+ MANQUANT"; all_ok=false; }
+if [ "$AVEC_GUI" = 1 ]; then
+    gui_disponible \
+        && echo "  OK  interface graphique (GTK 4, libadwaita)" \
+        || { echo "  KO  interface graphique : GTK 4 / libadwaita 1.5+ MANQUANT"; all_ok=false; }
+else
+    echo "  --  sans interface graphique : configuration en console (katakomba help)"
+fi
 
 if systemctl is-active systemd-resolved &>/dev/null; then
     echo "  OK  systemd-resolved actif"
@@ -655,9 +704,11 @@ systemctl is-enabled tor &>/dev/null \
 [ -x "$SLEEP_HOOK" ]               && echo "  OK  hook veille/réveil installé"
 systemctl is-enabled katakomba &>/dev/null && echo "  OK  démarrage auto activé"
 [ -x "$CLI_BIN" ]                  && echo "  OK  commande katakomba disponible"
-[ -f "$POLKIT_RULES" ] && [ -f "$POLKIT_ACTIONS" ] \
-    && echo "  OK  polkit : connexion sans mot de passe (groupe katakomba)" \
-    || { echo "  KO  règles polkit absentes"; all_ok=false; }
+if [ "$AVEC_GUI" = 1 ]; then
+    [ -f "$POLKIT_RULES" ] && [ -f "$POLKIT_ACTIONS" ] \
+        && echo "  OK  polkit : connexion sans mot de passe (groupe katakomba)" \
+        || { echo "  KO  règles polkit absentes"; all_ok=false; }
+fi
 [ -f "$INSTALL_DIR/daemon/core.py" ] && [ "$(stat -c %U "$INSTALL_DIR/daemon/core.py")" = root ] \
                                    && echo "  OK  code déployé : $INSTALL_DIR (root)"
 id debian-tor &>/dev/null \
@@ -678,6 +729,19 @@ fi
 if [ "$ANCIEN_ACTIF" = true ]; then
     systemctl start katakomba 2>/dev/null \
         && echo "  Service katakomba démarré (l'ancien service tournait)."
+fi
+
+if [ "$AVEC_GUI" = 0 ]; then
+    echo ""
+    echo "  Sans interface : configuration en console."
+    echo ""
+    echo "       katakomba provider add <fichier.ovpn>   (identifiants demandés)"
+    echo "       sudo katakomba start --essai             (arrêt automatique dans 5 min"
+    echo "       katakomba doctor                          sauf « sudo katakomba confirm »)"
+    echo ""
+    echo "  Toutes les commandes : katakomba help"
+    echo ""
+    exit 0
 fi
 
 if [ "$PAQUET" = "1" ]; then

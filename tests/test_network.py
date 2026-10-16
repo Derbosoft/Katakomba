@@ -301,5 +301,129 @@ class MontageTunnelTest(unittest.TestCase):
         self.assertEqual(d._routes_exclues, [])
 
 
+class RetourEntrantTest(unittest.TestCase):
+    """Réponses aux connexions entrantes (SSH…) par la carte d'origine.
+
+    Le comportement réel (session SSH ouverte avant le tunnel qui survit,
+    nouvelle connexion acceptée, trafic émis par la machine toujours dans le
+    tunnel, filtrage de chemin inverse strict) a été vérifié sur un noyau,
+    avec un vrai OpenVPN, dans un espace réseau isolé ; ces tests en gardent
+    la forme et l'ordre."""
+
+    REGLAGES = MontageTunnelTest.REGLAGES
+
+    def setUp(self):
+        m_network.SRC_VALID_MARK.write_text("0\n")
+
+    def _monter(self, rec=None, gw="192.168.1.1"):
+        import ipaddress
+        d = FakeDaemon(_tun_iface="tun-katakomba", _orig_gw=gw,
+                       _orig_iface="eth0" if gw else None)
+        d._protect_tor_routes = lambda: None
+        d._connected_networks = lambda: [ipaddress.ip_network("192.168.1.0/24")]
+        r = rec or Recorder()
+        with patched_run(r):
+            ok = d._monter_tunnel(dict(self.REGLAGES))
+        return d, r, ok
+
+    def test_pose_avant_les_routes_du_tunnel(self):
+        """Pas une seule réponse d'une session SSH ouverte dans le tunnel."""
+        d, r, ok = self._monter()
+        self.assertTrue(ok)
+        self.assertTrue(d._retour_actif)
+        regle = r.calls.index(next(c for c in r.calls if "lookup 19265" in c))
+        moitie = r.calls.index("ip route replace 0.0.0.0/1 dev tun-katakomba scope global")
+        self.assertLess(regle, moitie)
+        self.assertLess(r.calls.index(next(c for c in r.calls if "-I OUTPUT -j KATAKOMBA_RETOUR_OUT" in c)),
+                        moitie)
+
+    def test_marquage_des_seules_connexions_entrantes(self):
+        _, r, _ = self._monter()
+        avant = [c.split(" -A KATAKOMBA_RETOUR ", 1)[1] for c in r.calls
+                 if " -A KATAKOMBA_RETOUR " in c]
+        sortie = [c.split(" -A KATAKOMBA_RETOUR_OUT ", 1)[1] for c in r.calls
+                  if " -A KATAKOMBA_RETOUR_OUT " in c]
+        # Reçu de l'extérieur, sens « aller », vers la machine : ouverte par
+        # le correspondant.  Venue du tunnel : y répondre, donc exclue.
+        self.assertEqual(avant[:2], ["-i lo -j RETURN", "-i tun-katakomba -j RETURN"])
+        self.assertIn("--ctdir ORIGINAL -m addrtype --dst-type LOCAL -j CONNMARK", avant[2])
+        # Émis dans le sens « retour », sauf vers l'adresse du tunnel.
+        self.assertIn("--ctdir REPLY ! --ctorigdst 10.8.0.2 -j CONNMARK", sortie[1])
+        for chaine in (avant, sortie):
+            self.assertIn("-m connmark --mark 0x1000000/0x1000000 -j MARK", chaine[-1])
+        self.assertTrue(r.ran("iptables -t mangle -I PREROUTING -j KATAKOMBA_RETOUR"))
+
+    def test_routage_des_paquets_marques(self):
+        _, r, _ = self._monter()
+        # Table principale sans ses routes /0 et /1 (défaut, moitiés du
+        # tunnel) : réseaux locaux, exclusions et relais Tor restent valables.
+        self.assertTrue(r.ran("ip rule add priority 30300 fwmark 0x1000000/0x1000000 "
+                              "lookup main suppress_prefixlength 1"))
+        self.assertTrue(r.ran("ip rule add priority 30301 fwmark 0x1000000/0x1000000 "
+                              "lookup 19265"))
+        self.assertTrue(r.ran("ip route replace default via 192.168.1.1 dev eth0 table 19265"))
+
+    def test_filtrage_de_chemin_inverse_strict(self):
+        d, _, _ = self._monter()
+        self.assertEqual(m_network.SRC_VALID_MARK.read_text().strip(), "1")
+        with patched_run(Recorder()):
+            d._demonter_tunnel()
+        self.assertEqual(m_network.SRC_VALID_MARK.read_text().strip(), "0", "valeur non rendue")
+
+    def test_retire_au_demontage(self):
+        d, _, _ = self._monter()
+        r = Recorder({" -D ": (1, ""), "rule del": (1, "")})
+        with patched_run(r):
+            d._demonter_tunnel()
+        self.assertFalse(d._retour_actif)
+        for attendu in ("iptables -t mangle -D PREROUTING -j KATAKOMBA_RETOUR",
+                        "iptables -t mangle -X KATAKOMBA_RETOUR_OUT",
+                        "ip rule del priority 30300", "ip rule del priority 30301",
+                        "ip route flush table 19265"):
+            self.assertTrue(r.ran(attendu), attendu)
+        self.assertLess(r.calls.index("ip link del dev tun-katakomba"),
+                        r.calls.index("ip route flush table 19265"))
+
+    def test_sans_passerelle_le_tunnel_monte_quand_meme(self):
+        """Un poste de travail n'en a pas besoin : erreur visible, pas de panne."""
+        d, r, ok = self._monter(gw=None)
+        self.assertTrue(ok)
+        self.assertFalse(d._retour_actif)
+        self.assertTrue(d.has_log("session distante serait coupée", "ERROR"))
+        self.assertFalse(r.ran("lookup 19265"))
+
+    def test_echec_tout_ou_rien(self):
+        """Module noyau absent (connmark…) : rien ne reste à moitié posé."""
+        d, r, ok = self._monter(rec=Recorder({"CONNMARK": (1, "")}))
+        self.assertTrue(ok, "le tunnel doit monter malgré tout")
+        self.assertFalse(d._retour_actif)
+        self.assertTrue(d.has_log("Retour des connexions entrantes impossible", "ERROR"))
+        self.assertFalse(r.ran("ip rule add"))
+        self.assertTrue(r.ran("iptables -t mangle -X KATAKOMBA_RETOUR"))
+        self.assertEqual(m_network.SRC_VALID_MARK.read_text().strip(), "0")
+
+    def test_reconnexion_sans_doublon(self):
+        """Chaque montage repart d'un état propre (adresse du tunnel changée)."""
+        d, _, _ = self._monter()
+        r = Recorder()
+        with patched_run(r):
+            d._monter_tunnel(dict(self.REGLAGES, ifconfig=("10.8.0.7", "255.255.255.0")))
+        nettoyage = r.calls.index("ip rule del priority 30300")
+        self.assertLess(nettoyage, r.calls.index(next(c for c in r.calls if "ip rule add" in c)))
+        self.assertTrue(r.ran("! --ctorigdst 10.8.0.7"))
+
+    def test_nettoye_au_demarrage_du_service(self):
+        d = FakeDaemon()
+        r = Recorder({" -D ": (1, ""), "rule del": (1, "")})
+        with patched_run(r):
+            d.cleanup_stale_rules()
+        self.assertTrue(r.ran("iptables -t mangle -X KATAKOMBA_RETOUR"))
+        self.assertTrue(r.ran("ip route flush table 19265"))
+
+    def test_expose_au_statut(self):
+        d, _, _ = self._monter()
+        self.assertTrue(d._status_snapshot()["incoming_return"])
+
+
 if __name__ == "__main__":
     unittest.main()

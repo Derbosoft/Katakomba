@@ -1,18 +1,18 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.9.0
+# Katakomba — v3.10.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.9.0-blue)
+![Version](https://img.shields.io/badge/Version-3.10.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
 
 > [English documentation](README.md)
 
-Daemon + interface graphique pour router **tout le trafic réseau via OpenVPN tunnelé dans Tor** sur Ubuntu/Debian. Le daemon tourne en arrière-plan en tant que service systemd et gère automatiquement Tor, OpenVPN, le blocage hors tunnel (kill switch), le blocage IPv6, le partage LAN et la surveillance de connectivité.
+Daemon + interface graphique pour router **tout le trafic réseau via OpenVPN tunnelé dans Tor** sur Ubuntu/Debian. Le daemon tourne en arrière-plan en tant que service systemd et gère automatiquement Tor, OpenVPN, le blocage hors tunnel (kill switch), le blocage IPv6, le partage LAN et la surveillance de connectivité. Il fonctionne aussi sur un **serveur sans écran**, configuré en ligne de commande : SSH et les services du serveur restent joignables une fois le tunnel monté.
 
 *Katakomba s'appelait auparavant « Tor-VPN Manager » : une installation existante est migrée automatiquement (voir [Migration depuis Tor-VPN Manager](#migration-depuis-tor-vpn-manager)).*
 
@@ -23,22 +23,23 @@ Daemon + interface graphique pour router **tout le trafic réseau via OpenVPN tu
 1. [Architecture globale](#architecture-globale)
 2. [Prérequis](#prérequis)
 3. [Installation](#installation)
-4. [Structure du projet](#structure-du-projet)
-5. [Interface graphique](#interface-graphique)
-6. [CLI `katakomba`](#cli-katakomba)
-7. [Fonctionnement détaillé du daemon](#fonctionnement-détaillé-du-daemon)
-8. [Chaînes iptables](#chaînes-iptables)
-9. [Failover et watchdog](#failover-et-watchdog)
-10. [Partage LAN](#partage-lan)
-11. [DNS split — Domaines locaux](#dns-split--domaines-locaux)
-12. [Configuration Tor (torrc)](#configuration-tor-torrc)
-13. [Réparation réseau automatique](#réparation-réseau-automatique)
-14. [Format config.json](#format-configjson)
-15. [Tests](#tests)
-16. [Traductions](#traductions)
-17. [Sécurité](#sécurité)
-18. [Premiers pas](#premiers-pas)
-19. [Désinstallation](#désinstallation)
+4. [Serveur sans écran](#serveur-sans-écran)
+5. [Structure du projet](#structure-du-projet)
+6. [Interface graphique](#interface-graphique)
+7. [CLI `katakomba`](#cli-katakomba)
+8. [Fonctionnement détaillé du daemon](#fonctionnement-détaillé-du-daemon)
+9. [Chaînes iptables](#chaînes-iptables)
+10. [Failover et watchdog](#failover-et-watchdog)
+11. [Partage LAN](#partage-lan)
+12. [DNS split — Domaines locaux](#dns-split--domaines-locaux)
+13. [Configuration Tor (torrc)](#configuration-tor-torrc)
+14. [Réparation réseau automatique](#réparation-réseau-automatique)
+15. [Format config.json](#format-configjson)
+16. [Tests](#tests)
+17. [Traductions](#traductions)
+18. [Sécurité](#sécurité)
+19. [Premiers pas](#premiers-pas)
+20. [Désinstallation](#désinstallation)
 
 ---
 
@@ -85,7 +86,7 @@ Le GUI et le daemon sont **entièrement découplés** : le GUI écrit uniquement
 |-----------|-----------------|------|
 | Ubuntu / Debian | 24.04 / 13 | Système de base |
 | Python | 3.8+ | Daemon + GUI |
-| GTK 4 + libadwaita | 1.5+ | Interface graphique (`python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `librsvg2-common`) |
+| GTK 4 + libadwaita | 1.5+ | Interface graphique (`python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `librsvg2-common`). Inutile sans interface (serveur) |
 | tor | — | Proxy SOCKS5 et réseau Tor |
 | openvpn | 2.4+ | Tunnel chiffré vers le fournisseur VPN |
 | dnsmasq | — | **Optionnel** — serveur DHCP, uniquement pour le partage LAN |
@@ -108,10 +109,14 @@ sudo apt install ./katakomba_<version>_all.deb
 
 > **Juste après l'installation**, fermez puis rouvrez votre session : elle a été ouverte avant que votre compte reçoive l'accès. L'interface le signale si besoin. Sur les distributions qui fournissent `sg` (Debian notamment), `katakomba gui` s'en charge sans reconnexion.
 
-**Construire le paquet** depuis les sources, sans root :
+Pour un serveur ou une machine sans écran, prenez plutôt `katakomba-headless_<version>_all.deb` : voir [Serveur sans écran](#serveur-sans-écran).
+
+**Construire les paquets** depuis les sources, sans root :
 ```bash
 bash packaging/build-deb.sh          # → dist/katakomba_<version>_all.deb
+                                     #   dist/katakomba-headless_<version>_all.deb
 ```
+Les deux viennent du même code. `katakomba-headless` laisse de côté l'interface (GTK, lanceur, fiche AppStream, icône, polkit) ; du dossier `gui/`, il ne garde que `modele.py`, dont se servent les commandes de configuration. Les deux paquets se remplacent l'un l'autre (`Conflicts`/`Replaces`) : installer l'un retire l'autre et garde vos réglages.
 Le champ `Maintainer` vient de `DEB_MAINTAINER`, ou à défaut de `git config user.name` / `user.email`. Il est visible de quiconque inspecte le paquet.
 
 Le paquet réutilise `install.sh` en « mode paquet » (`KATAKOMBA_PAQUET=1`, appelé par le `postinst`). Il n'existe donc qu'une seule procédure d'installation, et les deux voies configurent le système à l'identique.
@@ -119,7 +124,8 @@ Le paquet réutilise `install.sh` en « mode paquet » (`KATAKOMBA_PAQUET=1`, ap
 ### Depuis les sources
 
 ```bash
-sudo bash install.sh
+sudo bash install.sh                    # avec l'interface graphique
+sudo bash install.sh --sans-interface   # serveur : ni GTK, ni lanceur, ni polkit
 ```
 
 L'installateur effectue **7 étapes** :
@@ -194,6 +200,61 @@ Katakomba s'appelait « Tor-VPN Manager » jusqu'à la v3.7.0. `install.sh` (et 
 L'ancien service est arrêté en premier : son nettoyage retire ses règles iptables, son DNS split et son dnsmasq. Les chemins écrits en dur (`.ovpn` absolus dans `config.json`, `DataDirectory` du torrc) sont réécrits, sans jamais suivre un lien symbolique. L'ancienne unité, le hook de veille, la commande `tor-vpn` (seulement si c'est bien la nôtre) et le lanceur sont retirés.
 
 > **Pare-feu en amont qui bloque tout trafic hors tunnel :** pendant la migration, le tunnel est coupé, donc `apt` ne peut rien télécharger. Les dépendances étant déjà installées, lancez : `sudo KATAKOMBA_SKIP_APT=1 bash install.sh`
+
+---
+
+## Serveur sans écran
+
+*(v3.10.0)* Katakomba fonctionne aussi sur un serveur, ou toute machine sans écran : pas de GTK, configuration en ligne de commande, et **les connexions entrantes restent joignables** une fois le tunnel monté (SSH, serveur web…).
+
+### Installer
+
+```bash
+sudo apt install ./katakomba-headless_<version>_all.deb
+# ou, depuis les sources :
+sudo bash install.sh --sans-interface
+```
+
+### Configurer et démarrer
+
+```bash
+katakomba fournisseur ajouter ivpn.ovpn       # ou un .zip ; identifiant et mot de passe OpenVPN demandés
+sudo katakomba start --essai                  # s'arrête seul au bout de 5 min sans confirmation
+katakomba doctor                              # tout est OK ?
+sudo katakomba confirm                        # on le garde
+```
+
+Le fichier du fournisseur est adapté exactement comme par l'assistant de l'interface (TCP, fichiers annexes intégrés, scripts retirés), et le résumé des modifications s'affiche. Les identifiants sont saisis sans écho, ou lus sur l'entrée standard pour un script, **jamais en argument** (ils seraient visibles de tous dans la liste des processus) :
+
+```bash
+printf '%s\n%s\n' "$VPN_USER" "$VPN_PASS" | katakomba fournisseur ajouter ivpn.ovpn --stdin
+```
+
+**`start --essai [MIN]` : un filet de sécurité pour l'administration à distance.** Le service s'arrête de lui-même au bout de MIN minutes (5 par défaut), sauf `sudo katakomba confirm`. Si quoi que ce soit coupe votre session, l'accès revient tout seul. `katakomba start` le propose quand il détecte une session SSH. `stop` annule un essai en cours.
+
+### Toutes les commandes de configuration
+
+En root, ou en membre du groupe `katakomba` (sans `sudo`, comme l'interface). Les réglages sont lus au démarrage du service : chaque modification rappelle de lancer `sudo katakomba restart`.
+
+| Commande | Effet |
+|---|---|
+| `fournisseur liste` | Fournisseurs par ordre de priorité, avec leur nombre de comptes |
+| `fournisseur ajouter <fichier.ovpn\|.zip>… [--name NOM] [--stdin]` | Ajoute un fournisseur, en dernière priorité |
+| `fournisseur retirer <nom>` | Le retire (son fichier reste sur le disque) |
+| `fournisseur priorite <nom> <rang>` | Le déplace dans l'ordre de bascule |
+| `compte liste\|ajouter\|retirer <fournisseur> …` | Comptes d'un fournisseur (`ajouter` demande les identifiants) |
+| `exclusion liste\|ajouter\|retirer <adresse\|réseau\|domaine>` | Exclusions du tunnel et domaines locaux, mêmes contrôles que l'interface |
+| `reglage` | Réglages actuels |
+| `reglage <réglage> <valeur>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `local-dns` (adresse ou `aucun`), `circuit-check`, `circuit-min-kbs`, `circuit-retries` |
+| `sauvegarde exporter\|restaurer <fichier.zip>` | Même format que la sauvegarde de l'interface ; l'export est en `600` (il contient les identifiants) |
+
+Messages et aide (`katakomba help`) suivent la langue du système. Les commandes existent aussi en anglais (`provider add`, `exclude remove`, `set`, `backup`, `start --trial`…), le nom sous lequel les présente l'aide.
+
+### Les connexions entrantes restent joignables
+
+Une fois Internet routé dans le tunnel, la réponse à une connexion entrante partirait elle aussi dans le tunnel : elle arriverait au client depuis une autre adresse, et la session tomberait. Démarrer le service sur un serveur administré en SSH vous coupait la main.
+
+Le daemon marque désormais les connexions entrantes et renvoie leurs réponses par la carte réseau par laquelle elles sont arrivées (voir [Connexions entrantes](#connexions-entrantes-v3100)). Seules les réponses sont concernées : elles vont à qui a contacté la machine par son adresse réelle, et la connaît donc déjà. **Tout ce que la machine émet elle-même passe toujours par le tunnel.** Une session SSH ouverte avant le démarrage du service survit à la montée du tunnel, aux reconnexions et à l'arrêt ; `katakomba doctor` le vérifie (ligne *Connexions entrantes*).
 
 ---
 
@@ -515,8 +576,22 @@ sudo katakomba restart     # Redémarre le daemon
 sudo katakomba enable      # Active le démarrage automatique au boot
 sudo katakomba disable     # Désactive le démarrage automatique
 
+# Démarrage à distance : arrêt automatique au bout de 5 min sans confirmation
+sudo katakomba start --essai [MIN]
+sudo katakomba confirm
+
+# Configuration, sans l'interface (root ou groupe katakomba)
+katakomba fournisseur liste|ajouter|retirer|priorite …
+katakomba compte liste|ajouter|retirer …
+katakomba exclusion liste|ajouter|retirer …
+katakomba reglage [<réglage> <valeur>]
+katakomba sauvegarde exporter|restaurer <fichier.zip>
+
 # Interface graphique
 katakomba gui
+
+# Aide, dans la langue du système
+katakomba help
 
 # Surveillance
 katakomba status           # État complet : service, Tor, VPN, circuit, DNS split, IP publique
@@ -561,6 +636,7 @@ Ce que chaque contrôle attrape :
 | Chemin des requêtes DNS | résolution trop rapide pour passer par Tor → fuite probable |
 | Qualité du circuit | mesure de plus de 6 h → le circuit a pu se dégrader depuis |
 | Blocage hors tunnel | activé dans les réglages mais absent → le trafic peut sortir pendant les reconnexions |
+| Connexions entrantes | réponses envoyées dans le tunnel → une session SSH distante serait coupée (v3.10.0) |
 | Exclusions vers Internet | listées en avertissement : ce trafic sort avec votre adresse réelle, et a pu être ajouté hors de l'interface |
 | Sortie Internet | pas de réponse via le tunnel, ou adresse privée |
 
@@ -664,9 +740,23 @@ Quand OpenVPN annonce `Initialization Sequence Completed`, le daemon lit les opt
 3. **Exclusions**, via la passerelle d'origine.
 4. **Routes poussées**, seulement si elles passent par le tunnel, puis `0.0.0.0/1` et `128.0.0.0/1` dans le tunnel. Une route poussée via `net_gateway`, `remote_host` ou une passerelle hors du tunnel est **refusée** : un serveur malveillant pourrait sinon faire sortir du trafic par votre connexion normale et apprendre votre adresse réelle. Une route poussée qui recouvre votre réseau local ou une exclusion est aussi ignorée. `redirect-gateway` est inutile : Katakomba envoie toujours tout le trafic dans le tunnel.
 
+Entre les étapes 3 et 4, le daemon pose le **retour des connexions entrantes** (voir plus bas) : pas une seule réponse d'une session SSH ouverte ne part dans le tunnel.
+
 Seuls les messages d'OpenVPN lui-même sont reconnus, à leur forme exacte en début de ligne : le texte d'un message envoyé par le serveur est recopié tel quel dans la sortie, et une recherche de mot-clé laissait le serveur piloter le daemon. Quand OpenVPN s'arrête, le daemon supprime l'interface (son adresse et ses routes partent avec elle) et les routes d'exclusion : Tor rejoint ses relais par la route par défaut pour la connexion suivante. Le tunnel ne transporte que l'IPv4 : les réglages IPv6 poussés sont ignorés.
 
 Les routes des guards sont persistées dans `/var/lib/katakomba/tor-routes.txt` et supprimées proprement à chaque arrêt.
+
+<a id="connexions-entrantes-v3100"></a>
+**Connexions entrantes (v3.10.0) :**
+Sans cela, la réponse à une connexion entrante (SSH, serveur web…) suivrait les routes `0/1` et `128/1` dans le tunnel, et la session tomberait. Le daemon :
+
+1. **Marque les connexions entrantes** (table `mangle`, chaînes `KATAKOMBA_RETOUR` sur `PREROUTING` et `KATAKOMBA_RETOUR_OUT` sur `OUTPUT`, un seul bit `0x1000000` de la marque de connexion) :
+   - un paquet reçu dans le sens « aller » d'une connexion, à destination de la machine, signifie que le correspondant l'a ouverte. Les connexions venues du tunnel lui-même (redirection de port d'un fournisseur) sont exclues : leurs réponses doivent y retourner ;
+   - un paquet émis dans le sens « retour » marque aussi la connexion : une session SSH ouverte **avant** les règles a sa toute prochaine réponse bien routée, sans attendre un paquet du client.
+2. **Route les paquets marqués** par deux règles : d'abord la table principale **privée de ses routes de longueur 0 et 1** (`suppress_prefixlength 1` : route par défaut, `0/1`, `128/1`) — réseaux locaux, exclusions et relais Tor restent valables —, puis la table `19265`, qui ne contient que la route par défaut d'origine.
+3. Active `src_valid_mark` : le filtrage de chemin inverse strict (`rp_filter=1`) ne jette pas les paquets du client (valeur rendue au démontage du tunnel).
+
+Les connexions que la machine ouvre elle-même ne sont jamais marquées : elles restent dans le tunnel. Tout est retiré au démontage du tunnel, ainsi que par le script de nettoyage et `repair_network.sh`. Sans passerelle d'origine, ou si le noyau refuse une règle, le tunnel monte quand même, et le journal comme `doctor` signalent le problème. Vérifié sur un vrai noyau, avec un vrai OpenVPN, dans un espace réseau isolé, avec filtrage de chemin inverse strict : une session ouverte avant le tunnel lui survit, les nouvelles connexions entrantes sont acceptées, le trafic émis par la machine vers ce même correspondant ne sort jamais hors du tunnel.
 
 Les IP des relais viennent du ControlPort (`GETINFO orconn-status`), avec `ss` en repli. **v3.7.0 :** deux défauts de lecture corrigés. Avec une seule connexion, Tor répond sur une ligne (`250-orconn-status=$FP~nom CONNECTED`), forme qui n'était pas lue. Et une erreur `552` en première ligne (relais absent du consensus) n'était pas reconnue comme fin de réponse : la lecture attendait le timeout (8 s, pendant qu'OpenVPN installe ses routes) puis perdait toute la liste.
 
@@ -731,6 +821,10 @@ Tout le reste est refusé sur-le-champ (reset TCP) : une application échoue aus
 Désactivable dans **Réglages → Sécurité → Bloquer tout trafic hors du tunnel** (`kill_switch` dans `config.json`).
 
 Les règles ont été vérifiées sur un vrai noyau, dans un espace réseau isolé : Internet direct, DNS vers le routeur et IPv6 direct bloqués ; tunnel, Tor, réseau local, DNS local, exclusions et IPv6 de lien local autorisés ; tout retiré à l'arrêt.
+
+### Connexions entrantes — `KATAKOMBA_RETOUR` / `KATAKOMBA_RETOUR_OUT` (mangle, v3.10.0)
+
+Marquent les connexions entrantes pour que leurs réponses repartent par la carte réseau d'arrivée, pas par le tunnel ; avec deux règles de routage (priorités `30300`, `30301`) et la table `19265`. Posées à la montée du tunnel, retirées à son démontage. Voir [Connexions entrantes](#connexions-entrantes-v3100).
 
 ### Blocage IPv6 — `KATAKOMBA_KS6` / `KATAKOMBA_KS6_FWD`
 
@@ -1147,7 +1241,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **693 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **746 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout
@@ -1168,6 +1262,9 @@ Ce qui est couvert, au-delà des chemins nominaux :
 | Qualité de circuit | seuil exact, plafond d'essais, thread périmé qui ne doit pas tuer le tunnel suivant |
 | Reconnexion | identifiants refusés vs coupure réseau, nombre de tentatives borné |
 | Sécurité | `auth.tmp` en 0640 (groupe `katakomba-vpn`) même sous umask permissif et jamais écrit à travers un lien symbolique, `plugin` et consorts refusés dans un `.ovpn`, `exec` refusé dans un torrc, aucun contenu de fichier recopié au journal, aucun identifiant dans le socket de statut, anti-path-traversal de l'import |
+| Console | mêmes refus que l'interface, identifiants jamais acceptés en argument, fichiers en `660` pour le groupe, export de sauvegarde en `600` |
+| Connexions entrantes | règles posées avant les routes du tunnel, en tout ou rien, retirées au démontage, connexions venues du tunnel exclues |
+| Paquets | paquet sans interface dépourvu de dépendances graphiques, les deux variantes se remplaçant sans rien arrêter ni effacer |
 | Cohérence | version identique dans `constants.py` et les deux READMEs, `--script-security 1` imposé **après** `--config` |
 
 Plusieurs tests exercent aussi le système en **lecture seule** pour valider les parseurs contre la réalité plutôt que contre un échantillon figé (format de `/proc/net/dev`, sortie de `resolvectl status`).
@@ -1202,6 +1299,8 @@ python3 outils/traductions.py verifier        # manques, {champs} incohérents (
 **OpenVPN sans privilège (v3.9.0) :** OpenVPN tourne sous `katakomba-vpn`, sans aucune capacité ; le daemon pose l'adresse et les routes, et refuse toute route poussée qui sortirait du tunnel (voir *Montage du tunnel*).
 
 **torrc :** mode `660 root:katakomba`, validé par liste blanche avant chaque démarrage de Tor.
+
+**Console lancée en root (v3.10.0) :** sur un serveur, les commandes de configuration sont souvent lancées avec `sudo`, dans des dossiers que le groupe `katakomba` peut modifier. Aucune écriture ne suit un lien symbolique (`O_NOFOLLOW`, fichier temporaire créé avec `O_EXCL`, renommage atomique), et l'export d'une sauvegarde ne recopie jamais un lien déposé dans `providers/`.
 
 **Portée du groupe `katakomba` :** ce groupe existe pour que le GUI tourne **sans root**. Il donne en contrepartie l'accès en écriture à des fichiers que le daemon consomme en root (`config.json`, `torrc`, `providers/*.ovpn`). La v3.7.0 ferme les voies connues par lesquelles ce groupe pouvait obtenir root :
 
@@ -1238,7 +1337,7 @@ Le groupe reste sensible — il lit les identifiants VPN et choisit les serveurs
 ## Premiers pas
 
 1. **Téléchargez chez votre fournisseur VPN** sa configuration OpenVPN (fichier `.ovpn` ou archive `.zip`), de préférence en **TCP**. Ne gardez que les serveurs voulus.
-2. **Installez le paquet** : `sudo apt install ./katakomba_<version>_all.deb`.
+2. **Installez le paquet** : `sudo apt install ./katakomba_<version>_all.deb` (sur un serveur : voir [Serveur sans écran](#serveur-sans-écran)).
 3. **Ouvrez « Katakomba »** depuis le menu des applications. Au premier lancement, un **assistant** vous guide en trois écrans :
    - **Fournisseur** : un nom et le fichier téléchargé, adapté automatiquement ;
    - **Identifiants** : identifiant et mot de passe OpenVPN (chez beaucoup de fournisseurs, différents de ceux du site) ;
@@ -1262,6 +1361,7 @@ La première connexion prend 1 à 3 minutes, le temps que Tor rejoigne son rése
 ```bash
 sudo apt remove katakomba     # retire le programme, garde vos réglages
 sudo apt purge  katakomba     # efface aussi réglages, fournisseurs et comptes
+# katakomba-headless : mêmes commandes avec ce nom
 ```
 
 **Installé depuis les sources :**

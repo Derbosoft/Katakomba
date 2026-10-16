@@ -87,6 +87,9 @@ class StatusMixin:
             "lan_sharing":    self._lan_active,
             "ipv6_blocked":   self._ipv6_blocked,
             "kill_switch":    self._kill_active,
+            # Réponses aux connexions entrantes (SSH…) hors tunnel, par la
+            # carte d'origine : sans elles, une session distante tombe.
+            "incoming_return": self._retour_actif,
             "kill_switch_config": bool(self.config.get("kill_switch", True)),
             "public_exclusions": self._exclusions_publiques(),
         }

@@ -60,6 +60,17 @@ KILL_CHAINS = (
     ("ip6tables", "FORWARD", "KATAKOMBA_KILL6_FWD", True,  True),
 )
 
+# Retour des connexions entrantes (v3.10.0) : une connexion arrivée par la
+# carte réseau (SSH, serveur web…) repart par elle, jamais par le tunnel.
+# Voir NetworkMixin._retour_entrant_on.  Un seul bit de marque, laissé libre
+# par Docker, kube-proxy et les pare-feu courants.
+RETOUR_MARQUE     = "0x1000000/0x1000000"
+RETOUR_TABLE      = "19265"
+RETOUR_PRIORITES  = ("30300", "30301")
+RETOUR_CHAINES    = (("PREROUTING", "KATAKOMBA_RETOUR"),
+                     ("OUTPUT",     "KATAKOMBA_RETOUR_OUT"))
+SRC_VALID_MARK    = Path("/proc/sys/net/ipv4/conf/all/src_valid_mark")
+
 TOR_CTRL_PORT     = 9051
 RECONNECT_DELAY   = 15
 RECONNECT_MAX     = 5
@@ -281,6 +292,8 @@ class DaemonCore:
 
         self._protected_routes: set = set()
         self._routes_exclues = []      # posées par _monter_tunnel
+        self._retour_actif   = False   # retour des connexions entrantes
+        self._src_valid_mark = None    # valeur d'origine, rendue à l'arrêt
         self._ovpn_texte     = ""      # .ovpn validé (topologie, MTU)
 
         # deque bornée : l'ajout chasse le plus ancien, sans recopier la liste
@@ -400,6 +413,7 @@ class DaemonCore:
         # Interface tunnel d'une session précédente : la supprimer emporte
         # son adresse et ses routes.
         _run("ip", "link", "del", "dev", TUN_IFACE)
+        self._retour_entrant_off(force=True)
         self._log("Nettoyage terminé.", "OK")
 
     # ── Démarrage des services ────────────────────────────────────────────────

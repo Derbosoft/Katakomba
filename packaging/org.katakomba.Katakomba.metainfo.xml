@@ -92,6 +92,17 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.10.0" date="2026-10-16">
+      <description>
+        <p>Katakomba now runs on servers and machines without a screen. A separate package leaves out the graphical interface, and every setting can be changed from the command line.</p>
+        <ul>
+          <li>Incoming connections (SSH, web server) stay reachable once the tunnel is up; everything the machine sends itself still goes through the tunnel</li>
+          <li>Trial start for remote administration: the service stops by itself unless confirmed</li>
+          <li>The diagnostics check that replies to incoming connections leave outside the tunnel</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.10.0</url>
+    </release>
     <release version="3.9.0" date="2026-10-15">
       <description>
         <p>OpenVPN no longer runs as root. It parses data received from the network; a flaw in it, or a malicious VPN server, could take over the machine. It now runs as a dedicated user with no privileges at all, and Katakomba sets up the tunnel itself.</p>

@@ -185,6 +185,8 @@ class SuiteIntegrityTest(unittest.TestCase):
             ("deepcopy", "défauts partagés (trouvé par la suite)"),
             ("ordre des comptes tiré au hasard", "comptes aléatoires"),
             ("l'ordre n'a pas été replanifié", "replan à chaud des comptes"),
+            ("suppress_prefixlength", "retour des connexions entrantes (SSH d'un serveur)"),
+            ("ecrire_sans_lien", "écritures de la console en root sans lien symbolique"),
         ]:
             # Pas de dump de `couverture` dans le message : plusieurs Ko.
             self.assertTrue(marqueur in couverture,

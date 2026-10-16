@@ -56,3 +56,52 @@ jobs:
         with:
           name: katakomba-deb
           path: dist/*.deb
+
+  # Les paquets installés pour de vrai sur un Ubuntu neuf : dépendances,
+  # postinst (install.sh en mode paquet), console, passage d'une variante à
+  # l'autre et purge.  Le service n'est jamais démarré (aucun fournisseur).
+  installation:
+    name: Installation des paquets
+    needs: paquet
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: katakomba-deb
+          path: dist
+
+      - name: Sans interface (serveur)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./dist/katakomba-headless_*_all.deb
+          systemctl is-enabled katakomba
+          test ! -e /opt/katakomba/main.py
+          test ! -e /usr/share/applications/org.katakomba.Katakomba.desktop
+          if katakomba gui; then exit 1; fi
+          katakomba help | grep -q "provider"
+          sudo katakomba exclude add 10.1.2.3
+          sudo katakomba set kill-switch off
+          sudo katakomba provider list
+          sudo grep -q '"10.1.2.3/32"' /etc/katakomba/config.json
+          test "$(sudo stat -c '%a %G' /etc/katakomba/config.json)" = "660 katakomba"
+
+      - name: Passage à la version avec interface
+        run: |
+          sudo apt-get install -y ./dist/katakomba_*_all.deb
+          test -e /opt/katakomba/main.py
+          test -e /usr/share/applications/org.katakomba.Katakomba.desktop
+          sudo grep -q '"10.1.2.3/32"' /etc/katakomba/config.json
+          systemctl is-enabled katakomba
+          # Variante remplacée, restée « à purger » : sa purge n'efface rien.
+          if dpkg-query -W -f='${Status}' katakomba-headless 2>/dev/null | grep -q config-files; then
+              sudo dpkg --purge katakomba-headless
+          fi
+          sudo grep -q '"10.1.2.3/32"' /etc/katakomba/config.json
+          test -e /opt/katakomba/constants.py
+
+      - name: Purge
+        run: |
+          sudo apt-get purge -y katakomba
+          test ! -e /etc/katakomba
+          test ! -e /opt/katakomba
+          test ! -e /etc/systemd/system/katakomba.service

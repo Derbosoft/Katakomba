@@ -351,8 +351,9 @@ class DoctorCommandTest(unittest.TestCase):
 
     def test_commande_presente_et_documentee(self):
         self.assertIn("    doctor)", CLI)
-        bloc = CLI[CLI.index("help|--help"):]
-        self.assertIn("doctor", bloc, "doctor absent de l'aide")
+        self.assertIn('console.py" help', CLI[CLI.index("help|--help"):])
+        self.assertTrue('("doctor", _(' in (ROOT / "console.py").read_text(),
+                        "doctor absent de l'aide")
 
     def test_n_exige_pas_root(self):
         """Doit rester lançable par l'utilisateur, sans invite de mot de passe.
@@ -395,6 +396,8 @@ class DoctorCommandTest(unittest.TestCase):
             ("ipv6_blocked", "blocage IPv6"),
             ("api.ipify.org", "sortie Internet réelle"),
             ("--interface", "sortie liée au tunnel"),
+            ("incoming_return", "retour des connexions entrantes (SSH)"),
+            ('"rule", "show"', "règles de routage réellement posées"),
         ]:
             self.assertIn(sonde, bloc, f"doctor ne vérifie pas : {quoi}")
 
@@ -528,7 +531,7 @@ class PaquetDebTest(unittest.TestCase):
         import re
         livres = _liste_bash(INSTALL, "FICHIERS_CODE")
         sources = list((ROOT / "daemon").glob("*.py")) + list((ROOT / "gui").glob("*.py")) \
-            + [ROOT / "main.py"]
+            + [ROOT / "main.py", ROOT / "console.py"]
         for f in sources:
             for mod in re.findall(r"^\s*(?:from|import)\s+(\w+)", f.read_text(), re.M):
                 if (ROOT / f"{mod}.py").exists():
@@ -599,6 +602,123 @@ class PaquetDebTest(unittest.TestCase):
         self.assertIn("# Katakomba — CLI wrapper", CLI)
 
 
+class SansInterfaceTest(unittest.TestCase):
+    """Serveur, machine sans écran : paquet katakomba-headless, ou
+    « install.sh --sans-interface »."""
+
+    BUILD = (PAQ / "build-deb.sh").read_text()
+
+    def test_paquet_sans_dependance_graphique(self):
+        control = (PAQ / "control-headless.in").read_text()
+        self.assertIn("Package: katakomba-headless", control)
+        depends = next(l for l in control.splitlines() if l.startswith("Depends:"))
+        for absent in ("gi", "gtk", "adw", "rsvg", "pkexec", "policykit"):
+            self.assertNotIn(absent, depends.lower(), absent)
+        for dep in ("tor", "openvpn", "iptables", "iproute2", "procps", "systemd-resolved"):
+            self.assertIn(dep, depends)
+
+    def test_les_deux_variantes_s_excluent(self):
+        """Installer l'une remplace l'autre, réglages conservés."""
+        for modele, autre in (("control.in", "katakomba-headless"),
+                              ("control-headless.in", "katakomba")):
+            control = (PAQ / modele).read_text()
+            for champ in ("Conflicts", "Replaces"):
+                ligne = next(l for l in control.splitlines() if l.startswith(champ + ":"))
+                self.assertIn(autre, [x.strip() for x in ligne.split(":", 1)[1].split(",")],
+                              f"{modele} : {champ}")
+
+    def test_remplacement_ne_desinstalle_rien(self):
+        """prerm « remove in-favour » : le postinst de l'autre variante
+        reconfigure ; désinstaller couperait le service pour rien."""
+        prerm = (PAQ / "prerm").read_text()
+        self.assertLess(prerm.index('"in-favour"'), prerm.index("uninstall.sh --paquet"))
+
+    def test_purge_d_une_variante_remplacee_n_efface_rien(self):
+        """La variante remplacée reste « à purger » : la purger plus tard ne
+        doit pas effacer les réglages ni le code de celle qui est installée."""
+        postrm = (PAQ / "postrm").read_text()
+        bloc = postrm[postrm.index("purge)"):]
+        self.assertLess(bloc.index("/opt/katakomba/constants.py"), bloc.index("rm -rf"))
+
+    def test_meme_contenu_que_l_installation_sans_interface(self):
+        for texte in (self.BUILD, INSTALL):
+            self.assertIn("! -name modele.py ! -name __init__.py", texte)
+            for retire in ("main.py", "assets", "polkit"):
+                self.assertRegex(texte, r"rm -rf [^\n]*/opt/katakomba/" + retire
+                                 if texte is self.BUILD else
+                                 r'rm -rf [^\n]*"\$INSTALL_DIR/' + retire + '"')
+        for systeme in ("usr/share/applications", "usr/share/metainfo",
+                        "usr/share/polkit-1", "usr/share/icons"):
+            self.assertIn(f'"$H/{systeme}"', self.BUILD)
+
+    def test_console_livree_avec_son_modele(self):
+        """La console importe gui.modele : il doit rester dans le paquet."""
+        console = (ROOT / "console.py").read_text()
+        self.assertIn("from gui import modele", console)
+        self.assertIn("console.py", _liste_bash(INSTALL, "FICHIERS_CODE"))
+        modele = (ROOT / "gui" / "modele.py").read_text()
+        for interdit in ("import gi", "from gi", "from gui.", "from .page", "from . import"):
+            self.assertNotIn(interdit, modele, f"le modèle dépend de l'interface : {interdit}")
+
+    def test_installation_detecte_la_variante(self):
+        self.assertIn("--sans-interface|--headless) AVEC_GUI=0", INSTALL)
+        self.assertIn('[ "$PAQUET" = "1" ] && [ ! -f /opt/katakomba/main.py ]', INSTALL)
+        bloc = INSTALL[INSTALL.index("apt-get update -qq"):]
+        bloc = bloc[:bloc.index("\nfi\n")]
+        self.assertIn('if [ "$AVEC_GUI" = 1 ]', bloc, "GTK installé sur un serveur")
+
+    def test_verifications_sans_interface(self):
+        """Sans interface, ni GTK ni polkit ne doivent compter comme des échecs."""
+        bloc = INSTALL[INSTALL.index("── Vérification"):]
+        self.assertLess(bloc.index('if [ "$AVEC_GUI" = 1 ]'), bloc.index("gui_disponible"))
+        self.assertLess(bloc.index('if [ "$AVEC_GUI" = 1 ]', bloc.index("gui_disponible")),
+                        bloc.index("règles polkit absentes"))
+
+    def test_commandes_de_configuration(self):
+        bloc = CLI[CLI.index("    provider|fournisseur"):]
+        self.assertIn('exec python3 -B "$DAEMON_DIR/console.py" "$@"', bloc[:bloc.index(";;")])
+        self.assertNotIn("_need_root", bloc[:bloc.index(";;")],
+                         "le groupe katakomba configure sans sudo, comme l'interface")
+
+    def test_interface_absente_expliquee(self):
+        bloc = CLI[CLI.index("    gui)"):CLI.index("    autoriser)")]
+        self.assertIn("katakomba help", bloc)
+
+    def test_demarrage_a_l_essai(self):
+        """À distance : arrêt automatique sauf confirmation, l'accès revient."""
+        bloc = CLI[CLI.index("    start)"):CLI.index("    confirm|confirmer)")]
+        self.assertIn('systemd-run --quiet --unit=katakomba-essai --on-active="${ESSAI}min"', bloc)
+        self.assertIn('/usr/bin/systemctl stop "$SERVICE"', bloc)
+        self.assertLess(bloc.index("systemd-run"), bloc.index('systemctl start "$SERVICE"'),
+                        "le filet doit être posé avant le démarrage")
+        self.assertIn("_session_ssh", bloc)
+        confirmer = CLI[CLI.index("    confirm|confirmer)"):CLI.index("    stop)")]
+        self.assertIn("systemctl stop katakomba-essai.timer", confirmer)
+        arret = CLI[CLI.index("    stop)"):CLI.index("    restart)")]
+        self.assertIn("katakomba-essai.timer", arret, "un essai survivrait à l'arrêt")
+
+
+class RetourEntrantScriptsTest(unittest.TestCase):
+    """Le nettoyage (arrêt, réparation) retire aussi le retour des connexions
+    entrantes : marquage, règles et table de routage."""
+
+    def test_nettoyage(self):
+        cleanup = INSTALL[INSTALL.index("CLEANUP_EOF"):INSTALL.rindex("CLEANUP_EOF")]
+        for texte, nom in ((cleanup, "cleanup"), (REPAIR, "repair_network.sh")):
+            for attendu in ("KATAKOMBA_RETOUR", "KATAKOMBA_RETOUR_OUT", "-t mangle -D",
+                            "ip rule del priority 30300", "ip rule del priority 30301",
+                            "ip route flush table 19265"):
+                self.assertIn(attendu, texte, f"{nom} : {attendu}")
+
+    def test_memes_valeurs_que_le_daemon(self):
+        import daemon.core as core
+        self.assertEqual(core.RETOUR_TABLE, "19265")
+        self.assertEqual(core.RETOUR_PRIORITES, ("30300", "30301"))
+        self.assertEqual([c for _p, c in core.RETOUR_CHAINES],
+                         ["KATAKOMBA_RETOUR", "KATAKOMBA_RETOUR_OUT"])
+        self.assertIn("lookup 19265", CLI, "doctor ne vérifie pas la bonne table")
+
+
 class DesinstallationTest(unittest.TestCase):
 
     def test_reglages_conserves_sans_purge(self):
@@ -619,7 +739,8 @@ class DesinstallationTest(unittest.TestCase):
     def test_cli_renvoie_vers_apt_si_installe_par_paquet(self):
         bloc = CLI[CLI.index("    uninstall|desinstaller)"):]
         self.assertIn("dpkg-query", bloc)
-        self.assertIn("apt remove katakomba", bloc)
+        self.assertIn("for PAQ in katakomba katakomba-headless", bloc)
+        self.assertIn("apt remove $PAQ", bloc)
 
 
 class AccesGuiTest(unittest.TestCase):

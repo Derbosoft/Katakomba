@@ -5,6 +5,11 @@
 set -e
 case "$1" in
     remove|deconfigure)
+        # Remplacé par l'autre variante (katakomba ↔ katakomba-headless) :
+        # son postinst reconfigure et relance le service — rien à défaire.
+        if [ "${2:-}" = "in-favour" ]; then
+            exit 0
+        fi
         bash /opt/katakomba/uninstall.sh --paquet || true
         ;;
 esac

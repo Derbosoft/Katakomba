@@ -160,6 +160,61 @@ class ConfigFichierTest(Bac):
         self.assertEqual(DEFAULT_CONFIG, avant)
 
 
+class EcritureSansLienTest(Bac):
+    """La console tourne parfois en root (serveur), dans des dossiers que le
+    groupe katakomba peut modifier : aucune écriture ne suit un lien."""
+
+    def setUp(self):
+        super().setUp()
+        self.victime = self.base / "victime"
+        self.victime.write_text("intact")
+
+    def test_lien_a_la_place_du_fichier_temporaire(self):
+        (self.base / "config.json.tmp").symlink_to(self.victime)
+        modele.enregistrer_config({"a": 1})
+        self.assertEqual(self.victime.read_text(), "intact")
+        self.assertEqual(json.loads(modele.CONFIG_FILE.read_text()), {"a": 1})
+
+    def test_lien_a_la_place_du_fichier(self):
+        """Remplacé par le renommage, jamais écrit à travers."""
+        modele.CONFIG_FILE.symlink_to(self.victime)
+        modele.enregistrer_config({"a": 1})
+        self.assertEqual(self.victime.read_text(), "intact")
+        self.assertFalse(modele.CONFIG_FILE.is_symlink())
+
+    def test_lien_a_la_place_du_dossier_du_fournisseur(self):
+        ailleurs = self.base / "ailleurs"
+        ailleurs.mkdir()
+        modele.PROVIDERS_DIR.mkdir()
+        (modele.PROVIDERS_DIR / "vpn").symlink_to(ailleurs)
+        f = self.base / "a.ovpn"
+        f.write_text("client\ndev tun\nproto tcp\nremote a 443\n<ca>\nX\n</ca>\n")
+        res, _ = modele.preparer_import([str(f)])
+        with self.assertRaises(OSError):
+            modele.ecrire_ovpn("vpn", res, [str(f)])
+        self.assertEqual(list(ailleurs.iterdir()), [])
+
+    def test_sauvegarde_ne_copie_pas_un_lien(self):
+        """Un .ovpn remplacé par un lien vers un fichier système n'entre pas
+        dans la sauvegarde."""
+        (modele.PROVIDERS_DIR / "x").mkdir(parents=True)
+        (modele.PROVIDERS_DIR / "x" / "x.ovpn").symlink_to(self.victime)
+        modele.TORRC_FILE.symlink_to(self.victime)
+        zip_ = self.base / "s.zip"
+        modele.exporter({"providers": [{"name": "x", "ovpn_file": "providers/x/x.ovpn"}]}, zip_)
+        with zipfile.ZipFile(zip_) as zf:
+            self.assertEqual(zf.namelist(), ["config.json"])
+
+    def test_droits_du_groupe_quel_que_soit_l_umask(self):
+        import os
+        ancien = os.umask(0o077)
+        try:
+            modele.enregistrer_config({})
+        finally:
+            os.umask(ancien)
+        self.assertEqual(modele.CONFIG_FILE.stat().st_mode & 0o777, 0o660)
+
+
 class DefaultConfigIntegrityTest(unittest.TestCase):
 
     def test_listes_par_defaut_vides(self):

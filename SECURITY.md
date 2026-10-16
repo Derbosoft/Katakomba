@@ -10,8 +10,8 @@ Only the latest release receives fixes.
 
 | Version | Supported |
 |---------|-----------|
-| 3.9.x   | ✅ |
-| < 3.9   | ❌ |
+| 3.10.x  | ✅ |
+| < 3.10  | ❌ |
 
 ## Reporting a vulnerability
 

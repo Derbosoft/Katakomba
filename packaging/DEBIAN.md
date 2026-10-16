@@ -28,6 +28,13 @@ des installations existantes (depuis `/opt/katakomba`).
 | 7 | Pas de page de manuel | Chaque commande de `/usr/bin` devrait en avoir une (lintian) | `katakomba.1`, par exemple généré depuis l'aide du CLI |
 | 8 | `Comment=` du lanceur en français par défaut | La valeur par défaut est en anglais | `Comment=` en anglais, `Comment[fr]=` en français |
 
+**Deux paquets binaires (v3.10.0).** `katakomba` (avec interface) et
+`katakomba-headless` (serveurs, sans dépendance graphique) sortent du même
+code ; dans `debian/control`, deux paragraphes `Package:` qui
+s'excluent (`Conflicts`/`Replaces`), ou, plus dans l'esprit de Debian, un
+paquet commun `katakomba` (daemon, console) et un paquet `katakomba-gui`
+qui en dépend.
+
 La migration depuis l'ancien nom reste dans `install.sh` (installation
 depuis les sources) : aucune version de Debian n'a jamais contenu l'ancien
 paquet, le paquet Debian n'en a pas besoin.

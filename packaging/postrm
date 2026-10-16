@@ -4,6 +4,12 @@
 set -e
 case "$1" in
     purge)
+        # L'autre variante (katakomba ↔ katakomba-headless) est installée :
+        # réglages et code sont aussi les siens.  Une variante remplacée reste
+        # « à purger » (rc) : la purger plus tard ne doit rien effacer.
+        if [ -e /opt/katakomba/constants.py ]; then
+            exit 0
+        fi
         rm -rf /etc/katakomba /var/lib/katakomba /opt/katakomba
         userdel katakomba-vpn 2>/dev/null || true
         groupdel katakomba-vpn 2>/dev/null || true

@@ -19,6 +19,7 @@ import json
 import os
 import re
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -111,16 +112,61 @@ def charger_config() -> dict:
     return defauts
 
 
+def ecrire_sans_lien(chemin: Path, data: bytes, mode: int = 0o660):
+    """Écriture atomique (tmp + fsync + rename) qui ne suit jamais un lien
+    symbolique.  Le dossier est inscriptible par le groupe katakomba, et la
+    console tourne parfois en root (serveur) : un lien « config.json.tmp →
+    /etc/shadow » déposé par un membre du groupe ferait sinon écraser un
+    fichier système.  Le dossier lui-même est ouvert sans suivre de lien ;
+    son parent appartient à root.  PermissionError remonte à l'appelant."""
+    dossier = os.open(chemin.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        tmp = chemin.name + ".tmp"
+        try:
+            os.unlink(tmp, dir_fd=dossier)
+        except FileNotFoundError:
+            pass
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode,
+                     dir_fd=dossier)
+        with os.fdopen(fd, "wb") as f:
+            os.fchmod(f.fileno(), mode)          # quel que soit l'umask
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, chemin.name, src_dir_fd=dossier, dst_dir_fd=dossier)
+    finally:
+        os.close(dossier)
+
+
+def lire_sans_lien(chemin: Path, limite: int = OVPN_MAX) -> bytes:
+    """Contenu d'un fichier ordinaire, sans suivre de lien symbolique."""
+    fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise OSError(_("{fichier} : pas un fichier ordinaire").format(fichier=chemin.name))
+        data = f.read(limite + 1)
+    if len(data) > limite:
+        raise ValueError(_("{fichier} : trop volumineux").format(fichier=chemin.name))
+    return data
+
+
+def dossier_fournisseur(nom: str) -> Path:
+    """providers/<nom>/, créé au besoin.  Un lien symbolique à sa place est
+    refusé à l'écriture (ecrire_sans_lien)."""
+    if not composant_sur(nom):
+        raise ValueError(_("Le nom ne peut contenir ni « / » ni « \\ »."))
+    PROVIDERS_DIR.mkdir(parents=True, exist_ok=True)
+    dossier = PROVIDERS_DIR / nom
+    try:
+        os.mkdir(dossier, 0o2770)
+    except FileExistsError:
+        pass
+    return dossier
+
+
 def enregistrer_config(config: dict):
-    """Écriture atomique (tmp + fsync + rename) : jamais de config.json
-    tronqué après une coupure.  PermissionError remonte à l'appelant."""
-    tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
-    with open(tmp, "w") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-        f.flush()
-        os.fsync(f.fileno())
-    tmp.chmod(0o660)          # root + groupe katakomba
-    os.replace(tmp, CONFIG_FILE)
+    """config.json, root + groupe katakomba (voir ecrire_sans_lien)."""
+    ecrire_sans_lien(CONFIG_FILE, json.dumps(config, indent=2, ensure_ascii=False).encode())
 
 
 def message_droits() -> str:
@@ -214,7 +260,7 @@ def verifier_nom(nom: str, fournisseurs) -> str:
     nom = nom.strip()
     if not nom:
         return _("Donnez un nom au fournisseur (par exemple celui de votre VPN).")
-    if nom in (".", "..") or "/" in nom or "\\" in nom:
+    if not composant_sur(nom):
         return _("Le nom ne peut contenir ni « / » ni « \\ ».")
     if any(p.get("name", "").lower() == nom.lower() for p in fournisseurs):
         return _("Un fournisseur « {nom} » existe déjà.").format(nom=nom)
@@ -265,10 +311,8 @@ def nom_destination(fournisseur: str, chemins) -> str:
 
 def ecrire_ovpn(fournisseur: str, res, chemins) -> str:
     """Écrit la configuration adaptée ; renvoie son chemin relatif."""
-    dossier = PROVIDERS_DIR / fournisseur
-    dossier.mkdir(parents=True, exist_ok=True)
-    dest = dossier / nom_destination(fournisseur, chemins)
-    dest.write_text(res.texte)
+    dest = dossier_fournisseur(fournisseur) / nom_destination(fournisseur, chemins)
+    ecrire_sans_lien(dest, res.texte.encode())
     return str(dest.relative_to(SCRIPT_DIR))
 
 
@@ -473,11 +517,7 @@ def enregistrer_torrc(contenu: str) -> list:
     refus = analyser_torrc(contenu)
     if refus:
         return refus
-    TORRC_FILE.write_text(completer_obligatoires(contenu))
-    try:
-        TORRC_FILE.chmod(0o660)
-    except PermissionError:
-        pass
+    ecrire_sans_lien(TORRC_FILE, completer_obligatoires(contenu).encode())
     return []
 
 
@@ -494,13 +534,21 @@ def exporter(config: dict, chemin):
             ovpn = p.get("ovpn_file", "")
             if not ovpn:
                 continue
-            chemin_ovpn = Path(ovpn)
-            if not chemin_ovpn.is_absolute():
-                chemin_ovpn = SCRIPT_DIR / chemin_ovpn
-            if chemin_ovpn.exists():
-                zf.write(str(chemin_ovpn), f"providers/{p['name']}/{chemin_ovpn.name}")
-        if TORRC_FILE.exists():
-            zf.write(str(TORRC_FILE), "torrc")
+            # Mêmes chemins que ceux qu'accepte le daemon, lus sans suivre
+            # de lien : en root, un lien déposé dans providers/ ferait
+            # sinon copier un fichier système dans la sauvegarde.
+            if not chemin_ovpn_sur(ovpn):
+                continue
+            chemin_ovpn = SCRIPT_DIR / ovpn
+            try:
+                data = lire_sans_lien(chemin_ovpn)
+            except (OSError, ValueError):
+                continue
+            zf.writestr(f"providers/{p['name']}/{chemin_ovpn.name}", data)
+        try:
+            zf.writestr("torrc", lire_sans_lien(TORRC_FILE))
+        except (OSError, ValueError):
+            pass
 
 
 def lire_sauvegarde(chemin):
@@ -582,9 +630,11 @@ def importer_fichiers(zf, nouvelle: dict) -> list:
                 fichier=f"{parts[1]}/{parts[2]}",
                 raison=refus[0] if refus else _("trop volumineux")))
             continue
-        dossier = PROVIDERS_DIR / parts[1]
-        dossier.mkdir(parents=True, exist_ok=True)
-        (dossier / parts[2]).write_bytes(data)
+        try:
+            ecrire_sans_lien(dossier_fournisseur(parts[1]) / parts[2], data)
+        except OSError as e:
+            ecartes.append(_("{fichier} : {raison}").format(
+                fichier=f"{parts[1]}/{parts[2]}", raison=e.strerror or e))
     # Chemins .ovpn : relatifs, sous providers/, rien d'autre.  Un chemin
     # absolu ferait lire au daemon, en root, un fichier arbitraire.
     for p in nouvelle.get("providers", []):
@@ -603,11 +653,7 @@ def importer_fichiers(zf, nouvelle: dict) -> list:
         if refus:
             ecartes.append(_("{fichier} : {raison}").format(fichier="torrc", raison=refus[0]))
         else:
-            TORRC_FILE.write_text(texte)
-            try:
-                TORRC_FILE.chmod(0o660)
-            except PermissionError:
-                pass
+            ecrire_sans_lien(TORRC_FILE, texte.encode())
     return ecartes
 
 

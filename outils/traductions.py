@@ -50,7 +50,7 @@ class Entree:
 def sources():
     """(nom affiché, code Python, décalage de ligne) de chaque source."""
     fichiers = sorted((RACINE / "gui").glob("*.py")) + [
-        RACINE / n for n in ("main.py", "validation.py", "adaptation.py")]
+        RACINE / n for n in ("main.py", "console.py", "validation.py", "adaptation.py")]
     for f in fichiers:
         yield f.relative_to(RACINE).as_posix(), f.read_text(encoding="utf-8"), 0
     texte = CLI.read_text(encoding="utf-8")
