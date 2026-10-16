@@ -215,6 +215,15 @@ class InstallServiceUnitTest(unittest.TestCase):
         for f in ("AF_UNIX", "AF_INET", "AF_INET6", "AF_NETLINK", "AF_PACKET"):
             self.assertIn(f, familles)
 
+    def test_pas_de_user_root(self):
+        """v3.11.0 : « User=root » + CapabilityBoundingSet → systemd retire
+        CAP_SETUID des droits effectifs, et Tor ne passe plus à debian-tor
+        (Operation not permitted).  Constaté sur systemd 259, Tor ne
+        démarrait plus.  root est le défaut : la ligne n'a rien à faire là."""
+        unite = self._unite()
+        self.assertNotRegex(unite, r"\nUser=", "User= retire CAP_SETUID (v3.11.0)")
+        self.assertIn("CAP_SETUID", unite)
+
     def test_ecritures_permises(self):
         """Système de fichiers en lecture seule (strict) : seuls ces chemins."""
         unite = self._unite()

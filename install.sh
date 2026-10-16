@@ -542,7 +542,10 @@ StartLimitIntervalSec=0
 Type=notify
 NotifyAccess=main
 WatchdogSec=90
-User=root
+# Pas de « User=root » (root est le défaut) : avec cette ligne et un
+# CapabilityBoundingSet, systemd 259 ne laisse pas CAP_SETUID dans les droits
+# effectifs — Tor ne pouvait plus passer à debian-tor (v3.11.0, corrigé en
+# 3.11.1 ; vérifié : CapEff 0x346f, bit 7 absent).
 WorkingDirectory=$INSTALL_DIR
 ExecStartPre=$CLEANUP_SCRIPT
 ExecStart=/usr/bin/python3 -m daemon

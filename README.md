@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.11.0
+# Katakomba — v3.11.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.11.0-blue)
+![Version](https://img.shields.io/badge/Version-3.11.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -198,7 +198,7 @@ Creates `/etc/systemd/system/katakomba.service`:
   - read-only file system (`ProtectSystem=strict`) except `/etc/katakomba`, `/var/lib/katakomba`, `/run`, the DNS drop-in and dnsmasq leases;
   - one device only, `/dev/net/tun` (`DevicePolicy=closed`);
   - `SystemCallFilter=@system-service`, `RestrictAddressFamilies`, `RestrictNamespaces`, `ProtectKernelModules`, `ProtectKernelLogs`, `ProtectClock`, `ProtectHostname`, `ProtectControlGroups`, `LockPersonality`, `RestrictRealtime`, `RestrictSUIDSGID`, plus `NoNewPrivileges`, `PrivateTmp`, `ProtectHome`;
-  - deliberately left out: `ProtectKernelTunables` (the daemon writes to `/proc/sys/net`), `ProtectProc=invisible` (it must see Tor, which runs as `debian-tor`, to stop it), `PrivateDevices` (`/dev/net/tun`).
+  - deliberately left out: `ProtectKernelTunables` (the daemon writes to `/proc/sys/net`), `ProtectProc=invisible` (it must see Tor, which runs as `debian-tor`, to stop it), `PrivateDevices` (`/dev/net/tun`), and `User=root` (root is the default; with a restricted `CapabilityBoundingSet`, systemd 259 leaves `CAP_SETUID` out of the effective rights, and Tor could no longer switch to `debian-tor`: the v3.11.0 regression fixed in v3.11.1).
 
   The kill switch, unprivileged OpenVPN and incoming connections were checked with exactly these rights and this system-call filter, in an isolated network namespace (54 checks); removing `CAP_NET_ADMIN` makes them fail, which shows the restriction really applied.
 

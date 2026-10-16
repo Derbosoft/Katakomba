@@ -92,6 +92,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.11.1" date="2026-10-16" urgency="high">
+      <description>
+        <p>Fixes version 3.11.0, in which Tor could not start: the hardened service did not leave it the right to switch to its own unprivileged user. The hardening is otherwise unchanged.</p>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.11.1</url>
+    </release>
     <release version="3.11.0" date="2026-10-16">
       <description>
         <p>The background service now runs with only the rights it needs, and every published package can be verified.</p>

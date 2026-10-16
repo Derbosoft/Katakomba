@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.11.0
+# Katakomba — v3.11.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.11.0-blue)
+![Version](https://img.shields.io/badge/Version-3.11.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -198,7 +198,7 @@ Crée `/etc/systemd/system/katakomba.service` :
   - système de fichiers en lecture seule (`ProtectSystem=strict`) sauf `/etc/katakomba`, `/var/lib/katakomba`, `/run`, le drop-in DNS et les baux de dnsmasq ;
   - un seul périphérique, `/dev/net/tun` (`DevicePolicy=closed`) ;
   - `SystemCallFilter=@system-service`, `RestrictAddressFamilies`, `RestrictNamespaces`, `ProtectKernelModules`, `ProtectKernelLogs`, `ProtectClock`, `ProtectHostname`, `ProtectControlGroups`, `LockPersonality`, `RestrictRealtime`, `RestrictSUIDSGID`, en plus de `NoNewPrivileges`, `PrivateTmp`, `ProtectHome` ;
-  - volontairement absents : `ProtectKernelTunables` (le daemon écrit dans `/proc/sys/net`), `ProtectProc=invisible` (il doit voir Tor, qui tourne sous `debian-tor`, pour l'arrêter), `PrivateDevices` (`/dev/net/tun`).
+  - volontairement absents : `ProtectKernelTunables` (le daemon écrit dans `/proc/sys/net`), `ProtectProc=invisible` (il doit voir Tor, qui tourne sous `debian-tor`, pour l'arrêter), `PrivateDevices` (`/dev/net/tun`), et `User=root` (root est le défaut ; avec un `CapabilityBoundingSet` restreint, systemd 259 laisse `CAP_SETUID` hors des droits effectifs, et Tor ne pouvait plus passer à `debian-tor` : la régression de la v3.11.0, corrigée en v3.11.1).
 
   Blocage hors tunnel, OpenVPN sans privilège et connexions entrantes ont été vérifiés avec exactement ces droits et ce filtre d'appels système, dans un espace réseau isolé (54 contrôles) ; sans `CAP_NET_ADMIN`, ils échouent : la restriction s'appliquait bien.
 
