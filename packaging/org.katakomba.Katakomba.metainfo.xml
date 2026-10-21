@@ -92,6 +92,17 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.12.0" date="2026-10-21">
+      <description>
+        <p>Improvements reported by an administrator running Katakomba on about twenty machines.</p>
+        <ul>
+          <li>A monitoring tool can read the tunnel's status without being able to change the configuration</li>
+          <li>OpenVPN no longer warns at every connection that its credentials file is readable by a group</li>
+          <li>The diagnostics no longer report a failure when the account running them is not allowed to read the status</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.12.0</url>
+    </release>
     <release version="3.11.1" date="2026-10-16" urgency="high">
       <description>
         <p>Fixes version 3.11.0, in which Tor could not start: the hardened service did not leave it the right to switch to its own unprivileged user. The hardening is otherwise unchanged.</p>

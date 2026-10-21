@@ -13,6 +13,7 @@ case "$1" in
         rm -rf /etc/katakomba /var/lib/katakomba /opt/katakomba
         userdel katakomba-vpn 2>/dev/null || true
         groupdel katakomba-vpn 2>/dev/null || true
+        groupdel katakomba-statut 2>/dev/null || true
         groupdel katakomba 2>/dev/null || true
         ;;
 esac

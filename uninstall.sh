@@ -71,6 +71,7 @@ if [ "$PURGE" = "1" ]; then
            "$INSTALL_DIR/providers"
     userdel katakomba-vpn 2>/dev/null || true
     groupdel katakomba-vpn 2>/dev/null || true
+    groupdel katakomba-statut 2>/dev/null || true
     groupdel katakomba 2>/dev/null || true
 fi
 

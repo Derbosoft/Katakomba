@@ -457,7 +457,8 @@ class DoctorCommandTest(unittest.TestCase):
 
     def test_code_de_sortie_non_nul_si_probleme(self):
         bloc = CLI[CLI.index("    doctor)"):]
-        self.assertIn("publier(conclusion, 1 if n_ko else (2 if en_cours else 0))", bloc)
+        self.assertIn("publier(conclusion, 1 if n_ko else (2 if en_cours else "
+                      "(3 if non_verifie else 0)))", bloc)
         self.assertIn("sys.exit(code)", bloc)
 
     def test_reconnexion_en_cours_reconnue(self):
@@ -791,6 +792,45 @@ class IntegriteDesVersionsTest(unittest.TestCase):
         self.assertIn("Reproductibilité", ci)
 
 
+class StatutLectureSeuleScriptsTest(unittest.TestCase):
+    """v3.12.0 : lire l'état sans pouvoir modifier la configuration, et un
+    diagnostic qui distingue « pas le droit de lire » d'une panne."""
+
+    DOCTOR = CLI[CLI.index("    doctor)"):CLI.index("    logs)")]
+
+    def test_groupe_cree_et_retire(self):
+        self.assertIn("groupadd -f katakomba-statut", INSTALL)
+        for texte, nom in ((UNINSTALL, "uninstall.sh"), ((PAQ / "postrm").read_text(), "postrm")):
+            self.assertIn("groupdel katakomba-statut", texte, nom)
+
+    def test_doctor_lit_le_socket_en_lecture_seule(self):
+        self.assertIn('"/run/katakomba-statut.sock"', self.DOCTOR)
+        self.assertLess(self.DOCTOR.index('"/run/katakomba.sock"'),
+                        self.DOCTOR.index('"/run/katakomba-statut.sock"'))
+
+    def test_refus_de_permission_n_est_pas_une_panne(self):
+        """Une supervision lancée hors des groupes concluait à une panne."""
+        bloc = self.DOCTOR[self.DOCTOR.index("except PermissionError"):]
+        self.assertIn("refus = True", bloc[:200])
+        self.assertIn("note(REPORTE, _(\"Socket de statut\")", self.DOCTOR)
+        self.assertIn("(3 if non_verifie else 0)", self.DOCTOR)
+        # Un vrai problème reste prioritaire : code 1.
+        self.assertIn("publier(conclusion, 1 if n_ko else", self.DOCTOR)
+
+    def test_pas_de_faux_avertissement_sans_etat(self):
+        bloc = self.DOCTOR[self.DOCTOR.index("# ── 5. IPv6"):]
+        self.assertLess(bloc.index("if not st:"), bloc.index('st.get("ipv6_blocked")'))
+
+    def test_status_lit_les_deux_sockets(self):
+        bloc = CLI[CLI.index("    status)"):CLI.index("    doctor)")]
+        self.assertIn('"/run/katakomba-statut.sock"', bloc)
+
+    def test_autoriser_en_lecture_seule(self):
+        bloc = CLI[CLI.index("    autoriser)"):CLI.index("    uninstall|desinstaller)")]
+        self.assertIn("--statut|--status) GROUPE=katakomba-statut", bloc)
+        self.assertIn('usermod -aG "$GROUPE" "$CIBLE"', bloc)
+
+
 class RetourEntrantScriptsTest(unittest.TestCase):
     """Le nettoyage (arrêt, réparation) retire aussi le retour des connexions
     entrantes : marquage, règles et table de routage."""
@@ -841,7 +881,9 @@ class AccesGuiTest(unittest.TestCase):
 
     def test_commande_autoriser(self):
         bloc = CLI[CLI.index("    autoriser)"):]
-        self.assertIn("usermod -aG katakomba", bloc[:bloc.index(";;")])
+        bloc = bloc[:bloc.index("\n        ;;")]          # fin de la commande
+        self.assertIn("GROUPE=katakomba\n", bloc, "accès complet par défaut")
+        self.assertIn('usermod -aG "$GROUPE" "$CIBLE"', bloc)
 
     def test_interface_refusee_en_root(self):
         """GTK en root : pas d'accès à l'écran Wayland, et aucune utilité."""

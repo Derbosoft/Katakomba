@@ -276,6 +276,10 @@ echo "[2/7] Répertoire de configuration …"
 # Groupe katakomba : permet au GUI de tourner SANS root (config + providers
 # accessibles en écriture, actions systemctl via pkexec/polkit).
 groupadd -f katakomba
+# Lecture seule de l'état (v3.12.0) : /run/katakomba-statut.sock, sans aucun
+# droit sur la configuration.  Pour une supervision ou un tableau de bord :
+# sudo katakomba autoriser <compte> --statut
+groupadd -f katakomba-statut
 # Utilisateur système d'OpenVPN (v3.9.0) : OpenVPN tourne sans aucun droit,
 # sur une interface tunnel que le daemon crée à son nom.  Ni shell ni
 # répertoire personnel.
@@ -519,6 +523,8 @@ if [ -f "$CONFIG_JSON" ]; then
         iptables -t nat -D POSTROUTING -s "$LAN_SUBNET" -o tun1 -j MASQUERADE 2>/dev/null
     fi
 fi
+# Sockets de statut d'un daemon arrêté brutalement (recréés au démarrage).
+rm -f /run/katakomba.sock /run/katakomba-statut.sock
 # DNS split drop-in
 rm -f /etc/systemd/resolved.conf.d/katakomba-split.conf
 systemctl reload-or-restart systemd-resolved 2>/dev/null || true

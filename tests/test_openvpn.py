@@ -33,13 +33,35 @@ class WriteAuthTmpTest(unittest.TestCase):
             saved = m_openvpn.AUTH_TMP
             m_openvpn.AUTH_TMP = path
             try:
-                os.umask(0o000)                    # pire cas : umask permissif
-                d._write_auth_tmp("bob", "s3cret", os.getgid())
-                mode = stat.S_IMODE(path.stat().st_mode)
-                # 0640 : root et le groupe d'OpenVPN, qui tourne sans privilège.
-                self.assertEqual(mode, 0o640, f"mode {oct(mode)} au lieu de 0640")
-                self.assertEqual(path.stat().st_gid, os.getgid())
+                ancien = os.umask(0o000)           # pire cas : umask permissif
+                try:
+                    d._write_auth_tmp("bob", "s3cret", os.getuid(), os.getgid())
+                finally:
+                    os.umask(ancien)
+                st = path.stat()
+                # 0400 au nom de l'utilisateur d'OpenVPN (v3.12.0) : aucun
+                # droit de groupe — OpenVPN signalait sinon à chaque
+                # connexion « file … is group or others accessible ».
+                self.assertEqual(stat.S_IMODE(st.st_mode), 0o400,
+                                 f"mode {oct(stat.S_IMODE(st.st_mode))} au lieu de 0400")
+                self.assertEqual(st.st_uid, os.getuid(), "pas au nom d'OpenVPN")
+                self.assertEqual(st.st_gid, os.getgid())
                 self.assertEqual(path.read_text(), "bob\ns3cret\n")
+            finally:
+                m_openvpn.AUTH_TMP = saved
+
+    def test_reconnexion_reecrit_le_fichier_en_lecture_seule(self):
+        """À chaque connexion, le fichier précédent (0400) est remplacé."""
+        d = FakeDaemon()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "auth.tmp"
+            saved = m_openvpn.AUTH_TMP
+            m_openvpn.AUTH_TMP = path
+            try:
+                d._write_auth_tmp("bob", "un", os.getuid(), os.getgid())
+                d._write_auth_tmp("alice", "deux", os.getuid(), os.getgid())
+                self.assertEqual(path.read_text(), "alice\ndeux\n")
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o400)
             finally:
                 m_openvpn.AUTH_TMP = saved
 
@@ -56,7 +78,7 @@ class WriteAuthTmpTest(unittest.TestCase):
             saved = m_openvpn.AUTH_TMP
             m_openvpn.AUTH_TMP = path
             try:
-                d._write_auth_tmp("bob", "s3cret", os.getgid())
+                d._write_auth_tmp("bob", "s3cret", os.getuid(), os.getgid())
                 self.assertEqual(victime.read_text(), "intact\n",
                                  "la cible du lien a été écrasée")
                 self.assertFalse(path.is_symlink())
@@ -74,7 +96,7 @@ class WriteAuthTmpTest(unittest.TestCase):
             m_openvpn.AUTH_TMP = rep / "auth.tmp"
             try:
                 with self.assertRaises(PermissionError):
-                    d._write_auth_tmp("bob", "s3cret", os.getgid())
+                    d._write_auth_tmp("bob", "s3cret", os.getuid(), os.getgid())
             finally:
                 m_openvpn.AUTH_TMP = saved
 

@@ -4,7 +4,9 @@ Couvre le code socket de _tor_ctrl (celui qui avait provoqué les timeouts
 ControlPort) plutôt qu'un remplaçant, et les séquences d'orchestration.
 """
 
+import os
 import pathlib
+import stat
 import tempfile
 import types
 import unittest
@@ -419,6 +421,74 @@ class StatusServerTest(unittest.TestCase):
                 self.assertFalse(m_status.STATUS_SOCKET.exists())
             finally:
                 m_status.STATUS_SOCKET = saved
+
+
+class StatutLectureSeuleTest(unittest.TestCase):
+    """v3.12.0 : lire l'état ne doit pas exiger le droit de modifier la
+    configuration.  Un second socket sert le même JSON au groupe
+    katakomba-statut, qui n'a aucun droit sur /etc/katakomba."""
+
+    def setUp(self):
+        import daemon.status as m_status
+        self.m = m_status
+        self._tmp = tempfile.TemporaryDirectory()
+        rep = pathlib.Path(self._tmp.name)
+        self._sauve = (m_status.STATUS_SOCKET, m_status.STATUS_SOCKET_LECTURE, m_status.grp)
+        m_status.STATUS_SOCKET = rep / "katakomba.sock"
+        m_status.STATUS_SOCKET_LECTURE = rep / "katakomba-statut.sock"
+        self.gids = {"katakomba": os.getgid(), "katakomba-statut": os.getgid()}
+
+        def getgrnam(nom):
+            if nom not in self.gids:
+                raise KeyError(nom)
+            return types.SimpleNamespace(gr_gid=self.gids[nom])
+        m_status.grp = types.SimpleNamespace(getgrnam=getgrnam)
+
+    def tearDown(self):
+        self.m.STATUS_SOCKET, self.m.STATUS_SOCKET_LECTURE, self.m.grp = self._sauve
+        self._tmp.cleanup()
+
+    def _lire(self, chemin):
+        import json
+        import socket as pysocket
+        with pysocket.socket(pysocket.AF_UNIX) as c:
+            c.settimeout(3)
+            c.connect(str(chemin))
+            return json.loads(c.makefile().readline())
+
+    def test_meme_etat_sur_les_deux_sockets(self):
+        d = FakeDaemon(config={"providers": []})
+        d._start_status_server()
+        try:
+            for chemin in (self.m.STATUS_SOCKET, self.m.STATUS_SOCKET_LECTURE):
+                self.assertEqual(stat.S_IMODE(chemin.stat().st_mode), 0o660, chemin.name)
+                self.assertEqual(chemin.stat().st_gid, os.getgid())
+                self.assertIn("kill_switch", self._lire(chemin))
+            self.assertTrue(d.has_log("katakomba-statut.sock (groupe katakomba-statut)", "OK"))
+        finally:
+            d._stop_flag = True
+            d._stop_status_server()
+        self.assertFalse(self.m.STATUS_SOCKET.exists())
+        self.assertFalse(self.m.STATUS_SOCKET_LECTURE.exists())
+
+    def test_sans_le_groupe_pas_de_second_socket(self):
+        """Installation antérieure, pas encore relancée : rien ne casse."""
+        del self.gids["katakomba-statut"]
+        d = FakeDaemon(config={"providers": []})
+        d._start_status_server()
+        try:
+            self.assertTrue(self.m.STATUS_SOCKET.exists())
+            self.assertFalse(self.m.STATUS_SOCKET_LECTURE.exists())
+            self.assertTrue(d.has_log("pas de statut en lecture seule", "INFO"))
+        finally:
+            d._stop_flag = True
+            d._stop_status_server()
+
+    def test_n_accepte_aucune_commande(self):
+        """Le protocole n'a pas de surface d'écriture : rien n'est lu."""
+        import inspect
+        src = inspect.getsource(self.m.StatusMixin._servir_statut)
+        self.assertNotIn("recv", src)
 
 
 class RunTimeoutTest(unittest.TestCase):

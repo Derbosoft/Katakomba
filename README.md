@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.11.1
+# Katakomba — v3.12.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.11.1-blue)
+![Version](https://img.shields.io/badge/Version-3.12.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -105,7 +105,7 @@ Download `katakomba_<version>_all.deb` from the **[latest release](https://githu
 sudo apt install ./katakomba_<version>_all.deb
 ```
 
-`apt` installs the dependencies and configures everything. Then open "Katakomba" from the applications menu: the wizard takes over (see *Getting Started*). The machine's administrators (`sudo` group) get access to the interface. For another account: `sudo katakomba autoriser <user>`.
+`apt` installs the dependencies and configures everything. Then open "Katakomba" from the applications menu: the wizard takes over (see *Getting Started*). The machine's administrators (`sudo` group) get access to the interface. For another account: `sudo katakomba autoriser <user>`. To let an account (a monitoring tool, a dashboard) only *read* the status, without any right on the configuration: `sudo katakomba autoriser <user> --statut` (v3.12.0).
 
 > **Right after installing**, log out and back in: your session was opened before your account got access. The interface tells you when needed. On distributions that ship `sg` (Debian notably), `katakomba gui` handles it without logging out.
 
@@ -346,7 +346,7 @@ katakomba/
 └── dnsmasq.pid               LAN sharing
 
 /run/katakomba-vpn/     Written by the daemon (root:katakomba-vpn, 0750, volatile)
-├── auth.tmp                  Temporary OpenVPN credentials (0640, created/deleted each session)
+├── auth.tmp                  Temporary OpenVPN credentials (0400, owned by katakomba-vpn, created/deleted each session)
 └── openvpn.conf              Validated copy of the .ovpn, read by OpenVPN (0640)
 
 /var/lib/katakomba/     Written by the daemon (root, 0755, persistent)
@@ -639,7 +639,7 @@ Checks, in one command, the invariants that must hold when the connection is hea
 
 A tunnel still missing after 2 minutes is reported as a failure (KO), with the last known cause.
 
-Exit code **0** when there is no KO, **1** otherwise, **2** while a reconnection is in progress and nothing else is blocking — usable in a script or a scheduled job.
+Exit code **0** when there is no KO, **1** otherwise, **2** while a reconnection is in progress and nothing else is blocking, **3** when the account running it may not read the daemon's status (neither in the `katakomba` or `katakomba-statut` group, nor root): nothing is broken, but nothing on the daemon side was checked (v3.12.0; it used to be a KO and code 1). Usable in a script, a scheduled job or a monitoring tool: give that account `sudo katakomba autoriser <user> --statut`.
 
 ---
 
@@ -1225,7 +1225,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 
 ## Tests
 
-The project is covered by a suite of **754 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **765 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything
@@ -1245,7 +1245,7 @@ What is covered, beyond the happy paths:
 | Firewall | `DROP` always the last rule, refusal to flush the uplink, rebuild when the tunnel is renamed |
 | Circuit quality | exact threshold, retry cap, stale thread must not kill the next tunnel |
 | Reconnection | credentials refused vs network drop, bounded attempt count |
-| Security | `auth.tmp` 0640 (group `katakomba-vpn`) even under a permissive umask and never written through a symlink, `plugin` and the like rejected in an `.ovpn`, `exec` rejected in a torrc, no file content copied to the journal, no credentials in the status socket, import path-traversal guard |
+| Security | `auth.tmp` 0400 owned by `katakomba-vpn` even under a permissive umask and never written through a symlink, `plugin` and the like rejected in an `.ovpn`, `exec` rejected in a torrc, no file content copied to the journal, no credentials in the status socket, import path-traversal guard |
 | Console | same refusals as the interface, credentials never accepted as an argument, files `660` for the group, backup export `600` |
 | Incoming connections | rules set before the tunnel's routes, all-or-nothing, removed at teardown, connections from the tunnel excluded |
 | Hardening & releases | unit restrictions, only the needed rights, actions pinned by hash, tag matching the code version, reproducible build settings |
@@ -1279,7 +1279,7 @@ python3 outils/traductions.py verifier        # missing entries, mismatched {fie
 
 **Kill switch:** while the service runs, nothing leaves outside the tunnel except Tor and the local network, reconnections included (see [Kill switch](#kill-switch--katakomba_kill-v380)).
 
-**auth.tmp:** created directly as mode `640`, group `katakomba-vpn` (never exposed to the umask), just before launching OpenVPN, in `/run/katakomba-vpn` (root and OpenVPN only), never through a symlink; deleted when OpenVPN exits.
+**auth.tmp:** created directly as mode `400`, owned by `katakomba-vpn` (never exposed to the umask; no group rights since v3.12.0, OpenVPN warned about them at every connection), just before launching OpenVPN, in `/run/katakomba-vpn` (root and OpenVPN only), never through a symlink; deleted when OpenVPN exits.
 
 **OpenVPN without privileges (v3.9.0):** OpenVPN runs as `katakomba-vpn`, with no capability; the daemon sets the address and routes, and refuses any pushed route that would leave the tunnel (see *Tunnel setup*).
 
@@ -1312,6 +1312,8 @@ python3 outils/traductions.py verifier        # missing entries, mismatched {fie
 | `lan_iface` | Addresses of `lo`, `docker0`, `wg0`… flushed | Same filter as the interface; the interface must exist |
 
 Also in v3.8.1: DNS servers pushed by the VPN whose route does not go through the tunnel are ignored (a malicious server could announce your router), and the status socket is readable by the `katakomba` group only (`0660`), since it exposes your Tor guards.
+
+**Read-only status (v3.12.0):** the `katakomba` group can also rewrite the configuration, kill switch included, so giving it to a monitoring tool gave away far more than reading. A second socket, `/run/katakomba-statut.sock`, serves the same JSON (and nothing else: it accepts no command) to the `katakomba-statut` group, which has no right on `/etc/katakomba`. The interface and the first socket are unchanged.
 
 The group remains sensitive — it reads the VPN credentials and picks the servers —: only add trusted accounts.
 

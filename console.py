@@ -416,6 +416,8 @@ def aide():
         ]),
         (_("Installation (sudo) :"), [
             (_("autoriser <utilisateur>"), _("Donner accès à la configuration à un compte")),
+            (_("autoriser <utilisateur> --statut"),
+             _("Lecture seule de l'état (supervision), sans accès à la configuration")),
             ("uninstall [--purge]", ""),
         ]),
     ]

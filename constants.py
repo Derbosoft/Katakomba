@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "3.11.1"
+VERSION       = "3.12.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")
@@ -29,6 +29,12 @@ OBSOLETE_CONFIG_KEYS = ("mode", "tor_min_speed_kbs", "vpn_min_speed_kbs",
 
 SERVICE_NAME  = "katakomba"
 STATUS_SOCKET = Path("/run/katakomba.sock")
+# Statut en lecture seule (v3.12.0) : même JSON, pour le groupe
+# katakomba-statut, qui n'a aucun droit sur la configuration.  Une
+# supervision ou un tableau de bord lit l'état du tunnel sans pouvoir
+# désactiver le blocage hors tunnel.
+STATUS_SOCKET_LECTURE = Path("/run/katakomba-statut.sock")
+GROUPE_STATUT = "katakomba-statut"
 
 DEFAULT_CONFIG = {
     "providers":         [],

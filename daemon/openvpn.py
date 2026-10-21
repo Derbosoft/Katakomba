@@ -41,11 +41,15 @@ _INIT_OK    = re.compile(rf"^{_HORODATAGE}Initialization Sequence Completed( Wit
 
 class OpenVPNMixin:
 
-    def _write_auth_tmp(self, username: str, password: str, gid: int):
-        # Création directe en 0640, sans suivre de lien symbolique, dans un
-        # répertoire réservé à root et au groupe d'OpenVPN (voir _write_private).
-        _write_private(AUTH_TMP, f"{username}\n{password}\n", mode=0o640,
-                       dir_mode=0o750, gid=gid)
+    def _write_auth_tmp(self, username: str, password: str, uid: int, gid: int):
+        # 0400 au nom de katakomba-vpn (v3.12.0) : OpenVPN, qui tourne sous ce
+        # compte, le lit ; personne d'autre, groupe compris.  En 0640 groupe
+        # katakomba-vpn, OpenVPN signalait à chaque connexion « file … is
+        # group or others accessible ».  Le répertoire reste root:katakomba-vpn
+        # en 0750 : OpenVPN ne peut ni y créer ni y supprimer de fichier.
+        # Création sans suivre de lien symbolique (voir _write_private).
+        _write_private(AUTH_TMP, f"{username}\n{password}\n", mode=0o400,
+                       dir_mode=0o750, gid=gid, uid=uid)
 
     def _utilisateur_vpn(self):
         """(uid, gid) de l'utilisateur d'OpenVPN, ou None (journalisé)."""
@@ -550,7 +554,7 @@ class OpenVPNMixin:
                     "boucle de routage. Vérifiez « ip route show default » "
                     "(une route sans « via » n'est pas reconnue).", "ERROR")
 
-            self._write_auth_tmp(username, password, vpn_gid)
+            self._write_auth_tmp(username, password, vpn_uid, vpn_gid)
             if not self._creer_tun(VPN_USER):
                 self._reconnect_reason = "interface tunnel impossible à créer"
                 break

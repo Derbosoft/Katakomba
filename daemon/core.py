@@ -139,13 +139,14 @@ def _ensure_private_dir(d: Path, mode: int = 0o700, gid=None):
 
 
 def _write_private(path: Path, data: str, mode: int = 0o600,
-                   dir_mode: int = 0o700, gid=None):
+                   dir_mode: int = 0o700, gid=None, uid=None):
     """Écrit un fichier neuf, sans jamais suivre un lien symbolique.
 
     O_EXCL après suppression : le fichier est forcément créé par cet appel,
     avec ses droits définitifs dès la création (aucune fenêtre où il
-    existerait avec les droits de l'umask).  gid : groupe autorisé à le
-    lire, posé avant la moindre écriture."""
+    existerait avec les droits de l'umask).  gid : groupe du répertoire (et
+    du fichier), autorisé à le traverser.  uid : propriétaire du fichier.
+    Les deux sont posés avant la moindre écriture."""
     _ensure_private_dir(path.parent, dir_mode, gid)
     try:
         os.unlink(path)
@@ -153,8 +154,8 @@ def _write_private(path: Path, data: str, mode: int = 0o600,
         pass
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                  mode)
-    if gid is not None:
-        os.fchown(fd, -1, gid)
+    if gid is not None or uid is not None:
+        os.fchown(fd, -1 if uid is None else uid, -1 if gid is None else gid)
     with os.fdopen(fd, "w") as f:
         f.write(data)
 

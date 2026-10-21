@@ -6,8 +6,14 @@ objet JSON suivi d'un saut de ligne puis ferme.  Aucune commande n'est
 acceptée (pas de surface d'attaque en écriture).  Le socket n'expose aucun
 secret (ni identifiant ni mot de passe), mais l'état décrit l'usage de la
 machine : relais d'entrée Tor, fournisseur, compte.  Connaître les guards de
-quelqu'un aide à le désanonymiser.  Il est donc réservé au groupe katakomba
-(0660) : le GUI et `katakomba doctor`, lancés par ses membres.
+quelqu'un aide à le désanonymiser.  Il est donc réservé à des groupes (0660) :
+
+- /run/katakomba.sock, groupe katakomba : le GUI et `katakomba doctor`,
+  lancés par ses membres — qui peuvent aussi modifier la configuration ;
+- /run/katakomba-statut.sock (v3.12.0), groupe katakomba-statut : le même
+  JSON, pour une supervision ou un tableau de bord qui doit lire l'état
+  sans pouvoir désactiver le blocage hors tunnel.  Créé seulement si le
+  groupe existe (install.sh le crée).
 
 Consommation côté client :
     python3 -c "import socket,sys; s=socket.socket(socket.AF_UNIX);
@@ -22,7 +28,7 @@ import socket
 import threading
 import time
 
-from constants import STATUS_SOCKET, VERSION
+from constants import GROUPE_STATUT, STATUS_SOCKET, STATUS_SOCKET_LECTURE, VERSION
 from validation import exclusion_locale, verifier_exclusion
 
 
@@ -94,17 +100,18 @@ class StatusMixin:
             "public_exclusions": self._exclusions_publiques(),
         }
 
-    def _restreindre_socket(self):
-        """0660, groupe katakomba ; 0600 si c'est impossible.  Le
+    def _restreindre_socket(self, chemin, groupe: str) -> bool:
+        """0660, au groupe donné ; 0600 (root seul) si c'est impossible.  Le
         propriétaire reste celui qui a créé le socket : root, pour le daemon."""
         try:
-            os.chown(STATUS_SOCKET, -1, grp.getgrnam("katakomba").gr_gid)
+            os.chown(chemin, -1, grp.getgrnam(groupe).gr_gid)
         except (KeyError, OSError) as e:
-            os.chmod(STATUS_SOCKET, 0o600)
-            self._log(f"Socket de statut réservé à root (groupe katakomba "
+            os.chmod(chemin, 0o600)
+            self._log(f"Socket de statut {chemin} réservé à root (groupe {groupe} "
                       f"inutilisable : {e}).", "WARN")
-            return
-        os.chmod(STATUS_SOCKET, 0o660)
+            return False
+        os.chmod(chemin, 0o660)
+        return True
 
     def _exclusions_publiques(self) -> list:
         """Exclusions admises qui mènent à Internet : ce trafic sort avec
@@ -112,51 +119,64 @@ class StatusMixin:
         nets = (verifier_exclusion(e)[0] for e in self.config.get("excluded_ips", []))
         return [n for n in nets if n and not exclusion_locale(n)]
 
-    def _start_status_server(self):
-        """Démarre le serveur de statut sur le socket Unix (thread daemon)."""
-        srv = None
+    def _sockets_de_statut(self) -> list:
+        """(chemin, groupe) de chaque socket à ouvrir.  Celui en lecture seule
+        suppose le groupe katakomba-statut, créé par l'installation : sans
+        lui, il ne servirait qu'à root."""
+        sockets = [(STATUS_SOCKET, "katakomba")]
         try:
-            STATUS_SOCKET.unlink(missing_ok=True)
-            srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            srv.bind(str(STATUS_SOCKET))
-            self._restreindre_socket()
-            srv.listen(4)
-        except Exception as e:
-            if srv is not None:
-                srv.close()                  # sinon le descripteur reste ouvert
-            self._log(f"Socket de statut indisponible ({e}) — "
-                      "état exposé via journalctl uniquement.", "WARN")
-            return
+            grp.getgrnam(GROUPE_STATUT)
+            sockets.append((STATUS_SOCKET_LECTURE, GROUPE_STATUT))
+        except KeyError:
+            self._log(f"Groupe {GROUPE_STATUT} absent : pas de statut en lecture "
+                      "seule (sudo bash install.sh, ou réinstallez le paquet).", "INFO")
+        return sockets
 
-        self._status_srv = srv
+    def _start_status_server(self):
+        """Ouvre chaque socket de statut, servi par son propre thread."""
+        self._status_srvs = []
+        for chemin, groupe in self._sockets_de_statut():
+            srv = None
+            try:
+                chemin.unlink(missing_ok=True)
+                srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                srv.bind(str(chemin))
+                self._restreindre_socket(chemin, groupe)
+                srv.listen(4)
+            except Exception as e:
+                if srv is not None:
+                    srv.close()              # sinon le descripteur reste ouvert
+                self._log(f"Socket de statut indisponible ({chemin} : {e}) — "
+                          "état exposé via journalctl uniquement.", "WARN")
+                continue
+            self._status_srvs.append((srv, chemin))
+            threading.Thread(target=self._servir_statut, args=(srv,), daemon=True).start()
+            self._log(f"Socket de statut : {chemin} (groupe {groupe})", "OK")
 
-        def _serve():
-            while not self._stop_flag:
+    def _servir_statut(self, srv):
+        while not self._stop_flag:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                break                          # socket fermé à l'arrêt
+            try:
+                conn.settimeout(2)
+                payload = json.dumps(self._status_snapshot(),
+                                     ensure_ascii=False) + "\n"
+                conn.sendall(payload.encode())
+            except Exception:
+                pass
+            finally:
                 try:
-                    conn, _ = srv.accept()
-                except OSError:
-                    break                      # socket fermé à l'arrêt
-                try:
-                    conn.settimeout(2)
-                    payload = json.dumps(self._status_snapshot(),
-                                         ensure_ascii=False) + "\n"
-                    conn.sendall(payload.encode())
+                    conn.close()
                 except Exception:
                     pass
-                finally:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-
-        threading.Thread(target=_serve, daemon=True).start()
-        self._log(f"Socket de statut : {STATUS_SOCKET}", "OK")
 
     def _stop_status_server(self):
-        srv = getattr(self, "_status_srv", None)
-        if srv:
+        for srv, chemin in getattr(self, "_status_srvs", []):
             try:
                 srv.close()
             except Exception:
                 pass
-        STATUS_SOCKET.unlink(missing_ok=True)
+            chemin.unlink(missing_ok=True)
+        self._status_srvs = []

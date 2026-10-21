@@ -141,16 +141,37 @@ case "${1:-help}" in
         ;;
 
     autoriser)
-        # Donne à un compte l'accès au GUI (groupe katakomba).  L'installation
-        # l'accorde d'office à l'administrateur qui installe.
+        # Donne à un compte l'accès à la configuration (groupe katakomba), ou,
+        # avec --statut, la seule lecture de l'état (groupe katakomba-statut :
+        # supervision, tableau de bord — sans pouvoir désactiver le blocage
+        # hors tunnel).  L'installation accorde le premier à l'administrateur.
         _need_root "$@"
-        CIBLE="${2:-${SUDO_USER:-}}"
+        GROUPE=katakomba
+        CIBLE=""
+        for a in "${@:2}"; do
+            case "$a" in
+                --statut|--status) GROUPE=katakomba-statut ;;
+                -*) echo "Option inconnue : $a" >&2; exit 2 ;;
+                *) CIBLE="$a" ;;
+            esac
+        done
+        [ -n "$CIBLE" ] || CIBLE="${SUDO_USER:-}"
         if [ -z "$CIBLE" ] || ! id "$CIBLE" &>/dev/null; then
-            echo "Usage : sudo katakomba autoriser <utilisateur>"
+            echo "Usage : sudo katakomba autoriser <utilisateur> [--statut]"
             exit 1
         fi
-        usermod -aG katakomba "$CIBLE" \
-            && echo "« $CIBLE » peut maintenant configurer Katakomba (katakomba gui, ou en console : katakomba help)."
+        if ! getent group "$GROUPE" >/dev/null; then
+            echo "Groupe $GROUPE absent : réinstallez Katakomba (sudo bash install.sh)." >&2
+            exit 1
+        fi
+        usermod -aG "$GROUPE" "$CIBLE" || exit 1
+        if [ "$GROUPE" = katakomba ]; then
+            echo "« $CIBLE » peut maintenant configurer Katakomba (katakomba gui, ou en console : katakomba help)."
+        else
+            echo "« $CIBLE » peut maintenant lire l'état (katakomba status, katakomba doctor),"
+            echo "sans pouvoir modifier la configuration."
+        fi
+        echo "Prise d'effet à la prochaine ouverture de session de ce compte."
         ;;
 
     uninstall|desinstaller)
@@ -191,10 +212,18 @@ case "${1:-help}" in
         DSTATUS=$(python3 - << 'PYEOF' 2>/dev/null
 import json, socket
 try:
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(1.5)
-    s.connect("/run/katakomba.sock")
-    d = json.loads(s.makefile().readline())
+    d = None
+    for chemin in ("/run/katakomba.sock", "/run/katakomba-statut.sock"):
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(1.5)
+            s.connect(chemin)
+            d = json.loads(s.makefile().readline())
+            break
+        except OSError:
+            continue
+    if d is None:
+        raise OSError("statut illisible")
     tor = "actif (bootstrap OK)" if d["tor_ready"] else \
           ("bootstrap en cours" if d["tor_running"] else "inactif")
     if d["tunnel_up"]:
@@ -263,7 +292,10 @@ PYEOF
         # Diagnostic complet, en LECTURE SEULE et sans root : vérifie les
         # invariants qui doivent tenir quand la connexion est saine.
         # Code de sortie : 0 si aucun KO, 1 sinon, 2 si une reconnexion est en
-        # cours (contrôles du tunnel reportés, rien de bloquant par ailleurs).
+        # cours (contrôles du tunnel reportés, rien de bloquant par ailleurs),
+        # 3 si l'état du daemon n'est pas lisible par ce compte (ni membre de
+        # katakomba ou katakomba-statut, ni root) : rien de cassé, mais rien
+        # de vérifié non plus côté daemon.
         # --json : mêmes résultats pour l'interface graphique.  Textes dans la
         # langue de l'utilisateur (KATAKOMBA_LANGUE, sinon celle du système).
         python3 - "$DAEMON_DIR" "${@:2}" << 'PYEOF'
@@ -293,6 +325,7 @@ NIVEAUX_JSON = {OK: "ok", WARN: "attention", KO: "erreur", ATTENTE: "attente",
 RECONNEXION_MAX = 120
 NON_VERIFIE = _("reporté — le tunnel se reconnecte")
 en_cours = ""        # raison d'une reconnexion en cours ; vide sinon
+non_verifie = False  # état du daemon illisible pour ce compte (droits)
 resultats = []
 
 def note(niveau, titre, detail=""):
@@ -337,14 +370,30 @@ if rc != 0:
 note(OK, _("Service"), _("actif"))
 
 # ── 2. État du daemon ─────────────────────────────────────────────────────────
-try:
-    s = socket.socket(socket.AF_UNIX)
-    s.settimeout(3)
-    s.connect("/run/katakomba.sock")
-    st = json.loads(s.makefile().readline())
-except Exception as e:
-    note(KO, _("Socket de statut"), _("injoignable ({erreur})").format(erreur=e))
-    st = {}
+# Socket complet (groupe katakomba), sinon celui en lecture seule (groupe
+# katakomba-statut, v3.12.0) : le même JSON.  Un refus de permission n'est
+# pas une panne — le compte n'a simplement pas le droit de lire l'état.
+st, refus, erreur = {}, False, None
+for chemin in ("/run/katakomba.sock", "/run/katakomba-statut.sock"):
+    try:
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(3)
+        s.connect(chemin)
+        st = json.loads(s.makefile().readline())
+        break
+    except PermissionError:
+        refus = True
+    except FileNotFoundError as e:
+        erreur = erreur or e
+    except Exception as e:
+        erreur = e
+if not st and refus:
+    non_verifie = True
+    note(REPORTE, _("Socket de statut"),
+         _("non vérifiable — réservé aux groupes katakomba et katakomba-statut "
+           "(ou sudo)"))
+elif not st:
+    note(KO, _("Socket de statut"), _("injoignable ({erreur})").format(erreur=erreur))
 
 if st:
     # Reconnexion voulue en cours ?  Décidé avant tout le reste : pendant
@@ -535,7 +584,10 @@ else:
     note(OK, _("Chemin des requêtes DNS"), f"{lat_defaut * 1000:.0f} ms{ref}")
 
 # ── 5. IPv6 et blocage hors tunnel ────────────────────────────────────────────
-if st.get("ipv6_blocked"):
+# Connus du daemon seul : sans son état, rien à conclure (pas de faux WARN).
+if not st:
+    pass
+elif st.get("ipv6_blocked"):
     note(OK, _("IPv6"), _("bloqué"))
 elif st.get("kill_switch"):
     note(OK, _("IPv6"), _("bloqué hors tunnel"))
@@ -617,9 +669,14 @@ elif n_warn:
     conclusion.append(ngettext("Aucun problème bloquant, {n} avertissement à surveiller.",
                                "Aucun problème bloquant, {n} avertissements à surveiller.",
                                n_warn).format(n=n_warn))
+elif non_verifie:
+    conclusion.append(_("Aucun problème vu, mais l'état du daemon (Tor, tunnel, blocage "
+                        "hors tunnel) n'est pas lisible par ce compte."))
+    conclusion.append(_("Supervision : sudo katakomba autoriser <compte> --statut "
+                        "(lecture seule), ou lancez avec sudo."))
 else:
     conclusion.append(_("Tout est conforme."))
-publier(conclusion, 1 if n_ko else (2 if en_cours else 0))
+publier(conclusion, 1 if n_ko else (2 if en_cours else (3 if non_verifie else 0)))
 PYEOF
         ;;
 

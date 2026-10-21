@@ -65,6 +65,11 @@ for _m in RUN_MODULES:
     for _nom, _chemin in _REDIRECTIONS.items():
         if hasattr(_m, _nom):
             setattr(_m, _nom, _chemin)
+# Sockets de statut : sur une machine installée, le groupe katakomba-statut
+# existe et le daemon ouvrirait /run/katakomba-statut.sock pour de bon.
+import daemon.status as _m_status             # noqa: E402
+_m_status.STATUS_SOCKET = _BAC_A_SABLE / "katakomba.sock"
+_m_status.STATUS_SOCKET_LECTURE = _BAC_A_SABLE / "katakomba-statut.sock"
 
 
 class Result:
