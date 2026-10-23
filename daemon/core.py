@@ -234,6 +234,8 @@ class DaemonCore:
         self._kill_active        = False  # blocage hors tunnel en place
         self._lan_active         = False
         self._lan_tun            = ""    # interface tunnel figée dans les règles LAN
+        self._lan_iface          = ""    # carte et adresse posées, revérifiées
+        self._lan_adresse        = ""    # par le watchdog (_verifier_lan)
         self._dnsmasq_proc       = None
 
         self._current_provider_idx = 0
@@ -266,6 +268,13 @@ class DaemonCore:
         self._light_restart_done   = False  # déjà tentée pour cette panne
         self._light_restart_at     = 0.0    # instant de la dernière tentative
         self._light_restart_count  = 0
+        # Reprises (légères ou complètes) depuis la dernière connectivité
+        # VÉRIFIÉE, et instant avant lequel la suivante attend : chaque
+        # reprise ouvre une session chez le fournisseur, qui limite les
+        # connexions simultanées.  Voir WatchdogMixin._noter_reprise.
+        self._reprises_sans_succes = 0
+        self._reprise_pas_avant    = 0.0
+        self._reprise_annoncee     = 0.0    # délai déjà signalé au journal
 
         self._circuit_attempts = 0      # essais de re-tirage du circuit Tor
         self._circuit_retry    = False  # reconnexion pour circuit (pas un failover)
@@ -294,6 +303,7 @@ class DaemonCore:
         self._protected_routes: set = set()
         self._routes_exclues = []      # posées par _monter_tunnel
         self._retour_actif   = False   # retour des connexions entrantes
+        self._retour_local   = ""      # adresse du tunnel, pour le reposer
         self._src_valid_mark = None    # valeur d'origine, rendue à l'arrêt
         self._ovpn_texte     = ""      # .ovpn validé (topologie, MTU)
 
@@ -301,6 +311,10 @@ class DaemonCore:
         # à chaque tick du watchdog (toutes les 3 s).
         self._rx_history = deque([0.0] * 60, maxlen=60)
         self._last_rx    = 0
+        self._last_tx    = 0
+        # Ticks consécutifs où le tunnel émet sans rien recevoir : canal de
+        # données mort, reconnu sans attendre la fin du délai de grâce.
+        self._tx_sans_rx = 0
 
     # ── Config ────────────────────────────────────────────────────────────────
 

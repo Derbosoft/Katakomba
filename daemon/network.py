@@ -254,6 +254,7 @@ class NetworkMixin:
                       "connexions entrantes (SSH, services) partiront dans le "
                       "tunnel — une session distante serait coupée.", "ERROR")
             return False
+        self._retour_local = local
         regles = self._retour_regles(local)
         etapes = []
         for parent, chaine in RETOUR_CHAINES:
@@ -292,6 +293,16 @@ class NetworkMixin:
                   "(SSH et services restent joignables).", "OK")
         return True
 
+    def _retour_en_place(self) -> bool:
+        """Les deux règles de routage et la table du retour existent encore."""
+        r = _run("ip", "-4", "rule", "show")
+        prios = {ligne.split(":", 1)[0].strip()
+                 for ligne in r.stdout.decode(errors="ignore").splitlines()}
+        if not all(p in prios for p in RETOUR_PRIORITES):
+            return False
+        r = _run("ip", "-4", "route", "show", "table", RETOUR_TABLE)
+        return r.returncode == 0 and bool(r.stdout.strip())
+
     def _retour_entrant_off(self, force: bool = False):
         """Retire marquage et règles de routage.  force : sans rien supposer de
         l'état (session précédente, échec en cours de pose)."""
@@ -316,10 +327,18 @@ class NetworkMixin:
             self._src_valid_mark = None
         self._retour_actif = False
 
-    def _add_protected_routes(self, ips, source: str):
-        """Route en /32 via la gateway originale chaque IP IPv4 valide et
-        nouvelle de `ips`, journalise et persiste l'ensemble."""
-        added = []
+    def _add_protected_routes(self, ips, source: str) -> int:
+        """Route en /32 via la gateway originale chaque IP IPv4 valide de
+        `ips`, journalise et persiste l'ensemble.  Renvoie le nombre de
+        routes reposées : connues, mais effacées entre-temps.
+
+        L'ensemble en mémoire ne prouve pas que la route existe encore :
+        systemd-networkd, à son redémarrage, retire les routes qu'il n'a pas
+        posées.  Un relais d'entrée ainsi « oublié » passe dans le tunnel qui
+        dépend de lui, et le tunnel se coupe lui-même.  Chaque IP connue est
+        donc revérifiée dans la table de routage."""
+        added, reposees = [], []
+        presentes = None
         for ip in sorted(ips):
             try:
                 addr = ipaddress.ip_address(ip)
@@ -327,12 +346,21 @@ class NetworkMixin:
                 continue
             if addr.version != 4 or ip.startswith(("127.", "0.")):
                 continue
-            if ip in self._protected_routes:
-                continue
+            connue = ip in self._protected_routes
+            if connue:
+                if presentes is None:
+                    presentes = self._routes_principales()
+                if self._orig_iface in presentes.get(f"{ip}/32", ()):
+                    continue
             _run("ip", "route", "replace", f"{ip}/32",
                  "via", self._orig_gw, "dev", self._orig_iface)
             self._protected_routes.add(ip)
-            added.append(ip)
+            (reposees if connue else added).append(ip)
+        if reposees:
+            self._log(
+                f"[route] {len(reposees)} route(s) /32 Tor effacée(s) par un "
+                "tiers (redémarrage de systemd-networkd ?) — reposée(s) : "
+                f"{', '.join(reposees)}.", "WARN")
         if added:
             self._log(
                 f"[route] {len(added)} IP(s) Tor protégée(s) via {source} "
@@ -346,21 +374,83 @@ class NetworkMixin:
                                mode=0o644, dir_mode=0o755)
             except Exception:
                 pass
+        return len(reposees)
+
+    @staticmethod
+    def _routes_principales() -> dict:
+        """Routes IPv4 de la table principale : destination → interfaces.
+        Une route d'hôte, qu'ip affiche sans longueur, est notée « /32 ».
+        Vide si la table est illisible : tout passe alors pour absent, et
+        « ip route replace » ne fait que reposer l'existant."""
+        r = _run("ip", "-4", "-o", "route", "show", "table", "main")
+        routes = {}
+        if r.returncode != 0:
+            return routes
+        for ligne in r.stdout.decode(errors="ignore").splitlines():
+            champs = ligne.split()
+            if len(champs) < 3 or "dev" not in champs[:-1]:
+                continue
+            dest = "0.0.0.0/0" if champs[0] == "default" else champs[0]
+            if "/" not in dest:
+                dest += "/32"
+            routes.setdefault(dest, set()).add(champs[champs.index("dev") + 1])
+        return routes
+
+    def _verifier_routage(self) -> list:
+        """Repose ce qu'un tiers a retiré pendant que le tunnel est monté, et
+        renvoie la liste de ce qui l'a été.
+
+        systemd-networkd, à son (re)démarrage — une mise à jour suffit —,
+        retire les routes et les règles de routage qu'il n'a pas posées
+        (ManageForeignRoutes=, ManageForeignRoutingPolicyRules=, actifs par
+        défaut) : les exclusions partiraient dans le tunnel, et les réponses
+        aux connexions entrantes aussi.  Les relais Tor relèvent de
+        _protect_tor_routes, appelé AVANT : les deux moitiés d'Internet ne
+        doivent jamais revenir avant eux."""
+        reposes = []
+
+        def reposer(nom, *cmd):
+            r = _run(*cmd)
+            if r.returncode == 0:
+                reposes.append(nom)
+            else:
+                self._log(f"[route] {nom} impossible à reposer : "
+                          f"{r.stderr.decode(errors='ignore').strip()}", "ERROR")
+
+        routes = self._routes_principales()
+        if self._orig_gw:
+            for net in self._routes_exclues:
+                if self._orig_iface not in routes.get(net, ()):
+                    reposer(net, "ip", "route", "replace", net,
+                            "via", self._orig_gw, "dev", self._orig_iface)
+        tun = self._tun_iface
+        for moitie in ("0.0.0.0/1", "128.0.0.0/1"):
+            if tun not in routes.get(moitie, ()):
+                reposer(moitie, "ip", "route", "replace", moitie,
+                        "dev", tun, "scope", "global")
+        if (self._retour_actif and not self._retour_en_place()
+                and self._retour_entrant_on(self._retour_local)):
+            reposes.append("retour des connexions entrantes")
+        if reposes:
+            self._log("[route] Routage effacé par un tiers (redémarrage de "
+                      "systemd-networkd ?) — reposé : " + ", ".join(reposes) + ".",
+                      "WARN")
+        return reposes
 
     def _protect_tor_routes(self):
         """Ajoute des routes /32 statiques via la gateway originale pour chaque
         IP de relais Tor actif.  Appel SYNCHRONE depuis le thread stdout
         d'OpenVPN, avant l'installation de redirect-gateway.
-        Source primaire : ControlPort (orconn-status) ; repli : ss -tnp."""
+        Source primaire : ControlPort (orconn-status) ; repli : ss -tnp.
+        Renvoie le nombre de routes reposées (voir _add_protected_routes)."""
         if not self._orig_gw or not self.tor_process:
-            return
+            return 0
 
         # Source primaire : le ControlPort (fiable, indépendant du format
         # de sortie de ss).  Repli : inspection des sockets établies.
         ctrl_ips = self._tor_relay_ips()
         if ctrl_ips:
-            self._add_protected_routes(ctrl_ips, "ControlPort")
-            return
+            return self._add_protected_routes(ctrl_ips, "ControlPort")
 
         pid = self.tor_process.pid
         # Tor abandonne root pour debian-tor : ses sockets sont reconnus à
@@ -386,9 +476,10 @@ class NetworkMixin:
                 if peer.startswith("["):
                     continue
                 peers.add(peer.rsplit(":", 1)[0])
-            self._add_protected_routes(peers, "ss")
+            return self._add_protected_routes(peers, "ss")
         except Exception as e:
             self._log(f"[route] {e}", "WARN")
+            return 0
 
     @staticmethod
     def _uid_processus(pid) -> int:

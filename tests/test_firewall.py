@@ -370,6 +370,59 @@ class LanSharingTest(unittest.TestCase):
                          "règle NAT ajoutée alors qu'elle existait")
 
 
+class VerifierLanTest(unittest.TestCase):
+    """Adresse de la carte LAN retirée par systemd-networkd : reposée."""
+
+    def _daemon(self):
+        d = FakeDaemon(config=LAN_CFG, _tun_iface="tun0")
+        d._get_default_gateway = lambda: ("192.168.50.1", "eth0")
+        d._interface_existe = lambda nom: nom == "ens19"
+        with patched_run(lan_rec()):
+            self.assertTrue(d._setup_lan_sharing())
+        return d
+
+    def test_adresse_memorisee(self):
+        d = self._daemon()
+        self.assertEqual((d._lan_iface, d._lan_adresse), ("ens19", "10.0.0.1/24"))
+
+    def test_adresse_presente(self):
+        d = self._daemon()
+        r = Recorder({"addr show": (0, b"3: ens19    inet 10.0.0.1/24 scope global ens19\\"
+                                       b"       valid_lft forever preferred_lft forever\n")})
+        with patched_run(r):
+            self.assertFalse(d._verifier_lan())
+        self.assertFalse(r.ran("addr replace"))
+
+    def test_adresse_retiree_reposee(self):
+        d = self._daemon()
+        r = Recorder({"addr show": (0, b"")})
+        with patched_run(r):
+            self.assertTrue(d._verifier_lan())
+        self.assertTrue(r.ran("ip addr replace 10.0.0.1/24 dev ens19"))
+        self.assertTrue(r.ran("ip link set ens19 up"))
+        self.assertTrue(d.has_log("reposée", "WARN"))
+
+    def test_carte_debranchee(self):
+        d = self._daemon()
+        r = Recorder({"addr show": (1, b"")})
+        with patched_run(r):
+            self.assertFalse(d._verifier_lan())
+        self.assertFalse(r.ran("addr replace"))
+
+    def test_partage_inactif(self):
+        d = FakeDaemon(config=LAN_CFG)
+        r = Recorder()
+        with patched_run(r):
+            self.assertFalse(d._verifier_lan())
+        self.assertEqual(r.calls, [])
+
+    def test_oublie_au_demontage(self):
+        d = self._daemon()
+        with patched_run(lan_rec()):
+            d._teardown_lan_sharing()
+        self.assertEqual((d._lan_iface, d._lan_adresse), ("", ""))
+
+
 class DnsmasqRangeTest(unittest.TestCase):
     """Bornes DHCP de dnsmasq.
 

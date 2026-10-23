@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.12.0
+# Katakomba — v3.12.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.12.0-blue)
+![Version](https://img.shields.io/badge/Version-3.12.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -773,6 +773,8 @@ Seuls les messages d'OpenVPN lui-même sont reconnus, à leur forme exacte en d�
 
 Les routes des guards sont persistées dans `/var/lib/katakomba/tor-routes.txt` et supprimées proprement à chaque arrêt.
 
+**Routage effacé par un tiers (v3.12.1) :** systemd-networkd, à son (re)démarrage (une simple mise à jour suffit), retire les routes, les règles de routage et les adresses qu'il n'a pas posées lui-même (`ManageForeignRoutes=` et `ManageForeignRoutingPolicyRules=`, actifs par défaut). Les relais d'entrée de Tor passaient alors dans le tunnel qui dépend d'eux, et le tunnel se coupait lui-même. Toutes les 30 s, et à chaque échec de connectivité, le daemon vérifie dans la table de routage, pas dans sa mémoire, et repose ce qui manque, dans cet ordre : routes `/32` des relais, exclusions, `0.0.0.0/1` et `128.0.0.0/1`, retour des connexions entrantes, adresse de la carte de partage LAN. Une ligne `WARN` du journal dit ce qui a été reposé. Pour éviter jusqu'à cette coupure de quelques secondes sur un poste géré par networkd : `ManageForeignRoutes=no` et `ManageForeignRoutingPolicyRules=no` dans `networkd.conf`, et la carte de partage LAN déclarée `Unmanaged=yes`.
+
 <a id="connexions-entrantes-v3100"></a>
 **Connexions entrantes (v3.10.0) :**
 Sans cela, la réponse à une connexion entrante (SSH, serveur web…) suivrait les routes `0/1` et `128/1` dans le tunnel, et la session tomberait. Le daemon :
@@ -899,7 +901,7 @@ Un défaut qui touche le fournisseur entier (`.ovpn` introuvable) fait aussi pas
 
 ### Détection de panne
 
-Le watchdog vérifie la connectivité toutes les **9 secondes** (après un délai de grâce de **30 secondes** post-connexion) :
+Le watchdog vérifie la connectivité toutes les **9 secondes** (après un délai de grâce de **30 secondes** post-connexion, abrégé si le tunnel émet sans rien recevoir pendant 9 s : canal de données mort) :
 
 1. `ip link show tunX` — l'interface existe-t-elle ?
 2. Connexion TCP via `SO_BINDTODEVICE tunX` vers `1.1.1.1:443` **et** `9.9.9.9:443`, lancées **en parallèle** (5 s d'attente pour les deux ensemble) — le tunnel route-t-il vraiment ? Deux endpoints indépendants : la panne ponctuelle de l'un ne déclenche rien.
@@ -908,6 +910,10 @@ Un échec est **confirmé 3 s plus tard** (et non au cycle suivant, 9 s après).
 
 1. **Relance d'OpenVPN seul**, sur le même compte et un circuit Tor neuf (`NEWNYM`), si le ControlPort indique que Tor est sain (`status/circuit-established=1`).
 2. **Redémarrage complet** (`_full_restart()` : arrêt de Tor et d'OpenVPN, nettoyage des routes `/32`, relance) si Tor n'est pas sain, si la connectivité manque encore après la relance légère, ou si le tunnel n'est pas remonté **45 s** après elle.
+
+Avant toute reprise, le watchdog repose le routage qu'un tiers aurait effacé (voir *Montage du tunnel*) : si quelque chose manquait, il revérifie 3 s plus tard sans rien relancer. La relance légère n'a lieu qu'**une fois par panne** : seule une connectivité réellement vérifiée clôt la panne, ni le délai de grâce ni un redémarrage complet. Chaque reprise ouvre une session chez le fournisseur, qui limite les connexions simultanées : la suivante attend **30 s**, puis 60, 120, 240, et au plus **5 min** (v3.12.1).
+
+> **v3.12.1.** Le délai de grâce comptait comme un succès : après chaque relance légère, le tunnel remontait, passait pour sain pendant 30 s, et la relance légère se réarmait. Sur un poste dont networkd avait effacé les routes des relais, le watchdog a relancé OpenVPN 130 fois en deux heures sans jamais passer au redémarrage complet, et trois comptes ont été refusés pour connexions simultanées épuisées.
 
 > **Pourquoi.** Sur cinq semaines de production, les redémarrages complets représentaient **83 % du temps de coupure** (médiane 28 s), alors que Tor allait bien : il était de nouveau prêt 2 s après sa relance. C'est le tunnel qui était mort, pas Tor. Le temps partait dans la détection (deux vérifications séquentielles de 10 s, espacées de 9 s), dans l'arrêt et la relance inutiles de Tor, et dans une attente fixe de 6 s, remplacée par l'attente effective de la libération du port SOCKS. Le socket de statut expose `light_restarts` à côté de `full_restarts`.
 
@@ -1268,7 +1274,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **765 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **795 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout

@@ -150,14 +150,48 @@ class ProtectedRoutesTest(unittest.TestCase):
         self.assertEqual(d._protected_routes, {"1.2.3.4", "5.6.7.8"})
         self.assertEqual(set(self.routes_file.read_text().split()), {"1.2.3.4", "5.6.7.8"})
 
-    def test_ne_reajoute_pas_une_ip_connue(self):
+    def test_ne_reajoute_pas_une_ip_connue_et_en_place(self):
         d = self._daemon(self.routes_file)
         with patched_run(Recorder()):
             d._add_protected_routes({"1.2.3.4"}, "a")
+        r = Recorder({"route show": (0, b"default via 192.168.50.1 dev eth0 proto dhcp\n"
+                                        b"1.2.3.4 via 192.168.50.1 dev eth0 \n")})
+        with patched_run(r):
+            self.assertEqual(d._add_protected_routes({"1.2.3.4"}, "b"), 0)
+        self.assertEqual(r.count("route replace"), 0, "route ajoutée deux fois")
+
+    def test_repose_une_ip_connue_effacee_par_un_tiers(self):
+        """systemd-networkd, à son redémarrage, retire les routes qu'il n'a pas
+        posées : se fier à l'ensemble en mémoire laissait le relais d'entrée
+        dans le tunnel qui dépend de lui (boucle infinie, 23/10)."""
+        d = self._daemon(self.routes_file)
+        with patched_run(Recorder()):
+            d._add_protected_routes({"1.2.3.4", "5.6.7.8"}, "a")
+        # 1.2.3.4 effacée ; 5.6.7.8 encore là
+        r = Recorder({"route show": (0, b"5.6.7.8 via 192.168.50.1 dev eth0\n"
+                                        b"0.0.0.0/1 dev tun-katakomba scope link\n")})
+        with patched_run(r):
+            self.assertEqual(d._add_protected_routes({"1.2.3.4", "5.6.7.8"}, "b"), 1)
+        self.assertEqual(r.count("route replace", "1.2.3.4/32", "via 192.168.50.1 dev eth0"), 1)
+        self.assertEqual(r.count("route replace", "5.6.7.8/32"), 0)
+        self.assertTrue(d.has_log("effacée(s) par un tiers", "WARN"))
+        self.assertTrue(d.has_log("1.2.3.4", "WARN"))
+
+    def test_route_d_un_relais_dans_le_tunnel_reposee(self):
+        """La /32 existe, mais par une autre interface : à reposer."""
+        d = self._daemon(self.routes_file)
+        with patched_run(Recorder()):
+            d._add_protected_routes({"1.2.3.4"}, "a")
+        r = Recorder({"route show": (0, b"1.2.3.4 dev tun-katakomba scope link\n")})
+        with patched_run(r):
+            self.assertEqual(d._add_protected_routes({"1.2.3.4"}, "b"), 1)
+
+    def test_table_lue_seulement_pour_les_ip_connues(self):
+        d = self._daemon(self.routes_file)
         r = Recorder()
         with patched_run(r):
-            d._add_protected_routes({"1.2.3.4"}, "b")
-        self.assertEqual(r.count("route replace"), 0, "route ajoutée deux fois")
+            d._add_protected_routes({"1.2.3.4"}, "a")
+        self.assertFalse(r.ran("route show"), r.dump())
 
     def test_filtre_loopback_nul_et_ipv6(self):
         d = self._daemon(self.routes_file)
@@ -323,6 +357,113 @@ class MontageTunnelTest(unittest.TestCase):
         self.assertTrue(r.ran("ip route del 203.0.113.0/24"))
         self.assertEqual(r.calls[-1], "ip link del dev tun-katakomba")
         self.assertEqual(d._routes_exclues, [])
+
+
+class RoutesPrincipalesTest(unittest.TestCase):
+
+    def test_lecture_de_la_table(self):
+        sortie = (b"default via 192.168.1.1 dev wlp2s0 proto dhcp src 192.168.1.20 metric 600\n"
+                  b"0.0.0.0/1 dev tun-katakomba scope link\n"
+                  b"10.0.0.0/8 via 192.168.1.1 dev wlp2s0\n"
+                  b"85.1.1.1 via 192.168.1.1 dev wlp2s0\n"
+                  b"192.168.1.0/24 dev wlp2s0 proto kernel scope link src 192.168.1.20\n"
+                  b"unreachable 203.0.113.0/24\n")
+        with patched_run(Recorder({"route show": (0, sortie)})):
+            routes = m_network.NetworkMixin._routes_principales()
+        self.assertEqual(routes["0.0.0.0/0"], {"wlp2s0"})
+        self.assertEqual(routes["0.0.0.0/1"], {"tun-katakomba"})
+        self.assertEqual(routes["85.1.1.1/32"], {"wlp2s0"})
+        self.assertEqual(routes["10.0.0.0/8"], {"wlp2s0"})
+        self.assertNotIn("203.0.113.0/24", routes)
+
+    def test_table_illisible(self):
+        with patched_run(Recorder({"route show": (1, b"")})):
+            self.assertEqual(m_network.NetworkMixin._routes_principales(), {})
+
+
+class VerifierRoutageTest(unittest.TestCase):
+    """Ce que systemd-networkd retire à son redémarrage (ManageForeignRoutes=,
+    ManageForeignRoutingPolicyRules=), reposé pendant que le tunnel tourne."""
+
+    TABLE = (b"default via 192.168.1.1 dev eth0 proto dhcp\n"
+             b"0.0.0.0/1 dev tun-katakomba scope link\n"
+             b"128.0.0.0/1 dev tun-katakomba scope link\n"
+             b"10.20.0.0/16 via 192.168.1.1 dev eth0\n")
+    REGLES = (b"0:\tfrom all lookup local\n"
+              b"30300:\tfrom all fwmark 0x1000000/0x1000000 lookup main suppress_prefixlength 1\n"
+              b"30301:\tfrom all fwmark 0x1000000/0x1000000 lookup 19265\n"
+              b"32766:\tfrom all lookup main\n")
+
+    def _daemon(self):
+        d = FakeDaemon(_tun_iface="tun-katakomba", _orig_gw="192.168.1.1",
+                       _orig_iface="eth0", _retour_actif=True, _retour_local="10.8.0.2")
+        d._routes_exclues = ["10.20.0.0/16"]
+        d.retour = []
+        d._retour_entrant_on = lambda local: d.retour.append(local) or True
+        return d
+
+    def test_rien_a_faire(self):
+        d = self._daemon()
+        r = Recorder({"route show table main": (0, self.TABLE), "rule show": (0, self.REGLES),
+                      "table 19265": (0, b"default via 192.168.1.1 dev eth0\n")})
+        with patched_run(r):
+            self.assertEqual(d._verifier_routage(), [])
+        self.assertFalse(r.ran("replace"), r.dump())
+        self.assertEqual(d.retour, [])
+        self.assertFalse(d.logged("", "WARN"))
+
+    def test_tout_efface(self):
+        d = self._daemon()
+        r = Recorder({"route show table main": (0, b"default via 192.168.1.1 dev eth0\n"),
+                      "rule show": (0, b"0:\tfrom all lookup local\n32766:\tfrom all lookup main\n"),
+                      "table 19265": (0, b"")})
+        with patched_run(r):
+            reposes = d._verifier_routage()
+        self.assertEqual(reposes, ["10.20.0.0/16", "0.0.0.0/1", "128.0.0.0/1",
+                                   "retour des connexions entrantes"])
+        self.assertTrue(r.ran("ip route replace 10.20.0.0/16 via 192.168.1.1 dev eth0"))
+        self.assertTrue(r.ran("ip route replace 0.0.0.0/1 dev tun-katakomba scope global"))
+        self.assertEqual(d.retour, ["10.8.0.2"])
+        self.assertTrue(d.has_log("systemd-networkd", "WARN"))
+
+    def test_table_du_retour_videe_seule(self):
+        d = self._daemon()
+        r = Recorder({"route show table main": (0, self.TABLE), "rule show": (0, self.REGLES),
+                      "table 19265": (0, b"")})
+        with patched_run(r):
+            self.assertEqual(d._verifier_routage(), ["retour des connexions entrantes"])
+
+    def test_priorite_voisine_non_confondue(self):
+        d = self._daemon()
+        regles = self.REGLES.replace(b"30301:", b"130301:")
+        r = Recorder({"route show table main": (0, self.TABLE), "rule show": (0, regles),
+                      "table 19265": (0, b"default via 192.168.1.1 dev eth0\n")})
+        with patched_run(r):
+            self.assertEqual(d._verifier_routage(), ["retour des connexions entrantes"])
+
+    def test_retour_inactif_non_verifie(self):
+        d = self._daemon()
+        d._retour_actif = False
+        r = Recorder({"route show table main": (0, self.TABLE)})
+        with patched_run(r):
+            self.assertEqual(d._verifier_routage(), [])
+        self.assertFalse(r.ran("rule show"))
+
+    def test_echec_signale_et_non_compte(self):
+        d = self._daemon()
+        d._retour_actif = False
+        r = Recorder({"route show table main": (0, b""),
+                      "route replace": (2, b"")})
+        with patched_run(r):
+            self.assertEqual(d._verifier_routage(), [])
+        self.assertTrue(d.has_log("impossible à reposer", "ERROR"))
+
+    def test_retour_memorise_son_adresse(self):
+        d = FakeDaemon(_tun_iface="tun-katakomba", _orig_gw="192.168.1.1", _orig_iface="eth0")
+        m_network.SRC_VALID_MARK.write_text("1\n")
+        with patched_run(Recorder()):
+            self.assertTrue(d._retour_entrant_on("10.8.0.2"))
+        self.assertEqual(d._retour_local, "10.8.0.2")
 
 
 class RetourEntrantTest(unittest.TestCase):

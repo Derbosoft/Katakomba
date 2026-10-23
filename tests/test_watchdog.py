@@ -9,10 +9,10 @@ from tests.helpers import FakeDaemon, FakeProc, Recorder, patched_run
 
 
 PROC_NET_DEV = """Inter-|   Receive                                                |  Transmit
- face |bytes    packets errs drop fifo frame compressed multicast|bytes
-    lo:   12345     100    0    0    0     0          0         0
-  eth0: 999888     500    0    0    0     0          0         0
-   tun0: 4242424    3000    0    0    0     0          0         0
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo:   12345     100    0    0    0     0          0         0    12345     100    0    0    0     0       0          0
+  eth0: 999888     500    0    0    0     0          0         0   777666     400    0    0    0     0       0          0
+   tun0: 4242424    3000    0    0    0     0          0         0      512       8    0    0    0     0       0          0
 """
 
 
@@ -32,6 +32,15 @@ class ReadRxTest(unittest.TestCase):
 
     def test_interface_absente_renvoie_zero(self):
         self.assertEqual(self._read("tun9"), 0)
+
+    def test_octets_emis(self):
+        from unittest.mock import mock_open, patch
+        d = FakeDaemon(_tun_iface="tun0")
+        with patch("builtins.open", mock_open(read_data=PROC_NET_DEV)):
+            self.assertEqual(d._compteurs_tun(), (4242424, 512))
+        d = FakeDaemon(_tun_iface="tun9")
+        with patch("builtins.open", mock_open(read_data=PROC_NET_DEV)):
+            self.assertEqual(d._compteurs_tun(), (0, 0))
 
     def test_fichier_illisible_renvoie_zero(self):
         from unittest.mock import patch
@@ -135,10 +144,12 @@ class ConnectivityTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(tentes, [], "connexion tentée sans interface")
 
-    def test_delai_de_grace(self):
-        ok, tentes, _ = self._check(grace=True)
-        self.assertTrue(ok)
-        self.assertEqual(tentes, [], "test réseau pendant le délai de grâce")
+    def test_la_grace_n_est_jamais_un_succes(self):
+        """La grâce est l'affaire de la boucle : compter un tunnel tout juste
+        monté comme sain réarmait la relance légère sans fin (23/10)."""
+        ok, tentes, _ = self._check(grace=True, muets=(0, 1))
+        self.assertFalse(ok)
+        self.assertEqual(len(tentes), 2)
 
     def test_les_deux_endpoints_lances_ensemble(self):
         ok, tentes, selects = self._check()
@@ -236,7 +247,7 @@ class GraduatedRecoveryTest(unittest.TestCase):
 class MonitorLoopTest(unittest.TestCase):
     """Boucle de surveillance, sur une horloge simulée."""
 
-    def _boucle(self, d, ticks, verifs=()):
+    def _boucle(self, d, ticks, verifs=(), verifier=None):
         import types
         horloge = [1_000_000.0]
         n = [0]
@@ -249,13 +260,18 @@ class MonitorLoopTest(unittest.TestCase):
             if n[0] > ticks:
                 d._stop_flag = True
 
-        def verifier():
-            d.verifs.append(horloge[0])
+        def par_defaut():
             return resultats.pop(0) if resultats else True
 
-        d._check_connectivity = verifier
-        d._read_tun0_rx = lambda: 0
-        d._protect_tor_routes = lambda: None
+        def verifier_note(f=verifier or par_defaut):
+            d.verifs.append(horloge[0])
+            return f()
+
+        d._check_connectivity = verifier_note
+        if not hasattr(d, "compteurs"):
+            d._compteurs_tun = lambda: (0, 0)
+        if not hasattr(d, "entretiens"):
+            d._entretien_routage = lambda: False
         d._ensure_dns_config = lambda: None
         d._vpn_is_active = lambda: True
         m_watchdog.time = types.SimpleNamespace(sleep=dormir,
@@ -304,12 +320,147 @@ class MonitorLoopTest(unittest.TestCase):
         self.assertEqual(d.appels, ["complet"])
         self.assertTrue(d.has_log("après la relance", "ERROR"))
 
+    def test_pas_de_verification_pendant_la_grace(self):
+        d = self._daemon()
+        d._light_restart_done = True
+        d._tunnel_up_time = 1_000_000.0          # tunnel tout juste monté
+        self._boucle(d, ticks=9)                  # 27 s
+        self.assertEqual(d.verifs, [])
+        self.assertTrue(d._light_restart_done, "grâce prise pour un succès")
+
+    def test_canal_muet_abrege_la_grace(self):
+        """Le tunnel émet sans rien recevoir : vérifié sans attendre 30 s."""
+        d = self._daemon()
+        d.compteurs = True
+        tx = [0]
+
+        def compteurs():
+            tx[0] += 1000
+            return 0, tx[0]
+        d._compteurs_tun = compteurs
+        d._tunnel_up_time = 1_000_000.0
+        self._boucle(d, ticks=9, verifs=[False, False])
+        self.assertTrue(d.verifs, "aucune vérification pendant la grâce")
+        self.assertLess(d.verifs[0] - 1_000_000.0, 30)
+        self.assertEqual(d.appels, ["recover"])
+        self.assertTrue(d.has_log("émet sans rien recevoir", "WARN"))
+
+    def test_trafic_recu_pas_de_canal_muet(self):
+        d = self._daemon()
+        d.compteurs = True
+        n = [0]
+
+        def compteurs():
+            n[0] += 1000
+            return n[0], n[0]
+        d._compteurs_tun = compteurs
+        d._tunnel_up_time = 1_000_000.0
+        self._boucle(d, ticks=9)
+        self.assertEqual(d.verifs, [])
+        self.assertEqual(d._tx_sans_rx, 0)
+
+    def test_routage_repose_sans_reprise(self):
+        """Routes effacées par un tiers puis reposées : pas de reprise, qui
+        coûterait une session chez le fournisseur."""
+        d = self._daemon()
+        d.entretiens = True
+        faits = []
+
+        def entretien():
+            faits.append(1)
+            return len(faits) == 1               # reposé la première fois
+        d._entretien_routage = entretien
+        self._boucle(d, ticks=6, verifs=[False, True])
+        self.assertEqual(d.appels, [])
+        self.assertEqual(d._conn_fail_count, 0)
+        self.assertEqual(d.verifs[1] - d.verifs[0], 3)
+
+    def test_reprise_differee(self):
+        d = self._daemon()
+        d._reprise_pas_avant = 1_000_000.0 + 3600
+        d._reprises_sans_succes = 2
+        self._boucle(d, ticks=30, verifs=[False] * 20)
+        self.assertEqual(d.appels, [])
+        self.assertEqual(len(d.logged("reprise différée", "WARN")), 1,
+                         "délai annoncé à chaque tour")
+
+    def test_succes_verifie_solde_la_panne(self):
+        d = self._daemon()
+        d._reprises_sans_succes, d._reprise_pas_avant = 3, 1_000_000.0 + 3600
+        d._full_restart_count = 2
+        self._boucle(d, ticks=4, verifs=[True])
+        self.assertEqual((d._reprises_sans_succes, d._reprise_pas_avant,
+                          d._full_restart_count), (0, 0.0, 0))
+
     def test_relance_legere_aboutie_pas_d_escalade(self):
         d = self._daemon()
         d._light_restart_at = 1_000_000.0 - 60     # tunnel revenu entre-temps
         self._boucle(d, ticks=4)
         self.assertEqual(d.appels, [])
         self.assertEqual(d._light_restart_at, 0.0)
+
+
+class BoucleDu23OctobreTest(unittest.TestCase):
+    """Relais d'entrée routé dans le tunnel (routes effacées par networkd) :
+    chaque relance légère remontait le tunnel, la grâce passait pour un
+    succès, et la relance légère se réarmait — 130 tours en deux heures."""
+
+    def test_escalade_au_redemarrage_complet(self):
+        d = FakeDaemon(config={"auto_reconnect": True})
+        d._tunnel_up, d._vpn_loop_active = True, True
+        d.appels = []
+        d._tor_is_healthy = lambda: True
+
+        def relance_legere():
+            d.appels.append("leger")
+            d._tunnel_up_time = m_watchdog.time.time()   # le tunnel remonte
+
+        def complet():
+            d.appels.append("complet")
+            d._conn_restart_pending = False
+        d._restart_openvpn = relance_legere
+        d._full_restart = complet
+
+        def ancien_test_reseau():
+            # Comme la 3.12.0 : « sain » pendant la grâce, en panne ensuite.
+            return m_watchdog.time.time() - d._tunnel_up_time < 30
+
+        MonitorLoopTest._boucle(self, d, ticks=200,           # 10 min de panne
+                                verifier=ancien_test_reseau)
+        self.assertEqual(d.appels[:2], ["leger", "complet"])
+        self.assertEqual(d.appels.count("leger"), 1, d.appels)
+        self.assertLessEqual(len(d.appels), 5, "reprises en rafale")
+
+
+class DelaiDeRepriseTest(unittest.TestCase):
+
+    def test_delai_croissant_et_plafonne(self):
+        d = FakeDaemon()
+        delais = []
+        for _ in range(7):
+            avant = time.time()
+            d._noter_reprise()
+            delais.append(round(d._reprise_pas_avant - avant))
+        self.assertEqual(delais, [30, 60, 120, 240, 300, 300, 300])
+
+    def test_recover_note_la_reprise(self):
+        d = FakeDaemon(config={"auto_reconnect": True})
+        d._tor_is_healthy = lambda: True
+        d._restart_openvpn = lambda: None
+        d._recover()
+        self.assertEqual(d._reprises_sans_succes, 1)
+        self.assertTrue(d._reprise_differee())
+
+    def test_entretien_relais_d_abord(self):
+        d = FakeDaemon()
+        ordre = []
+        d._protect_tor_routes = lambda: ordre.append("tor") or 0
+        d._verifier_routage = lambda: ordre.append("routage") or []
+        d._verifier_lan = lambda: ordre.append("lan") or False
+        self.assertFalse(d._entretien_routage())
+        self.assertEqual(ordre, ["tor", "routage", "lan"])
+        d._verifier_lan = lambda: True
+        self.assertTrue(d._entretien_routage())
 
 
 class InertNetTest(unittest.TestCase):
@@ -395,6 +546,19 @@ class FullRestartTest(unittest.TestCase):
         self.assertFalse(d._tunnel_up)
         self.assertFalse(d._stop_vpn, "_stop_vpn resté armé : la boucle ne repartirait pas")
         self.assertFalse(d._stop_tor_flag)
+
+    def test_la_panne_reste_ouverte(self):
+        """Un redémarrage complet ne réarme pas la relance légère : sans
+        connectivité vérifiée, la suivante est encore un redémarrage complet."""
+        import types
+        d = self._daemon()
+        d._light_restart_done = True
+        m_watchdog.time = types.SimpleNamespace(sleep=lambda s: None, time=time.time)
+        try:
+            d._full_restart()
+        finally:
+            m_watchdog.time = time
+        self.assertTrue(d._light_restart_done)
 
     def test_reparation_d_urgence_au_seuil(self):
         import types

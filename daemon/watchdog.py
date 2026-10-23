@@ -21,6 +21,7 @@ class WatchdogMixin:
                     and self.openvpn_process.poll() is None)
 
     _CONN_GRACE = 30  # secondes de grâce après tunnel up avant de vérifier la connectivité
+    _CANAL_MORT_TICKS = 3   # ~9 s d'émission sans réception → canal mort
 
     # Deux endpoints indépendants (Cloudflare, Quad9) : une panne ponctuelle
     # de l'un ne doit pas déclencher un redémarrage complet pour rien.
@@ -34,12 +35,15 @@ class WatchdogMixin:
 
         Les deux endpoints sont testés EN PARALLÈLE.  Testés l'un après
         l'autre, un tunnel mort coûtait 2 × 5 s par vérification — 10 s de
-        coupure supplémentaires avant même de décider quoi que ce soit."""
+        coupure supplémentaires avant même de décider quoi que ce soit.
+
+        Le délai de grâce est l'affaire de _monitor_loop, qui ne vérifie pas
+        pendant ce temps.  Le compter ici comme un succès réarmait la relance
+        légère à chaque tunnel remonté : jamais d'escalade, une session
+        ouverte chez le fournisseur par tour, sans fin."""
         tun = self._tun_iface
         if _run("ip", "link", "show", tun).returncode != 0:
             return False
-        if time.time() - self._tunnel_up_time < self._CONN_GRACE:
-            return True
         ouverts, en_cours = [], []
         try:
             for host, port in self._CONN_ENDPOINTS:
@@ -77,17 +81,28 @@ class WatchdogMixin:
                 except OSError:
                     pass
 
-    def _read_tun0_rx(self) -> int:
+    def _compteurs_tun(self) -> tuple:
+        """Octets (reçus, émis) de l'interface tunnel ; (0, 0) si absente."""
         tun = self._tun_iface
         try:
             with open("/proc/net/dev") as f:
                 for line in f:
                     name, _, rest = line.partition(":")
                     if name.strip() == tun:
-                        return int(rest.split()[0])
+                        champs = rest.split()
+                        return int(champs[0]), int(champs[8])
         except Exception:
             pass
-        return 0
+        return 0, 0
+
+    def _read_tun0_rx(self) -> int:
+        return self._compteurs_tun()[0]
+
+    def _canal_mort(self) -> bool:
+        """Le tunnel émet sans rien recevoir depuis ~9 s : le canal de données
+        est mort (relais d'entrée de Tor routé dans le tunnel, serveur
+        muet…).  Signal gratuit, tiré des compteurs de l'interface."""
+        return self._tx_sans_rx >= self._CANAL_MORT_TICKS
 
     def _emergency_repair(self):
         """Lance repair_network.sh --internal puis quitte : systemd relance le service."""
@@ -135,7 +150,9 @@ class WatchdogMixin:
         self._tunnel_up_time       = 0.0
         self._tunnel_down_at       = time.time()
         self._tun_iface            = TUN_IFACE
-        self._light_restart_done   = False
+        # _light_restart_done reste armé : la panne n'est pas finie tant
+        # qu'aucune connectivité n'a été VÉRIFIÉE.  Le réarmer ici faisait
+        # alterner relance légère et redémarrage complet.
         self._light_restart_at     = 0.0
         self._tor_ready.clear()
         self._log("Relance des services …", "WARN")
@@ -173,9 +190,36 @@ class WatchdogMixin:
         if proc and proc.poll() is None:
             proc.terminate()
 
+    # Délai avant la reprise suivante d'une même panne : 30 s, doublé à
+    # chaque reprise sans succès, plafonné à 5 min.  Chaque reprise ouvre une
+    # session chez le fournisseur ; les rafales épuisaient les connexions
+    # simultanées des comptes, mis en quarantaine les uns après les autres.
+    _REPRISE_DELAI     = 30
+    _REPRISE_DELAI_MAX = 300
+
+    def _noter_reprise(self):
+        self._reprises_sans_succes += 1
+        delai = min(self._REPRISE_DELAI_MAX,
+                    self._REPRISE_DELAI * 2 ** (self._reprises_sans_succes - 1))
+        self._reprise_pas_avant = time.time() + delai
+
+    def _reprise_differee(self) -> bool:
+        """Une reprise attend la fin de son délai (voir _noter_reprise)."""
+        return time.time() < self._reprise_pas_avant
+
+    def _entretien_routage(self) -> bool:
+        """Repose routes, règles et adresse LAN effacées par un tiers.  Les
+        relais Tor d'abord : le tunnel ne doit jamais les recouvrir.  Vrai si
+        quelque chose a été reposé."""
+        tor = self._protect_tor_routes()
+        routage = self._verifier_routage()
+        lan = self._verifier_lan()
+        return bool(tor or routage or lan)
+
     def _recover(self):
         """Panne de connectivité confirmée : reprise légère d'abord."""
         self._conn_fail_count = 0
+        self._noter_reprise()
         if not self._light_restart_done and self._tor_is_healthy():
             self._light_restart_done = True
             self._light_restart_at   = time.time()
@@ -207,10 +251,19 @@ class WatchdogMixin:
             # pings cessent et systemd tue puis relance le daemon.
             _sd_notify("WATCHDOG=1")
 
-            rx   = self._read_tun0_rx()
+            rx, tx = self._compteurs_tun()
             d_rx = max(0, rx - self._last_rx) if self._last_rx else 0
-            self._last_rx    = rx
+            d_tx = max(0, tx - self._last_tx) if self._last_tx else 0
+            self._last_rx, self._last_tx = rx, tx
             self._rx_history.append(float(d_rx))
+            if not self._tunnel_up or d_rx:
+                self._tx_sans_rx = 0
+            elif d_tx:
+                self._tx_sans_rx += 1
+                if self._tx_sans_rx == self._CANAL_MORT_TICKS:
+                    self._log(f"Watchdog : {self._tun_iface} émet sans rien "
+                              f"recevoir depuis {self._CANAL_MORT_TICKS * 3} s — "
+                              "canal de données muet.", "WARN")
 
             # ── Filet anti-inertie ────────────────────────────────────────
             # Les boucles Tor/OpenVPN abandonnent après un nombre borné de
@@ -242,10 +295,11 @@ class WatchdogMixin:
             # Rafraîchit les routes /32 des guards Tor : si Tor change de
             # garde en cours de session, son IP doit rester routée hors
             # tunnel, sinon boucle de routage (le tunnel dépend du guard).
+            # Repose au passage ce qu'un tiers a effacé (systemd-networkd).
             guard_tick += 1
             if self._tunnel_up and guard_tick >= self._GUARD_REFRESH_TICKS:
                 guard_tick = 0
-                self._protect_tor_routes()
+                self._entretien_routage()
                 # Même rythme (~30s) : revérifie que le DNS n'a pas été
                 # effacé par un redémarrage externe de systemd-resolved.
                 self._ensure_dns_config()
@@ -265,12 +319,14 @@ class WatchdogMixin:
             if (self._light_restart_at and not self._tunnel_up
                     and self.config.get("auto_reconnect", True)
                     and not self._conn_restart_pending
+                    and not self._reprise_differee()
                     and time.time() - self._light_restart_at > self._LIGHT_TIMEOUT):
                 self._log(f"Watchdog : tunnel toujours absent "
                           f"{self._LIGHT_TIMEOUT} s après la relance "
                           "d'OpenVPN — redémarrage complet.", "ERROR")
                 self._light_restart_at = 0.0
                 self._conn_restart_pending = True
+                self._noter_reprise()
                 self._full_restart()
                 continue
 
@@ -282,18 +338,44 @@ class WatchdogMixin:
             if not self.config.get("auto_reconnect", True) or self._conn_restart_pending:
                 continue
 
+            # Délai de grâce : trop tôt pour juger un tunnel tout juste monté
+            # — et surtout pour conclure qu'il marche.  Seul un canal qui
+            # émet sans rien recevoir l'abrège.
+            if (time.time() - self._tunnel_up_time < self._CONN_GRACE
+                    and not self._canal_mort()):
+                continue
+
             ok = self._check_connectivity()
             if ok:
-                self._conn_fail_count    = 0
-                self._full_restart_count = 0
-                self._light_restart_done = False
+                # Seule une connectivité VÉRIFIÉE clôt la panne.
+                self._conn_fail_count      = 0
+                self._full_restart_count   = 0
+                self._light_restart_done   = False
+                self._reprises_sans_succes = 0
+                self._reprise_pas_avant    = 0.0
+            elif self._entretien_routage():
+                # Le routage avait été effacé : reposé, le tunnel peut
+                # reprendre seul.  Pas de reprise — elle coûterait une
+                # session chez le fournisseur ; nouvel avis dans 3 s.
+                self._conn_fail_count = 0
+                conn_tick = 2
             else:
                 self._conn_fail_count += 1
                 self._log(
                     f"Watchdog : pas de connectivité "
                     f"({self._conn_fail_count}/{CONN_FAIL_MAX}) …", "WARN")
                 if self._conn_fail_count >= CONN_FAIL_MAX and not self._stop_vpn:
-                    self._recover()
+                    if self._reprise_differee():
+                        if self._reprise_annoncee != self._reprise_pas_avant:
+                            self._reprise_annoncee = self._reprise_pas_avant
+                            self._log(
+                                "Watchdog : reprise différée de "
+                                f"{int(self._reprise_pas_avant - time.time())} s "
+                                f"({self._reprises_sans_succes} sans succès), "
+                                "pour ménager les comptes du fournisseur.", "WARN")
+                        self._conn_fail_count = 0
+                    else:
+                        self._recover()
                 else:
                     # Confirmation au tick suivant (3 s), pas au prochain
                     # cycle (9 s) : un second échec reste exigé contre les

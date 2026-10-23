@@ -270,8 +270,10 @@ class FirewallMixin:
             _run("iptables", "-A", KS_LAN_CHAIN, "-i", iface, "-o", tun, "-j", "RETURN")
             _run("iptables", "-A", KS_LAN_CHAIN, "-i", iface, "-j", "DROP")
             _run("iptables", "-I", "FORWARD", "-j", KS_LAN_CHAIN)
-            self._lan_active = True
-            self._lan_tun    = tun   # mémorisé pour le démontage et la détection
+            self._lan_active  = True
+            self._lan_tun     = tun   # mémorisé pour le démontage et la détection
+            self._lan_iface   = iface
+            self._lan_adresse = f"{gw}/{net.prefixlen}"
             self._log(f"Partage LAN actif : {iface} ({gw}/{net.prefixlen}) → {tun}.", "OK")
             if self.config.get("lan_dhcp", True):
                 self._start_lan_dnsmasq(iface, gw, net)
@@ -279,6 +281,30 @@ class FirewallMixin:
         except Exception as e:
             self._log(f"Partage LAN : {e}", "ERROR")
             return False
+
+    def _verifier_lan(self) -> bool:
+        """Repose l'adresse de la carte de partage LAN si un tiers l'a retirée
+        — systemd-networkd, à son démarrage, retire les adresses qu'il n'a pas
+        posées sur les cartes qu'il gère.  Sans elle, les clients du LAN
+        perdent leur passerelle, en silence.  Vrai si elle a été reposée."""
+        if not (self._lan_active and self._lan_iface and self._lan_adresse):
+            return False
+        r = _run("ip", "-4", "-o", "addr", "show", "dev", self._lan_iface)
+        if r.returncode != 0:      # carte débranchée : rien à reposer
+            return False
+        if self._lan_adresse in r.stdout.decode(errors="ignore").split():
+            return False
+        r = _run("ip", "addr", "replace", self._lan_adresse, "dev", self._lan_iface)
+        if r.returncode != 0:
+            self._log(f"Partage LAN : adresse {self._lan_adresse} impossible à "
+                      f"reposer sur {self._lan_iface} : "
+                      f"{r.stderr.decode(errors='ignore').strip()}", "ERROR")
+            return False
+        _run("ip", "link", "set", self._lan_iface, "up")
+        self._log(f"Partage LAN : adresse {self._lan_adresse} retirée de "
+                  f"{self._lan_iface} par un tiers (redémarrage de "
+                  "systemd-networkd ?) — reposée.", "WARN")
+        return True
 
     @staticmethod
     def _interface_existe(nom: str) -> bool:
@@ -307,8 +333,10 @@ class FirewallMixin:
                      "-j", "MASQUERADE")
             if iface:
                 _run("ip", "addr", "flush", "dev", iface)
-            self._lan_active = False
-            self._lan_tun    = ""
+            self._lan_active  = False
+            self._lan_tun     = ""
+            self._lan_iface   = ""
+            self._lan_adresse = ""
             self._log("Partage LAN désactivé.", "OK")
         except Exception as e:
             self._log(f"Partage LAN (désactivation) : {e}", "ERROR")
