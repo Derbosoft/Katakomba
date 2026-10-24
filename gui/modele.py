@@ -28,9 +28,10 @@ from pathlib import Path
 
 from adaptation import adapter, lire_sources
 from constants import (
-    CONFIG_DIR, CONFIG_FILE, DEFAULT_CONFIG, OBSOLETE_CONFIG_KEYS, PROVIDERS_DIR,
+    CONFIG_FILE, DEFAULT_CONFIG, OBSOLETE_CONFIG_KEYS, PROVIDERS_DIR,
     SCRIPT_DIR, SERVICE_NAME, STATUS_SOCKET, TORRC_FILE,
 )
+from constants import CONFIG_DIR  # noqa: F401  (réexporté : console.py lit modele.CONFIG_DIR)
 from i18n import LANGUES, N_, _, ngettext, nombre
 from validation import (analyser_ovpn, analyser_torrc, chemin_ovpn_sur, composant_sur,
                         interface_lan_admissible, verifier_dns, verifier_domaine,

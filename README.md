@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.12.1
+# Katakomba — v3.12.2
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.12.1-blue)
+![Version](https://img.shields.io/badge/Version-3.12.2-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1259,6 +1259,13 @@ What is covered, beyond the happy paths:
 | Consistency | version identical in `constants.py` and both READMEs, `--script-security 1` enforced **after** `--config` |
 
 Several tests also exercise the system **read-only** to validate parsers against reality rather than a frozen sample (`/proc/net/dev` layout, `resolvectl status` output).
+
+**Static analysis (v3.12.2):** the CI also checks what the tests do not see. [ShellCheck](https://github.com/koalaman/shellcheck) checks the bash scripts, which run as root. [Ruff](https://github.com/astral-sh/ruff) looks for unknown names and dead imports or variables (rules in `ruff.toml`: bugs, not style). [zizmor](https://github.com/zizmorcore/zizmor) audits the workflows, which sign the published releases. Ruff and zizmor are pinned by version and by hash (`outils/analyse.txt`, `pip --require-hashes`), and Dependabot waits a week before proposing a new action version. Locally:
+
+```bash
+python3 -m venv /tmp/outils && /tmp/outils/bin/pip install --require-hashes --only-binary :all: -r outils/analyse.txt
+/tmp/outils/bin/ruff check . && git ls-files -z '*.sh' | xargs -0 shellcheck
+```
 
 ---
 

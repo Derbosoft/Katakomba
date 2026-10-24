@@ -16,6 +16,12 @@ on:
 permissions:
   contents: read
 
+# Une publication à la fois, jamais interrompue : une version à moitié
+# jointe (un paquet sans son SHA256SUMS) serait pire qu'une attente.
+concurrency:
+  group: publication-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
 jobs:
   paquets:
     name: Paquets signés
@@ -23,7 +29,7 @@ jobs:
     permissions:
       contents: write        # joindre les fichiers à la version
       id-token: write        # signature Sigstore de l'attestation
-      attestations: write
+      attestations: write    # enregistrer l'attestation auprès du dépôt
     env:
       TAG: ${{ github.event.release.tag_name }}
     steps:

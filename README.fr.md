@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.12.1
+# Katakomba — v3.12.2
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.12.1-blue)
+![Version](https://img.shields.io/badge/Version-3.12.2-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1302,6 +1302,13 @@ Ce qui est couvert, au-delà des chemins nominaux :
 | Cohérence | version identique dans `constants.py` et les deux READMEs, `--script-security 1` imposé **après** `--config` |
 
 Plusieurs tests exercent aussi le système en **lecture seule** pour valider les parseurs contre la réalité plutôt que contre un échantillon figé (format de `/proc/net/dev`, sortie de `resolvectl status`).
+
+**Analyse statique (v3.12.2) :** la CI passe aussi ce que les tests ne voient pas. [ShellCheck](https://github.com/koalaman/shellcheck) contrôle les scripts bash, lancés en root. [Ruff](https://github.com/astral-sh/ruff) cherche les noms inconnus et les imports ou variables morts (règles de `ruff.toml` : des bugs, pas du style). [zizmor](https://github.com/zizmorcore/zizmor) audite les workflows, qui signent les versions publiées. Ruff et zizmor sont figés par version et par empreinte (`outils/analyse.txt`, `pip --require-hashes`), et Dependabot attend une semaine avant de proposer une nouvelle version d'action. En local :
+
+```bash
+python3 -m venv /tmp/outils && /tmp/outils/bin/pip install --require-hashes --only-binary :all: -r outils/analyse.txt
+/tmp/outils/bin/ruff check . && git ls-files -z '*.sh' | xargs -0 shellcheck
+```
 
 ---
 

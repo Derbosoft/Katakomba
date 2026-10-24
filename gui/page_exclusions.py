@@ -3,7 +3,7 @@ Exclusions (mode avancé) : ce qui ne passe pas par le tunnel — réseaux
 locaux, et domaines internes résolus par votre DNS local.
 """
 
-from gi.repository import Adw, Gtk
+from gi.repository import Adw
 
 from gui import modele
 from gui.outils import GroupeListe, bouton_icone

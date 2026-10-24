@@ -10,8 +10,8 @@ DAEMON_DIR="/opt/katakomba"
 # aussi la lignée des processus jusqu'à sshd.
 _session_ssh() {
     [ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}" ] && return 0
-    local pid=$$ i
-    for i in $(seq 30); do
+    local pid=$$ _
+    for _ in $(seq 30); do
         pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
         if [ -z "$pid" ] || [ "$pid" -le 1 ]; then return 1; fi
         case "$(cat "/proc/$pid/comm" 2>/dev/null)" in sshd*) return 0 ;; esac

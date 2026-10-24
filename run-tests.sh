@@ -11,7 +11,7 @@
 # avant et après pour le prouver.
 set -uo pipefail
 
-cd "$(cd "$(dirname "$0")" && pwd)"
+cd "$(cd "$(dirname "$0")" && pwd)" || exit 1
 
 if ! command -v python3 &>/dev/null; then
     echo "python3 introuvable." >&2

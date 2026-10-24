@@ -44,6 +44,7 @@ echo "[3/8] Nettoyage du blocage hors tunnel et des règles IPv6..."
 # Blocage hors tunnel (KATAKOMBA_KILL*) : sans tunnel, il couperait tout.
 for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
          "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD"; do
+  # shellcheck disable=SC2086  # découpage voulu : « outil parent chaîne »
   set -- $c
   while $1 -D "$2" -j "$3" 2>/dev/null; do :; done
   $1 -F "$3" 2>/dev/null || true
@@ -114,6 +115,7 @@ done
 ip link del dev tun-katakomba 2>/dev/null || true
 # Retour des connexions entrantes (v3.10.0) : marquage et règles de routage.
 for c in "PREROUTING KATAKOMBA_RETOUR" "OUTPUT KATAKOMBA_RETOUR_OUT"; do
+    # shellcheck disable=SC2086  # découpage voulu : « parent chaîne »
     set -- $c
     while iptables -t mangle -D "$1" -j "$2" 2>/dev/null; do :; done
     iptables -t mangle -F "$2" 2>/dev/null || true

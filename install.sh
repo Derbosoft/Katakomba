@@ -723,9 +723,11 @@ else
 fi
 
 if [ "$AVEC_GUI" = 1 ]; then
-    gui_disponible \
-        && echo "  OK  interface graphique (GTK 4, libadwaita)" \
-        || { echo "  KO  interface graphique : GTK 4 / libadwaita 1.5+ MANQUANT"; all_ok=false; }
+    if gui_disponible; then
+        echo "  OK  interface graphique (GTK 4, libadwaita)"
+    else
+        echo "  KO  interface graphique : GTK 4 / libadwaita 1.5+ MANQUANT"; all_ok=false
+    fi
 else
     echo "  --  sans interface graphique : configuration en console (katakomba help)"
 fi
@@ -746,9 +748,11 @@ systemctl is-enabled tor &>/dev/null \
 systemctl is-enabled katakomba &>/dev/null && echo "  OK  démarrage auto activé"
 [ -x "$CLI_BIN" ]                  && echo "  OK  commande katakomba disponible"
 if [ "$AVEC_GUI" = 1 ]; then
-    [ -f "$POLKIT_RULES" ] && [ -f "$POLKIT_ACTIONS" ] \
-        && echo "  OK  polkit : connexion sans mot de passe (groupe katakomba)" \
-        || { echo "  KO  règles polkit absentes"; all_ok=false; }
+    if [ -f "$POLKIT_RULES" ] && [ -f "$POLKIT_ACTIONS" ]; then
+        echo "  OK  polkit : connexion sans mot de passe (groupe katakomba)"
+    else
+        echo "  KO  règles polkit absentes"; all_ok=false
+    fi
 fi
 [ -f "$INSTALL_DIR/daemon/core.py" ] && [ "$(stat -c %U "$INSTALL_DIR/daemon/core.py")" = root ] \
                                    && echo "  OK  code déployé : $INSTALL_DIR (root)"

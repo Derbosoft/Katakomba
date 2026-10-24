@@ -1,6 +1,5 @@
 """Watchdog : lecture des compteurs, test de connectivité, filet anti-inertie."""
 
-import socket
 import time
 import unittest
 

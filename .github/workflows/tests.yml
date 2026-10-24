@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Un nouveau push sur la même branche rend le passage précédent caduc.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     name: Suite de tests
@@ -37,6 +42,41 @@ jobs:
           Xvfb :99 -screen 0 1280x1024x24 &
           sleep 2
           python3 -W ignore::ResourceWarning -m unittest discover -s tests -t . -v
+
+  # Ce que les tests ne voient pas : scripts bash lancés en root
+  # (ShellCheck), noms et imports morts côté Python (Ruff, ruff.toml), et
+  # ces workflows eux-mêmes, qui signent les versions publiées (zizmor).
+  analyse:
+    name: Analyse statique
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Outils (figés par empreinte, outils/analyse.txt)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck
+          python3 -m venv "$RUNNER_TEMP/outils"
+          "$RUNNER_TEMP/outils/bin/pip" install --require-hashes --only-binary :all: \
+            -r outils/analyse.txt
+
+      - name: ShellCheck
+        run: |
+          shellcheck --version
+          git ls-files -z '*.sh' packaging/postinst packaging/prerm packaging/postrm \
+            | xargs -0 shellcheck
+
+      - name: Ruff
+        run: '"$RUNNER_TEMP/outils/bin/ruff" check --no-cache .'
+
+      # En ligne : vérifie aussi que chaque empreinte d'action existe dans
+      # le dépôt annoncé et qu'aucune version figée n'a de faille connue.
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/outils/bin/zizmor" --persona=auditor .github/'
 
   paquet:
     name: Paquet .deb

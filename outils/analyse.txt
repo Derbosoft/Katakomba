@@ -1,0 +1,10 @@
+# Outils d'analyse de la CI (job « Analyse statique », .github/workflows/tests.yml).
+# Figés par version ET par empreinte : pip --require-hashes refuse toute roue
+# qui ne correspond pas, comme les actions figées par SHA.  Roues Linux
+# x86_64 seulement.  Pour monter de version : empreintes sur pypi.org.
+ruff==0.17.2 \
+    --hash=sha256:2d086be452eed686aa51271ecf2cbe5037956517cc6ee39a17b4489ac12f8bbe \
+    --hash=sha256:c60f93fec7142dba5b8f487f94bf2f6231dae24dc11e4c48648347c8b0720004
+zizmor==1.31.1 \
+    --hash=sha256:58e878eb2dbd2c6183c105e1ac28c14f7dd1eca44a783f1fe2a69647d012c410 \
+    --hash=sha256:e7fdf82d31cc67eb1d5030bf2372b25ee2a1c3ad05017e18da70ed138c4accd6

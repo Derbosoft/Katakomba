@@ -1,0 +1,8 @@
+# Analyse statique (CI : .github/workflows/tests.yml).  Les règles qui
+# trouvent des bugs, pas le style : pyflakes (noms inconnus, imports et
+# variables morts), erreurs de syntaxe, bugbear, erreurs pylint.
+[lint]
+select = ["F", "E9", "B", "PLE"]
+# zip() sans strict= : les longueurs différentes sont voulues (les liens
+# entre les étapes du trajet sont un de moins que les étapes).
+ignore = ["B905"]

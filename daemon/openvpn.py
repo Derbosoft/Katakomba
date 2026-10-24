@@ -20,7 +20,6 @@ import re
 import subprocess
 import threading
 import time
-from pathlib import Path
 
 from .core import (
     _run, _deobf, _read_regular, _write_private, AUTH_TMP, OVPN_RUN,

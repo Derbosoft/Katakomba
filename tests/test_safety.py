@@ -57,7 +57,7 @@ class NoRealCommandTest(unittest.TestCase):
         for f in TESTS:
             if f.name == "test_safety.py":
                 continue
-            for ligne, nom, argv in appels_subprocess(f):
+            for ligne, _nom, argv in appels_subprocess(f):
                 if not argv:
                     continue
                 binaire = argv[0]

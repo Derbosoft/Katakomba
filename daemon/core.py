@@ -18,10 +18,12 @@ from pathlib import Path
 # ── Imports projet ────────────────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from constants import (                                        # noqa: E402
-    CONFIG_DIR, CONFIG_FILE, AUTH_TMP, PROVIDERS_DIR, SCRIPT_DIR,
-    DEFAULT_CONFIG, TORRC_FILE, VERSION, RUN_DIR, STATE_DIR,
-    TUN_IFACE, VPN_RUN_DIR, VPN_USER,
+    CONFIG_DIR, CONFIG_FILE, AUTH_TMP,
+    DEFAULT_CONFIG, VERSION, RUN_DIR, STATE_DIR,
+    TUN_IFACE, VPN_RUN_DIR,
 )
+# Inutilisés ici : réexportés pour les mixins (« from .core import … »).
+from constants import PROVIDERS_DIR, SCRIPT_DIR, TORRC_FILE, VPN_USER  # noqa: E402, F401
 
 # ── Constantes daemon ─────────────────────────────────────────────────────────
 # Tout ce que le daemon écrit vit sous RUN_DIR ou STATE_DIR (root seul), jamais

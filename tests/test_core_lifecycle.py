@@ -386,7 +386,6 @@ class StatusServerTest(unittest.TestCase):
 
     def test_socket_indisponible_ne_bloque_pas_le_demarrage(self):
         d = FakeDaemon(config={"providers": []})
-        saved = m_core.__dict__.get("STATUS_SOCKET")
         import daemon.status as m_status
         s_saved = m_status.STATUS_SOCKET
         m_status.STATUS_SOCKET = pathlib.Path("/nulle/part/impossible.sock")
