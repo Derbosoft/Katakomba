@@ -3,13 +3,16 @@ Watchdog : surveillance de connectivité, redémarrage automatique.
 """
 
 import errno
+import json
 import select
 import socket
 import subprocess
 import sys
 import time
 
-from .core import _run, _sd_notify, CONN_FAIL_MAX, REPAIR_THRESHOLD, SCRIPT_DIR, TUN_IFACE
+from .core import (_run, _read_regular, _sd_notify, _write_private, CONN_FAIL_MAX,
+                   REPAIR_THRESHOLD, REPRISES_FILE, REPRISES_MEMOIRE, SCRIPT_DIR,
+                   TUN_IFACE)
 
 
 class WatchdogMixin:
@@ -202,6 +205,34 @@ class WatchdogMixin:
         delai = min(self._REPRISE_DELAI_MAX,
                     self._REPRISE_DELAI * 2 ** (self._reprises_sans_succes - 1))
         self._reprise_pas_avant = time.time() + delai
+        # Sur disque : la réparation d'urgence fait relancer le daemon par
+        # systemd, qui repartirait sinon à 30 s, quatre reprises sur cinq.
+        try:
+            _write_private(REPRISES_FILE, json.dumps({
+                "n": self._reprises_sans_succes, "pas_avant": self._reprise_pas_avant,
+                "le": time.time()}) + "\n", dir_mode=0o755)
+        except OSError:
+            pass
+
+    def _charger_reprises(self):
+        """Reprend la série d'une panne en cours au démarrage du daemon."""
+        try:
+            d = json.loads(_read_regular(REPRISES_FILE, 4096))
+            n, pas_avant, le = int(d["n"]), float(d["pas_avant"]), float(d["le"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return
+        if not 0 <= time.time() - le <= REPRISES_MEMOIRE or not 0 < n < 1000:
+            return
+        self._reprises_sans_succes = n
+        self._reprise_pas_avant = min(pas_avant, le + self._REPRISE_DELAI_MAX)
+        self._log(f"Watchdog : panne en cours avant le redémarrage du service "
+                  f"({n} reprise(s) sans succès) — délai entre reprises conservé.",
+                  "WARN")
+
+    def _solder_reprises(self):
+        self._reprises_sans_succes = 0
+        self._reprise_pas_avant    = 0.0
+        REPRISES_FILE.unlink(missing_ok=True)
 
     def _reprise_differee(self) -> bool:
         """Une reprise attend la fin de son délai (voir _noter_reprise)."""
@@ -241,6 +272,7 @@ class WatchdogMixin:
     def _monitor_loop(self):
         conn_tick  = 0
         guard_tick = 0
+        self._charger_reprises()
         while not self._stop_flag:
             time.sleep(3)
             if self._stop_flag:
@@ -351,8 +383,8 @@ class WatchdogMixin:
                 self._conn_fail_count      = 0
                 self._full_restart_count   = 0
                 self._light_restart_done   = False
-                self._reprises_sans_succes = 0
-                self._reprise_pas_avant    = 0.0
+                if self._reprises_sans_succes:
+                    self._solder_reprises()
             elif self._entretien_routage():
                 # Le routage avait été effacé : reposé, le tunnel peut
                 # reprendre seul.  Pas de reprise — elle coûterait une

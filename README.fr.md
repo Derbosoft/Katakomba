@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.12.2
+# Katakomba — v3.13.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.12.2-blue)
+![Version](https://img.shields.io/badge/Version-3.13.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -344,9 +344,12 @@ katakomba/
 │   ├── test_polkit.py       règle polkit exécutée contre un faux polkit, invites
 │   ├── test_i18n.py         catalogues complets, choix de la langue, textes jamais figés
 │   ├── test_validation.py   listes blanches .ovpn / torrc
+│   ├── test_fuzz.py         fuzzing : .ovpn lu comme OpenVPN, options poussées, torrc
 │   ├── test_adaptation.py   adaptation automatique des fichiers de fournisseur
 │   ├── test_scripts.py      syntaxe shell, unité systemd, cohérence des versions
 │   └── test_safety.py       garde-fou : la suite ne touche pas au système
+│
+├── tests_noyau/         Vérifications sur vrai noyau, espace réseau neuf (lancer.sh)
 │
 └── providers/           Dossier des fichiers .ovpn par fournisseur (non versionné)
     └── <NomFournisseur>/
@@ -664,6 +667,7 @@ Ce que chaque contrôle attrape :
 | Qualité du circuit | mesure de plus de 6 h → le circuit a pu se dégrader depuis |
 | Blocage hors tunnel | activé dans les réglages mais absent → le trafic peut sortir pendant les reconnexions |
 | Connexions entrantes | réponses envoyées dans le tunnel → une session SSH distante serait coupée (v3.10.0) |
+| systemd-networkd | actif avec `ManageForeignRoutes` ou `ManageForeignRoutingPolicyRules` laissés à oui → à chaque redémarrage de networkd, le tunnel est coupé jusqu'à 30 s le temps que le daemon repose ses routes (avertissement, v3.13.0) |
 | Exclusions vers Internet | listées en avertissement : ce trafic sort avec votre adresse réelle, et a pu être ajouté hors de l'interface |
 | Sortie Internet | pas de réponse via le tunnel, ou adresse privée |
 
@@ -754,6 +758,8 @@ openvpn
 > **v3.7.0 — `--script-security 1` ne suffisait pas.** La directive `plugin /x.so` **charge une bibliothèque, donc exécute du code, quel que soit ce niveau**. Vérifié sur OpenVPN 2.7.0 : le constructeur de la bibliothèque s'exécute avant toute connexion. D'autres directives ont le même effet (`pkcs11-providers`, `providers`, `engine`) ou écrivent un fichier arbitraire en root (`log`, `status`, `writepid`…).
 >
 > Le `.ovpn` passe donc par une **liste blanche** (`validation.py`) avant chaque lancement. Une directive absente de la liste fait **refuser le fichier** : le fournisseur est ignoré et le suivant prend le relais. Les directives de script (`up`, `down`, `route-up`, `tls-verify`…) sont refusées de la même façon. Les formes détournées sont couvertes : `--plugin`, `"plugin"`, `setenv opt plugin …`, directive dans un bloc `<connection>`. Le GUI applique les mêmes règles au choix d'un `.ovpn` et à l'import d'une sauvegarde `.katakomba`.
+>
+> **Lire comme OpenVPN (v3.13.0).** Le contrôle doit découper le fichier exactement comme OpenVPN 2.7, sinon ce qu'il croit être une donnée de certificat peut être une directive. OpenVPN coupe les lignes sur `\n` seulement, les lit par morceaux de 255 octets, et sort d'un bloc `<ca>`… sur toute ligne qui **commence** par `</ca>`. Avant la v3.13.0, une ligne `</ca>x`, une ligne de données de plus de 255 octets terminée par `</ca>`, ou un `\r` bien placé faisaient lire à OpenVPN une directive jamais contrôlée, `plugin` compris. Ces lignes sont désormais refusées. Un fuzzer (`tests/test_fuzz.py`) confronte la validation à un modèle de la lecture d'OpenVPN, lui-même vérifié contre le vrai binaire (`tests_noyau/`).
 >
 > OpenVPN lit ensuite une **copie** de ce qui a été contrôlé (`/run/katakomba-vpn/openvpn.conf`), jamais le fichier d'origine, qui pourrait changer entre le contrôle et la lecture. Celui-ci est lu **sans suivre de lien symbolique**. Un lien vers `/etc/shadow` aurait sinon fait recopier ce fichier, ligne à ligne, dans les messages d'erreur d'OpenVPN, donc dans le journal. Pour la même raison, les messages du daemon ne citent jamais le contenu d'une ligne refusée.
 >
@@ -911,7 +917,7 @@ Un échec est **confirmé 3 s plus tard** (et non au cycle suivant, 9 s après).
 1. **Relance d'OpenVPN seul**, sur le même compte et un circuit Tor neuf (`NEWNYM`), si le ControlPort indique que Tor est sain (`status/circuit-established=1`).
 2. **Redémarrage complet** (`_full_restart()` : arrêt de Tor et d'OpenVPN, nettoyage des routes `/32`, relance) si Tor n'est pas sain, si la connectivité manque encore après la relance légère, ou si le tunnel n'est pas remonté **45 s** après elle.
 
-Avant toute reprise, le watchdog repose le routage qu'un tiers aurait effacé (voir *Montage du tunnel*) : si quelque chose manquait, il revérifie 3 s plus tard sans rien relancer. La relance légère n'a lieu qu'**une fois par panne** : seule une connectivité réellement vérifiée clôt la panne, ni le délai de grâce ni un redémarrage complet. Chaque reprise ouvre une session chez le fournisseur, qui limite les connexions simultanées : la suivante attend **30 s**, puis 60, 120, 240, et au plus **5 min** (v3.12.1).
+Avant toute reprise, le watchdog repose le routage qu'un tiers aurait effacé (voir *Montage du tunnel*) : si quelque chose manquait, il revérifie 3 s plus tard sans rien relancer. La relance légère n'a lieu qu'**une fois par panne** : seule une connectivité réellement vérifiée clôt la panne, ni le délai de grâce ni un redémarrage complet. Chaque reprise ouvre une session chez le fournisseur, qui limite les connexions simultanées : la suivante attend **30 s**, puis 60, 120, 240, et au plus **5 min** (v3.12.1). Depuis la v3.13.0, cette série survit à la relance du daemon par systemd après une réparation d'urgence (`/var/lib/katakomba/reprises.json`, oublié après 15 min), et un retour des connexions entrantes qui n'a pas pu être reposé est retenté à chaque passage au lieu d'attendre le tunnel suivant.
 
 > **v3.12.1.** Le délai de grâce comptait comme un succès : après chaque relance légère, le tunnel remontait, passait pour sain pendant 30 s, et la relance légère se réarmait. Sur un poste dont networkd avait effacé les routes des relais, le watchdog a relancé OpenVPN 130 fois en deux heures sans jamais passer au redémarrage complet, et trois comptes ont été refusés pour connexions simultanées épuisées.
 
@@ -1274,7 +1280,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **795 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **825 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout
@@ -1302,6 +1308,14 @@ Ce qui est couvert, au-delà des chemins nominaux :
 | Cohérence | version identique dans `constants.py` et les deux READMEs, `--script-security 1` imposé **après** `--config` |
 
 Plusieurs tests exercent aussi le système en **lecture seule** pour valider les parseurs contre la réalité plutôt que contre un échantillon figé (format de `/proc/net/dev`, sortie de `resolvectl status`).
+
+**Fuzzing (v3.13.0) :** `tests/test_fuzz.py` soumet des milliers d'entrées piégées, à graines fixes et sans dépendance, à tout ce qu'un tiers peut écrire : `.ovpn`, options poussées par le serveur VPN, torrc, réglages. La règle centrale : un `.ovpn` accepté ne doit contenir, **lu comme OpenVPN le lit**, aucune directive hors liste blanche. C'est ainsi qu'ont été trouvées les failles corrigées en v3.13.0 (fin de bloc, lignes de 255 octets, et un `tun-mtu ²` poussé par le serveur qui faisait lever une exception).
+
+**Vérifications sur vrai noyau (v3.13.0) :** `tests_noyau/` exécute le vrai daemon dans un espace réseau neuf (`unshare`), jamais celui de la machine, contre un second espace qui joue le routeur et Internet. Ce sont de vraies routes, de vraies règles iptables et de vraies connexions : routage effacé par systemd-networkd puis reposé, session SSH qui survit au tunnel (filtrage de chemin inverse strict compris), blocage hors tunnel (ce qui est refusé, ce qui passe, Tor seul autorisé), blocage IPv6. Le modèle de lecture du fuzzer y est confronté au vrai binaire OpenVPN. La CI les lance en root à chaque push ; en local, sans root :
+
+```bash
+bash tests_noyau/lancer.sh -v
+```
 
 **Analyse statique (v3.12.2) :** la CI passe aussi ce que les tests ne voient pas. [ShellCheck](https://github.com/koalaman/shellcheck) contrôle les scripts bash, lancés en root. [Ruff](https://github.com/astral-sh/ruff) cherche les noms inconnus et les imports ou variables morts (règles de `ruff.toml` : des bugs, pas du style). [zizmor](https://github.com/zizmorcore/zizmor) audite les workflows, qui signent les versions publiées. Ruff et zizmor sont figés par version et par empreinte (`outils/analyse.txt`, `pip --require-hashes`), et Dependabot attend une semaine avant de proposer une nouvelle version d'action. En local :
 

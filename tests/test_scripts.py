@@ -831,6 +831,45 @@ class StatutLectureSeuleScriptsTest(unittest.TestCase):
         self.assertIn('usermod -aG "$GROUPE" "$CIBLE"', bloc)
 
 
+class DoctorNetworkdTest(unittest.TestCase):
+    """systemd-networkd réglé par défaut : signalé, avec le remède."""
+
+    BLOC = CLI[CLI.index("# systemd-networkd retire"):]
+    BLOC = BLOC[:BLOC.index("# ── 4. DNS")]
+
+    def _diagnostic(self, actif, conf):
+        notes = []
+        reponses = {"is-active": (0 if actif else 3, ""), "cat-config": (0, conf)}
+
+        def sh(*cmd, timeout=15):
+            return next(v for k, v in reponses.items() if k in cmd)
+        exec(self.BLOC, {"sh": sh, "note": lambda *a: notes.append(a),
+                         "_": lambda t: t, "OK": "OK", "WARN": "WARN"})
+        return notes
+
+    def test_reglages_par_defaut_signales(self):
+        (niveau, titre, detail), = self._diagnostic(True, "# /etc/systemd/networkd.conf\n[Network]\n")
+        self.assertEqual((niveau, titre), ("WARN", "systemd-networkd"))
+        self.assertIn("ManageForeignRoutes, ManageForeignRoutingPolicyRules", detail)
+
+    def test_remede_applique(self):
+        conf = ("[Network]\nManageForeignRoutes=yes\n"
+                "# /etc/systemd/networkd.conf.d/katakomba.conf\n[Network]\n"
+                "ManageForeignRoutes=no\nManageForeignRoutingPolicyRules = false\n")
+        self.assertEqual(self._diagnostic(True, conf)[0][0], "OK")
+
+    def test_moitie_du_remede(self):
+        detail = self._diagnostic(True, "[Network]\nManageForeignRoutes=no\n")[0][2]
+        self.assertTrue(detail.startswith("ManageForeignRoutingPolicyRules actif"))
+
+    def test_commentaire_ignore(self):
+        conf = "[Network]\n#ManageForeignRoutes=no\n;ManageForeignRoutingPolicyRules=no\n"
+        self.assertEqual(self._diagnostic(True, conf)[0][0], "WARN")
+
+    def test_networkd_inactif_rien_a_dire(self):
+        self.assertEqual(self._diagnostic(False, ""), [])
+
+
 class RetourEntrantScriptsTest(unittest.TestCase):
     """Le nettoyage (arrêt, réparation) retire aussi le retour des connexions
     entrantes : marquage, règles et table de routage."""

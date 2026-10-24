@@ -78,6 +78,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: '"$RUNNER_TEMP/outils/bin/zizmor" --persona=auditor .github/'
 
+  # Vrai noyau, dans un espace réseau neuf (tests_noyau/lancer.sh) : vraies
+  # routes, vraies règles iptables, vraies connexions, et le vrai binaire
+  # OpenVPN face au modèle de lecture du fuzzer.  En root : le passe-droit de
+  # Tor (--uid-owner) n'est vérifiable qu'ici.
+  noyau:
+    name: Vrai noyau
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: OpenVPN
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openvpn
+          openvpn --version | head -1
+
+      - name: Vérifications
+        run: sudo bash tests_noyau/lancer.sh -v
+
   paquet:
     name: Paquet .deb
     runs-on: ubuntu-24.04

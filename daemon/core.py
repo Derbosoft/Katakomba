@@ -38,6 +38,10 @@ RESOLVED_DROP_IN  = Path("/etc/systemd/resolved.conf.d/katakomba-split.conf")
 LAN_DNSMASQ_PID   = RUN_DIR / "dnsmasq.pid"
 LEGACY_DNSMASQ_PID = CONFIG_DIR / "tor-vpn-dnsmasq.pid"
 TOR_ROUTES_FILE   = STATE_DIR / "tor-routes.txt"
+# Reprises sans succès de la panne en cours (voir WatchdogMixin._noter_reprise) :
+# gardées pour le daemon que systemd relance après la réparation d'urgence.
+REPRISES_FILE     = STATE_DIR / "reprises.json"
+REPRISES_MEMOIRE  = 900   # s : au-delà, une ancienne panne ne compte plus
 
 # Processus orphelins d'une session précédente, reconnus à leur ligne de
 # commande.  Jamais « pkill -x openvpn » ni « pkill -x tor » : ce serait
@@ -306,6 +310,7 @@ class DaemonCore:
         self._routes_exclues = []      # posées par _monter_tunnel
         self._retour_actif   = False   # retour des connexions entrantes
         self._retour_local   = ""      # adresse du tunnel, pour le reposer
+        self._retour_voulu   = False   # posé une fois pour ce tunnel : à tenir
         self._src_valid_mark = None    # valeur d'origine, rendue à l'arrêt
         self._ovpn_texte     = ""      # .ovpn validé (topologie, MTU)
 

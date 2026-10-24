@@ -510,6 +510,27 @@ else:
          ngettext("{n} réseau en accès direct", "{n} réseaux en accès direct",
                   len(connectes)).format(n=len(connectes)))
 
+# systemd-networkd retire à son redémarrage (une mise à jour suffit) les routes
+# et règles qu'il n'a pas posées.  Le daemon les repose (v3.12.1), mais le
+# tunnel reste coupé jusqu'à 30 s.  Dernière valeur lue = celle qui s'applique.
+if sh("systemctl", "is-active", "systemd-networkd")[0] == 0:
+    _rc, conf = sh("systemd-analyze", "cat-config", "systemd/networkd.conf")
+    valeurs = {}
+    for l in conf.splitlines():
+        l = l.strip()
+        if "=" in l and not l.startswith(("#", ";", "[")):
+            cle, _sep, val = l.partition("=")
+            valeurs[cle.strip()] = val.strip().lower()
+    actifs = [cle for cle in ("ManageForeignRoutes", "ManageForeignRoutingPolicyRules")
+              if valeurs.get(cle, "yes") not in ("no", "false", "0", "off")]
+    if actifs:
+        note(WARN, _("systemd-networkd"),
+             _("{reglages} actif : à chaque redémarrage de networkd, le tunnel est "
+               "coupé jusqu'à 30 s — « =no » dans networkd.conf l'évite (README)").format(
+                 reglages=", ".join(actifs)))
+    else:
+        note(OK, _("systemd-networkd"), _("ne retire pas les routes du tunnel"))
+
 # ── 4. DNS ────────────────────────────────────────────────────────────────────
 rc, sortie = sh("resolvectl", "status", tun)
 attrs = {}

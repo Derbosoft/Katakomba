@@ -462,6 +462,68 @@ class DelaiDeRepriseTest(unittest.TestCase):
         self.assertTrue(d._entretien_routage())
 
 
+class ReprisesConserveesTest(unittest.TestCase):
+    """La série de reprises survit à la relance du daemon par systemd."""
+
+    def setUp(self):
+        m_watchdog.REPRISES_FILE.unlink(missing_ok=True)
+
+    tearDown = setUp
+
+    def test_ecrite_puis_reprise(self):
+        d = FakeDaemon()
+        for _ in range(3):
+            d._noter_reprise()
+        self.assertTrue(m_watchdog.REPRISES_FILE.exists())
+        neuf = FakeDaemon()
+        neuf._charger_reprises()
+        self.assertEqual(neuf._reprises_sans_succes, 3)
+        self.assertAlmostEqual(neuf._reprise_pas_avant, d._reprise_pas_avant, delta=1)
+        self.assertTrue(neuf.has_log("délai entre reprises conservé", "WARN"))
+        neuf._noter_reprise()
+        self.assertAlmostEqual(neuf._reprise_pas_avant - time.time(), 240, delta=2)
+
+    def test_succes_efface_le_fichier(self):
+        d = FakeDaemon()
+        d._noter_reprise()
+        d._solder_reprises()
+        self.assertFalse(m_watchdog.REPRISES_FILE.exists())
+        self.assertEqual((d._reprises_sans_succes, d._reprise_pas_avant), (0, 0.0))
+
+    def test_ancienne_panne_ignoree(self):
+        import json
+        m_watchdog.REPRISES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        m_watchdog.REPRISES_FILE.write_text(json.dumps(
+            {"n": 4, "pas_avant": time.time() - 3000, "le": time.time() - 3600}))
+        d = FakeDaemon()
+        d._charger_reprises()
+        self.assertEqual(d._reprises_sans_succes, 0)
+
+    def test_fichier_illisible_ou_absurde(self):
+        m_watchdog.REPRISES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        for contenu in ("", "{", '{"n": "x"}', '[1, 2]',
+                        '{"n": -1, "pas_avant": 0, "le": %f}' % time.time(),
+                        '{"n": 2, "pas_avant": 1e18, "le": %f}' % time.time()):
+            m_watchdog.REPRISES_FILE.write_text(contenu)
+            d = FakeDaemon()
+            d._charger_reprises()
+            self.assertLessEqual(d._reprise_pas_avant, time.time() + 300, contenu)
+            self.assertIn(d._reprises_sans_succes, (0, 2), contenu)
+
+    def test_lien_symbolique_jamais_suivi(self):
+        import os
+        cible = m_watchdog.REPRISES_FILE.with_name("cible")
+        cible.write_text('{"n": 3, "pas_avant": 0, "le": %f}' % time.time())
+        os.symlink(cible, m_watchdog.REPRISES_FILE)
+        try:
+            d = FakeDaemon()
+            d._charger_reprises()
+            self.assertEqual(d._reprises_sans_succes, 0)
+        finally:
+            m_watchdog.REPRISES_FILE.unlink(missing_ok=True)
+            cible.unlink()
+
+
 class InertNetTest(unittest.TestCase):
     """Filet anti-inertie : aucune impasse ne doit être définitive."""
 

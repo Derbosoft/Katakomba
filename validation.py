@@ -144,6 +144,25 @@ def _jetons(ligne: str):
         return ligne.split()
 
 
+# OpenVPN lit son fichier ligne à ligne par morceaux de 255 octets (tampon de
+# 256), et clôt un bloc sur toute ligne — tout morceau — qui COMMENCE par la
+# balise de fin, une fois ses espaces de tête retirées (vérifié sur 2.7.0).
+OVPN_BLOC_LIGNE_MAX = 254
+
+
+def lignes_ovpn(texte: str) -> list:
+    """Les lignes telles qu'OpenVPN les voit : coupées sur « \n » seulement.
+    splitlines() coupe aussi sur « \r », « \v », « \x85 »… : une donnée
+    de bloc y paraîtrait en deux lignes courtes, quand OpenVPN en lit une
+    seule, découpée ailleurs."""
+    return texte.split("\n")
+
+
+def fin_de_bloc(ligne: str, bloc: str) -> bool:
+    """La ligne (déjà débarrassée de ses espaces) clôt le bloc pour OpenVPN."""
+    return ligne.startswith(f"</{bloc}>")
+
+
 def analyser_ovpn(texte: str):
     """Renvoie (refus, avertissements) : deux listes de messages.
 
@@ -152,11 +171,22 @@ def analyser_ovpn(texte: str):
     refus, avert = [], []
     bloc = None
     secu_signalee = False
-    for n, brute in enumerate(texte.splitlines(), 1):
+    for n, brute in enumerate(lignes_ovpn(texte), 1):
         ligne = brute.strip()
         if bloc is not None:
-            if ligne == f"</{bloc}>":
+            # Texte après la balise de fin, ou ligne assez longue pour
+            # qu'OpenVPN la lise en morceaux dont l'un commencerait par la
+            # balise : OpenVPN sortirait du bloc là où ce contrôle y resterait,
+            # et lirait la suite comme des directives jamais contrôlées.
+            if fin_de_bloc(ligne, bloc):
+                if ligne != f"</{bloc}>":
+                    refus.append(_("ligne {n} : texte après </{bloc}>").format(
+                        n=n, bloc=bloc))
                 bloc = None
+            elif len(brute.encode("utf-8", "replace")) > OVPN_BLOC_LIGNE_MAX:
+                refus.append(_("ligne {n} : ligne de plus de {max} octets dans "
+                               "<{bloc}>").format(n=n, max=OVPN_BLOC_LIGNE_MAX,
+                                                  bloc=bloc))
             continue
         if not ligne or ligne[0] in "#;":
             continue
@@ -418,10 +448,10 @@ def preparer_copie_ovpn(texte: str) -> str:
     """Copie d'un .ovpn déjà validé, ces directives mises en commentaire.
     Le contenu des blocs de données (<ca>, <key>…) n'est jamais touché."""
     sortie, bloc = [], None
-    for brute in texte.splitlines():
+    for brute in lignes_ovpn(texte.rstrip("\n")):
         ligne = brute.strip()
         if bloc is not None:
-            if ligne == f"</{bloc}>":
+            if fin_de_bloc(ligne, bloc):
                 bloc = None
             sortie.append(brute)
             continue
@@ -436,6 +466,9 @@ def preparer_copie_ovpn(texte: str) -> str:
         else:
             sortie.append(brute)
     return "\n".join(sortie) + "\n"
+
+
+TUNNEL_PREFIXE_MIN = 8
 
 
 def _ipv4(valeur):
@@ -476,7 +509,9 @@ def analyser_push(options, texte_ovpn: str = "") -> dict:
         nom, args = p[0], p[1:]
         if nom == "topology" and args and args[0] in ("net30", "p2p", "subnet"):
             r["topology"] = args[0]
-        elif nom == "tun-mtu" and args and args[0].isdigit() and 576 <= int(args[0]) <= 65535:
+        # isascii : « ² » ou « ١٢ » passent isdigit(), et int() lèverait.
+        elif nom == "tun-mtu" and args and args[0].isascii() and args[0].isdigit() \
+                and 576 <= int(args[0]) <= 65535:
             r["tun_mtu"] = int(args[0])
         elif nom == "ifconfig" and len(args) >= 2 and _ipv4(args[0]) and _ipv4(args[1]):
             r["ifconfig"] = (args[0], args[1])
@@ -503,6 +538,14 @@ def analyser_push(options, texte_ovpn: str = "") -> dict:
             except ValueError:
                 r["refus"].append(f"masque du tunnel invalide : {second}")
                 r["ifconfig"] = None
+            else:
+                # Posé sur l'interface, le réseau du tunnel devient une route
+                # « directement connectée » : en /0, toutes les exclusions et
+                # routes poussées passeraient pour locales, donc ignorées.
+                if tunnel.prefixlen < TUNNEL_PREFIXE_MIN:
+                    r["refus"].append(f"masque du tunnel trop large : {second} "
+                                      f"(/{tunnel.prefixlen}, au plus /{TUNNEL_PREFIXE_MIN})")
+                    r["ifconfig"], tunnel = None, None
         else:
             tunnel = ipaddress.IPv4Network(f"{second}/32")
     for args in routes:

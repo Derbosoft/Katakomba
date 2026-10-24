@@ -166,6 +166,52 @@ class ReglagesConfigTest(unittest.TestCase):
             self.assertFalse(validation.interface_lan_admissible(mauvais), repr(mauvais))
 
 
+class FinDeBlocTest(unittest.TestCase):
+    """OpenVPN sort d'un bloc de données sur toute ligne qui COMMENCE par la
+    balise de fin, et lit ses lignes par morceaux de 255 octets (vérifié sur
+    OpenVPN 2.7.0).  Ce qu'il lit ensuite comme directives doit avoir été
+    contrôlé : sinon un « plugin » caché derrière passait la validation."""
+
+    def _refus(self, texte):
+        return analyser_ovpn(texte)[0]
+
+    def test_texte_apres_la_balise_de_fin(self):
+        refus = self._refus("client\n<ca>\nMIIB\n</ca>x\nplugin /tmp/x.so\n</ca>\n")
+        self.assertTrue(any("texte après </ca>" in m for m in refus), refus)
+        self.assertTrue(any("plugin" in m for m in refus), "directive cachée non vue")
+
+    def test_ligne_decoupee_par_openvpn(self):
+        for n in (255, 300, 510):
+            refus = self._refus(f"client\n<ca>\n{'b' * n}</ca>\nplugin /tmp/x.so\n</ca>\n")
+            self.assertTrue(refus, n)
+
+    def test_retour_chariot_ne_coupe_pas_la_ligne(self):
+        """splitlines() y voyait deux lignes courtes ; OpenVPN en lit une
+        seule, de 260 octets, dont le second morceau est « </ca> »."""
+        refus = self._refus("client\n<ca>\n" + "b" * 200 + "\r" + "c" * 54
+                            + "</ca>\nplugin /tmp/x.so\n</ca>\n")
+        self.assertTrue(refus)
+
+    def test_longueur_comptee_en_octets(self):
+        self.assertTrue(self._refus("client\n<ca>\n" + "é" * 128 + "\n</ca>\n"))
+        self.assertFalse(self._refus("client\n<ca>\n" + "b" * 254 + "\n</ca>\n"))
+
+    def test_fichiers_ordinaires_inchanges(self):
+        self.assertEqual(analyser_ovpn(OVPN_FOURNISSEUR), ([], []))
+        self.assertEqual(analyser_ovpn(OVPN_FOURNISSEUR.replace("\n", "\r\n")), ([], []))
+        self.assertFalse(self._refus("client\n<ca>\nMIIB\n  </ca>  \nremote a 1\n"))
+
+    def test_copie_sortie_du_bloc_comme_openvpn(self):
+        copie = validation.preparer_copie_ovpn("<ca>\nx\n</ca>\nuser nobody\n")
+        self.assertIn("# user nobody", copie)
+
+    def test_copie_conserve_les_retours_chariot(self):
+        """OpenVPN lit la copie : elle doit être découpée comme le texte
+        validé, pas renormalisée."""
+        texte = "client\r\nremote a 1\r\n"
+        self.assertEqual(validation.preparer_copie_ovpn(texte), texte)
+
+
 class PushTest(unittest.TestCase):
     """Ce que le serveur VPN pousse : le daemon décide de ce qu'il accepte."""
 
@@ -203,6 +249,22 @@ class PushTest(unittest.TestCase):
     def test_dns_nouvelle_syntaxe(self):
         r = validation.analyser_push(self.PUSH + ["dns server 0 address 10.8.0.53"])
         self.assertIn("10.8.0.53", r["dns"])
+
+    def test_mtu_en_chiffres_non_ascii(self):
+        """« ² » passe isdigit() mais int() lève : le montage du tunnel
+        s'arrêtait sur une exception, poussée par le serveur."""
+        for valeur in ("²", "١٤٠٠", "1４00"):
+            r = validation.analyser_push(self.PUSH + [f"tun-mtu {valeur}"])
+            self.assertIsNone(r["tun_mtu"], valeur)
+
+    def test_masque_du_tunnel_trop_large(self):
+        """Un tunnel en /0 rendrait toutes les exclusions « locales »."""
+        for masque in ("0.0.0.0", "128.0.0.0", "254.0.0.0"):
+            r = validation.analyser_push(["topology subnet", f"ifconfig 10.8.0.2 {masque}"])
+            self.assertIsNone(r["ifconfig"], masque)
+            self.assertTrue(any("trop large" in m for m in r["refus"]), masque)
+        r = validation.analyser_push(["topology subnet", "ifconfig 10.8.0.2 255.0.0.0"])
+        self.assertEqual(r["ifconfig"], ("10.8.0.2", "255.0.0.0"))
 
     def test_sans_ifconfig(self):
         self.assertIsNone(validation.analyser_push(["redirect-gateway def1"])["ifconfig"])

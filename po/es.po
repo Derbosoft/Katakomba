@@ -74,7 +74,7 @@ msgstr "Credenciales"
 msgid "Connexion"
 msgstr "Conexión"
 
-#: gui/assistant.py:219 gui/modele.py:978
+#: gui/assistant.py:219 gui/modele.py:979
 msgid "Démarrage du service…"
 msgstr "Iniciando el servicio…"
 
@@ -282,421 +282,421 @@ msgstr "El servicio no respondió como se esperaba"
 msgid "Erreur inconnue."
 msgstr "Error desconocido."
 
-#: gui/modele.py:173
+#: gui/modele.py:174
 msgid "Votre compte ne peut pas modifier la configuration de Katakomba. Fermez puis rouvrez votre session ; si le problème persiste : sudo katakomba autoriser $USER"
 msgstr "Su cuenta no puede modificar la configuración de Katakomba. Cierre y vuelva a abrir la sesión; si el problema continúa: sudo katakomba autoriser $USER"
 
-#: gui/modele.py:811
+#: gui/modele.py:812
 msgid "démarrage du service"
 msgstr "inicio del servicio"
 
-#: gui/modele.py:811
+#: gui/modele.py:812
 msgid "redémarrage complet de Tor et d'OpenVPN"
 msgstr "reinicio completo de Tor y OpenVPN"
 
-#: gui/modele.py:812
+#: gui/modele.py:813
 msgid "perte de connectivité, relance d'OpenVPN"
 msgstr "pérdida de conectividad, reinicio de OpenVPN"
 
-#: gui/modele.py:813
+#: gui/modele.py:814
 msgid "circuit Tor trop lent, nouveau tirage"
 msgstr "circuito Tor demasiado lento, se elige otro"
 
-#: gui/modele.py:813
+#: gui/modele.py:814
 msgid "connexion VPN interrompue"
 msgstr "conexión VPN interrumpida"
 
-#: gui/modele.py:814
+#: gui/modele.py:815
 msgid "identifiants refusés, compte suivant"
 msgstr "credenciales rechazadas, se prueba la siguiente cuenta"
 
-#: gui/modele.py:262
+#: gui/modele.py:263
 msgid "Donnez un nom au fournisseur (par exemple celui de votre VPN)."
 msgstr "Dé un nombre al proveedor (por ejemplo el de su VPN)."
 
-#: gui/modele.py:264 gui/modele.py:157
+#: gui/modele.py:265 gui/modele.py:158
 msgid "Le nom ne peut contenir ni « / » ni « \\ »."
 msgstr "El nombre no puede contener «/» ni «\\»."
 
-#: gui/modele.py:299
+#: gui/modele.py:300
 msgid "Les lignes retirées restent dans le fichier, en commentaire."
 msgstr "Las líneas retiradas quedan en el archivo como comentarios."
 
-#: gui/modele.py:860
+#: gui/modele.py:861
 msgid "Connexion au VPN…"
 msgstr "Conectando a la VPN…"
 
-#: gui/modele.py:861
+#: gui/modele.py:862
 msgid "À travers Tor, en général en moins de 30 secondes."
 msgstr "A través de Tor, por lo general en menos de 30 segundos."
 
-#: gui/modele.py:939
+#: gui/modele.py:940
 msgid "Depuis le démarrage"
 msgstr "Desde el inicio"
 
-#: gui/modele.py:950
+#: gui/modele.py:951
 msgid "Mesuré à la connexion"
 msgstr "Medido al conectar"
 
-#: gui/modele.py:981
+#: gui/modele.py:982
 msgid "Connecté : votre trafic passe par Tor, puis par le VPN."
 msgstr "Conectado: su tráfico pasa por Tor y luego por la VPN."
 
-#: gui/modele.py:995
+#: gui/modele.py:996
 msgid "Connexion au VPN à travers Tor…"
 msgstr "Conectando a la VPN a través de Tor…"
 
-#: gui/modele.py:1018
+#: gui/modele.py:1019
 msgid "Service démarré"
 msgstr "Servicio iniciado"
 
-#: gui/modele.py:1019
+#: gui/modele.py:1020
 msgid "Service arrêté"
 msgstr "Servicio detenido"
 
-#: gui/modele.py:1020 gui/modele.py:846
+#: gui/modele.py:1021 gui/modele.py:847
 msgid "Connecté"
 msgstr "Conectado"
 
-#: gui/modele.py:1022
+#: gui/modele.py:1023
 msgid "Circuit mesuré : {debit}"
 msgstr "Circuito medido: {debit}"
 
-#: gui/modele.py:1024
+#: gui/modele.py:1025
 msgid "Circuit trop lent ({debit}) : nouveau tirage"
 msgstr "Circuito demasiado lento ({debit}): se elige otro"
 
-#: gui/modele.py:1026
+#: gui/modele.py:1027
 msgid "Circuit lent conservé ({debit})"
 msgstr "Circuito lento conservado ({debit})"
 
-#: gui/modele.py:1028
+#: gui/modele.py:1029
 msgid "Connexion perdue : relance d'OpenVPN"
 msgstr "Conexión perdida: reinicio de OpenVPN"
 
-#: gui/modele.py:1030
+#: gui/modele.py:1031
 msgid "Connexion perdue : redémarrage complet"
 msgstr "Conexión perdida: reinicio completo"
 
-#: gui/modele.py:1032
+#: gui/modele.py:1033
 msgid "Compte {n} refusé par le fournisseur"
 msgstr "Cuenta {n} rechazada por el proveedor"
 
-#: gui/modele.py:1033
+#: gui/modele.py:1034
 msgid "Bascule vers le fournisseur suivant"
 msgstr "Cambio al siguiente proveedor"
 
-#: gui/modele.py:290
+#: gui/modele.py:291
 msgid "Modifications apportées :"
 msgstr "Cambios realizados:"
 
-#: gui/modele.py:829 gui/modele.py:903 gui/page_fournisseurs.py:22
+#: gui/modele.py:830 gui/modele.py:904 gui/page_fournisseurs.py:22
 msgid "Aucun fournisseur"
 msgstr "Ningún proveedor"
 
-#: gui/modele.py:830
+#: gui/modele.py:831
 msgid "Ajoutez votre fournisseur VPN pour commencer : l'assistant vous guide."
 msgstr "Añada su proveedor de VPN para empezar: el asistente le guía."
 
-#: gui/modele.py:834
+#: gui/modele.py:835
 msgid "Arrêté sur une erreur"
 msgstr "Detenido por un error"
 
-#: gui/modele.py:835
+#: gui/modele.py:836
 msgid "Le détail est dans le journal. Vous pouvez relancer la connexion."
 msgstr "El detalle está en el registro. Puede volver a iniciar la conexión."
 
-#: gui/modele.py:839
+#: gui/modele.py:840
 msgid "Démarrage…"
 msgstr "Iniciando…"
 
-#: gui/modele.py:840
+#: gui/modele.py:841
 msgid "Le service démarre."
 msgstr "El servicio se está iniciando."
 
-#: gui/modele.py:842
+#: gui/modele.py:843
 msgid "Déconnecté"
 msgstr "Desconectado"
 
-#: gui/modele.py:843
+#: gui/modele.py:844
 msgid "Votre trafic ne passe pas par Katakomba."
 msgstr "Su tráfico no pasa por Katakomba."
 
-#: gui/modele.py:847
+#: gui/modele.py:848
 msgid "Tout le trafic de cet ordinateur passe par le VPN, à travers Tor."
 msgstr "Todo el tráfico de este equipo pasa por la VPN, a través de Tor."
 
-#: gui/modele.py:852 gui/modele.py:898
+#: gui/modele.py:853 gui/modele.py:899
 msgid "Reconnexion…"
 msgstr "Reconectando…"
 
-#: gui/modele.py:858
+#: gui/modele.py:859
 msgid "Connexion au réseau Tor…"
 msgstr "Conectando a la red Tor…"
 
-#: gui/modele.py:859
+#: gui/modele.py:860
 msgid "1 à 3 minutes la première fois."
 msgstr "De 1 a 3 minutos la primera vez."
 
-#: gui/modele.py:876
+#: gui/modele.py:877
 msgid "Trafic redirigé"
 msgstr "Tráfico redirigido"
 
-#: gui/modele.py:878
+#: gui/modele.py:879
 msgid "Trafic direct"
 msgstr "Tráfico directo"
 
-#: gui/modele.py:910
+#: gui/modele.py:911
 msgid "Via le VPN"
 msgstr "Por la VPN"
 
-#: gui/modele.py:917
+#: gui/modele.py:918
 msgid "Cet ordinateur"
 msgstr "Este equipo"
 
-#: gui/modele.py:919
+#: gui/modele.py:920
 msgid "Réseau Tor"
 msgstr "Red Tor"
 
-#: gui/modele.py:925
+#: gui/modele.py:926
 msgid "Internet"
 msgstr "Internet"
 
-#: gui/modele.py:944
+#: gui/modele.py:945
 msgid "relance légère"
 msgid_plural "relances légères"
 msgstr[0] "reinicio ligero"
 msgstr[1] "reinicios ligeros"
 
-#: gui/modele.py:952
+#: gui/modele.py:953
 msgid "Selon les réglages"
 msgstr "Según los ajustes"
 
-#: gui/modele.py:958
+#: gui/modele.py:959
 msgid "Connecté depuis"
 msgstr "Conectado desde hace"
 
-#: gui/modele.py:961
+#: gui/modele.py:962
 msgid "Circuit Tor"
 msgstr "Circuito Tor"
 
-#: gui/modele.py:963
+#: gui/modele.py:964
 msgid "Reprises"
 msgstr "Recuperaciones"
 
-#: gui/modele.py:965 katakomba-cli.sh:591 katakomba-cli.sh:593 katakomba-cli.sh:595
+#: gui/modele.py:966 katakomba-cli.sh:612 katakomba-cli.sh:614 katakomba-cli.sh:616
 msgid "IPv6"
 msgstr "IPv6"
 
-#: gui/modele.py:975
+#: gui/modele.py:976
 msgid "Le service s'est arrêté sur une erreur. Le détail est visible dans la page Journal."
 msgstr "El servicio se detuvo por un error. El detalle aparece en la página Registro."
 
-#: gui/modele.py:988
+#: gui/modele.py:989
 msgid "Le fournisseur a refusé l'identifiant ou le mot de passe. Vérifiez-les : ce sont les identifiants OpenVPN, souvent différents de ceux de votre compte sur le site du fournisseur."
 msgstr "El proveedor rechazó el usuario o la contraseña. Compruébelos: son las credenciales OpenVPN, a menudo distintas de las de su cuenta en el sitio del proveedor."
 
-#: gui/modele.py:993
+#: gui/modele.py:994
 msgid "Connexion au réseau Tor… (1 à 3 minutes la première fois)"
 msgstr "Conectando a la red Tor… (de 1 a 3 minutos la primera vez)"
 
-#: gui/modele.py:63
+#: gui/modele.py:64
 msgid "{valeur} Mb/s"
 msgstr "{valeur} Mb/s"
 
-#: gui/modele.py:67
+#: gui/modele.py:68
 msgid "{valeur} Ko/s"
 msgstr "{valeur} KB/s"
 
-#: gui/modele.py:73
+#: gui/modele.py:74
 msgid "{n} s"
 msgstr "{n} s"
 
-#: gui/modele.py:236
+#: gui/modele.py:237
 msgid "Qualité du circuit : débit minimum entier ≥ 0, essais entre 1 et 10."
 msgstr "Calidad del circuito: velocidad mínima entera ≥ 0, intentos entre 1 y 10."
 
-#: gui/modele.py:266
+#: gui/modele.py:267
 msgid "Un fournisseur « {nom} » existe déjà."
 msgstr "Ya existe un proveedor «{nom}»."
 
-#: gui/modele.py:287
+#: gui/modele.py:288
 msgid "{n} serveur retenu."
 msgid_plural "{n} serveurs retenus."
 msgstr[0] "{n} servidor conservado."
 msgstr[1] "{n} servidores conservados."
 
-#: gui/modele.py:559 console.py:376
+#: gui/modele.py:560 console.py:376
 msgid "Ce fichier n'est pas une sauvegarde Katakomba."
 msgstr "Este archivo no es una copia de seguridad de Katakomba."
 
-#: gui/modele.py:562
+#: gui/modele.py:563
 msgid "config.json ne contient pas un objet JSON"
 msgstr "config.json no contiene un objeto JSON"
 
-#: gui/modele.py:798
+#: gui/modele.py:799
 msgid "Veille sur la connexion et prévient en cas de coupure"
 msgstr "Vigila la conexión y avisa si se corta"
 
-#: gui/modele.py:884
+#: gui/modele.py:885
 msgid "Circuit établi"
 msgstr "Circuito establecido"
 
-#: gui/modele.py:912
+#: gui/modele.py:913
 msgid "En attente du tunnel"
 msgstr "Esperando el túnel"
 
-#: gui/modele.py:914
+#: gui/modele.py:915
 msgid "Sans Katakomba"
 msgstr "Sin Katakomba"
 
-#: gui/modele.py:923
+#: gui/modele.py:924
 msgid "VPN"
 msgstr "VPN"
 
-#: gui/modele.py:954
+#: gui/modele.py:955
 msgid "Bloqué"
 msgstr "Bloqueado"
 
-#: gui/modele.py:954
+#: gui/modele.py:955
 msgid "Pas de fuite IPv6"
 msgstr "Sin fuga IPv6"
 
-#: gui/modele.py:956
+#: gui/modele.py:957
 msgid "Autorisé"
 msgstr "Permitido"
 
-#: gui/modele.py:956
+#: gui/modele.py:957
 msgid "Peut contourner le tunnel"
 msgstr "Puede eludir el túnel"
 
-#: gui/modele.py:960
+#: gui/modele.py:961
 msgid "Tunnel actif"
 msgstr "Túnel activo"
 
-#: gui/modele.py:960
+#: gui/modele.py:961
 msgid "Pas de tunnel"
 msgstr "Sin túnel"
 
-#: gui/modele.py:985
+#: gui/modele.py:986
 msgid "Mesure du débit en cours…"
 msgstr "Midiendo la velocidad…"
 
-#: gui/modele.py:75
+#: gui/modele.py:76
 msgid "{n} min"
 msgstr "{n} min"
 
-#: gui/modele.py:149 gui/modele.py:574 gui/modele.py:578
+#: gui/modele.py:150 gui/modele.py:575 gui/modele.py:579
 msgid "{fichier} : trop volumineux"
 msgstr "{fichier}: demasiado grande"
 
-#: gui/modele.py:225 gui/modele.py:600 gui/page_exclusions.py:82
+#: gui/modele.py:226 gui/modele.py:601 gui/page_exclusions.py:82
 msgid "Serveur DNS local : {erreur}"
 msgstr "Servidor DNS local: {erreur}"
 
-#: gui/modele.py:239
+#: gui/modele.py:240
 msgid "Partage LAN : {erreur}"
 msgstr "Compartir LAN: {erreur}"
 
-#: gui/modele.py:604
+#: gui/modele.py:605
 msgid "Partage LAN : interface « {nom} » refusée"
 msgstr "Compartir LAN: interfaz «{nom}» rechazada"
 
-#: gui/modele.py:853
+#: gui/modele.py:854
 msgid "{raison} — depuis {duree}."
 msgstr "{raison} — desde hace {duree}."
 
-#: gui/modele.py:888 gui/modele.py:899 gui/page_connexion.py:545
+#: gui/modele.py:889 gui/modele.py:900 gui/page_connexion.py:545
 msgid "Connexion…"
 msgstr "Conectando…"
 
-#: gui/modele.py:890 gui/modele.py:905
+#: gui/modele.py:891 gui/modele.py:906
 msgid "Arrêté"
 msgstr "Detenido"
 
-#: gui/modele.py:892 gui/modele.py:907
+#: gui/modele.py:893 gui/modele.py:908
 msgid "Inactif"
 msgstr "Inactivo"
 
-#: gui/modele.py:896
+#: gui/modele.py:897
 msgid "Compte {n}"
 msgstr "Cuenta {n}"
 
-#: gui/modele.py:901
+#: gui/modele.py:902
 msgid "En attente de Tor"
 msgstr "Esperando a Tor"
 
-#: gui/modele.py:941
+#: gui/modele.py:942
 msgid "dont {n} redémarrage complet"
 msgid_plural "dont {n} redémarrages complets"
 msgstr[0] "incluido {n} reinicio completo"
 msgstr[1] "incluidos {n} reinicios completos"
 
-#: gui/modele.py:946
+#: gui/modele.py:947
 msgid "{debit} · il y a {duree}"
 msgstr "{debit} · hace {duree}"
 
-#: gui/modele.py:78 katakomba-cli.sh:342
+#: gui/modele.py:79 katakomba-cli.sh:342
 msgid "{h} h {m:02d}"
 msgstr "{h} h {m:02d} min"
 
-#: gui/modele.py:81
+#: gui/modele.py:82
 msgid "{j} j {h} h"
 msgstr "{j} d {h} h"
 
-#: gui/modele.py:146
+#: gui/modele.py:147
 msgid "{fichier} : pas un fichier ordinaire"
 msgstr "{fichier}: no es un archivo normal"
 
-#: gui/modele.py:208
+#: gui/modele.py:209
 msgid "Sous-réseau « {valeur} » invalide."
 msgstr "Subred «{valeur}» no válida."
 
-#: gui/modele.py:211
+#: gui/modele.py:212
 msgid "{adresse} n'appartient pas à {reseau}."
 msgstr "{adresse} no pertenece a {reseau}."
 
-#: gui/modele.py:214 validation.py:345
+#: gui/modele.py:215 validation.py:375
 msgid "« {valeur} » n'est pas une adresse IP."
 msgstr "«{valeur}» no es una dirección IP."
 
-#: gui/modele.py:294
+#: gui/modele.py:295
 msgid "… et {n} autre, détaillée en tête du fichier."
 msgid_plural "… et {n} autres, détaillées en tête du fichier."
 msgstr[0] "… y {n} más, detallada al principio del archivo."
 msgstr[1] "… y {n} más, detalladas al principio del archivo."
 
-#: gui/modele.py:620
+#: gui/modele.py:621
 msgid "{fichier} : chemin refusé"
 msgstr "{fichier}: ruta rechazada"
 
-#: gui/modele.py:629 gui/modele.py:654 gui/modele.py:636
+#: gui/modele.py:630 gui/modele.py:655 gui/modele.py:637
 msgid "{fichier} : {raison}"
 msgstr "{fichier}: {raison}"
 
-#: gui/modele.py:644
+#: gui/modele.py:645
 msgid "{fournisseur} : chemin .ovpn refusé (hors de providers/)"
 msgstr "{fournisseur}: ruta .ovpn rechazada (fuera de providers/)"
 
-#: gui/modele.py:882
+#: gui/modele.py:883
 msgid "{n} relais d'entrée"
 msgid_plural "{n} relais d'entrée"
 msgstr[0] "{n} relé de entrada"
 msgstr[1] "{n} relés de entrada"
 
-#: gui/modele.py:1098 gui/page_diagnostic.py:107
+#: gui/modele.py:1099 gui/page_diagnostic.py:107
 msgid "Diagnostic impossible : {erreur}"
 msgstr "Diagnóstico imposible: {erreur}"
 
-#: gui/modele.py:631
+#: gui/modele.py:632
 msgid "trop volumineux"
 msgstr "demasiado grande"
 
-#: gui/modele.py:983
+#: gui/modele.py:984
 msgid "Débit mesuré : {debit}."
 msgstr "Velocidad medida: {debit}."
 
-#: gui/modele.py:887
+#: gui/modele.py:888
 msgid "Démarrage : {n} %"
 msgstr "Arrancando: {n} %"
 
@@ -1884,7 +1884,7 @@ msgstr "carga un módulo OpenSSL (código ejecutado como root)"
 msgid "charge un moteur OpenSSL (code exécuté en root)"
 msgstr "carga un motor OpenSSL (código ejecutado como root)"
 
-#: validation.py:82 validation.py:243
+#: validation.py:82 validation.py:273
 msgid "inclut un autre fichier, non contrôlé"
 msgstr "incluye otro archivo, no controlado"
 
@@ -1924,43 +1924,43 @@ msgstr "incompatible con el paso por Tor (--socks-proxy)"
 msgid "exécute un programme externe"
 msgstr "ejecuta un programa externo"
 
-#: validation.py:241 validation.py:242
+#: validation.py:271 validation.py:272
 msgid "lance un programme externe (en root)"
 msgstr "lanza un programa externo (como root)"
 
-#: validation.py:244 validation.py:246 validation.py:247 validation.py:248
+#: validation.py:274 validation.py:276 validation.py:277 validation.py:278
 msgid "écrit un fichier arbitraire"
 msgstr "escribe un archivo arbitrario"
 
-#: validation.py:245
+#: validation.py:275
 msgid "abréviation de Log : écrit un fichier arbitraire"
 msgstr "abreviatura de Log: escribe un archivo arbitrario"
 
-#: validation.py:249
+#: validation.py:279
 msgid "ouvre un socket de pilotage non prévu"
 msgstr "abre un socket de control no previsto"
 
-#: validation.py:250
+#: validation.py:280
 msgid "ouvre le pilotage de Tor par mot de passe"
 msgstr "abre el control de Tor por contraseña"
 
-#: validation.py:251
+#: validation.py:281
 msgid "imposé par le daemon"
 msgstr "impuesto por el daemon"
 
-#: validation.py:252 validation.py:253
+#: validation.py:282 validation.py:283
 msgid "détacherait Tor du daemon"
 msgstr "separaría Tor del daemon"
 
-#: validation.py:254 validation.py:255
+#: validation.py:284 validation.py:285
 msgid "déplace les données de Tor"
 msgstr "mueve los datos de Tor"
 
-#: validation.py:256
+#: validation.py:286
 msgid "crée un service onion non prévu"
 msgstr "crea un servicio onion no previsto"
 
-#: validation.py:257 validation.py:258
+#: validation.py:287 validation.py:288
 msgid "ferait de la machine un relais Tor"
 msgstr "convertiría el equipo en un relé Tor"
 
@@ -1968,55 +1968,63 @@ msgstr "convertiría el equipo en un relé Tor"
 msgid "inconnue"
 msgstr "desconocida"
 
-#: validation.py:208
+#: validation.py:238
 msgid "bloc <{bloc}> jamais refermé"
 msgstr "bloque <{bloc}> nunca cerrado"
 
-#: validation.py:322
+#: validation.py:352
 msgid "« {valeur} » est une adresse IPv6 : l'exclusion du tunnel ne gère que l'IPv4."
 msgstr "«{valeur}» es una dirección IPv6: la exclusión del túnel solo admite IPv4."
 
-#: validation.py:325
+#: validation.py:355
 msgid "« {valeur} » est trop large : vers Internet, une exclusion ne peut pas dépasser /{min}. Ce trafic sortirait avec votre adresse réelle."
 msgstr "«{valeur}» es demasiado amplia: hacia Internet, una exclusión no puede superar /{min}. Ese tráfico saldría con su dirección real."
 
-#: validation.py:363
+#: validation.py:393
 msgid "« {valeur} » n'est pas un nom de domaine valide."
 msgstr "«{valeur}» no es un nombre de dominio válido."
 
-#: validation.py:202
+#: validation.py:232
 msgid "ligne {n} : directive « {nom} » refusée — {raison}"
 msgstr "línea {n}: directiva «{nom}» rechazada — {raison}"
 
-#: validation.py:205
+#: validation.py:235
 msgid "ligne {n} : directive {nom} non autorisée"
 msgstr "línea {n}: directiva {nom} no permitida"
 
-#: validation.py:272
+#: validation.py:302
 msgid "ligne {n} : continuation de ligne (\\) non supportée"
 msgstr "línea {n}: continuación de línea (\\) no admitida"
 
-#: validation.py:280
+#: validation.py:310
 msgid "ligne {n} : option « {cle} » refusée — {raison}"
 msgstr "línea {n}: opción «{cle}» rechazada — {raison}"
 
-#: validation.py:283
+#: validation.py:313
 msgid "ligne {n} : option inconnue ou non autorisée"
 msgstr "línea {n}: opción desconocida o no permitida"
 
-#: validation.py:319
+#: validation.py:349
 msgid "« {valeur} » n'est pas une adresse ou un réseau valide."
 msgstr "«{valeur}» no es una dirección ni una red válida."
 
-#: validation.py:171
+#: validation.py:201
 msgid "ligne {n} : bloc <{bloc}> non autorisé"
 msgstr "línea {n}: bloque <{bloc}> no permitido"
 
-#: validation.py:173
+#: validation.py:203
 msgid "ligne {n} : bloc non autorisé"
 msgstr "línea {n}: bloque no permitido"
 
-#: validation.py:192
+#: validation.py:183
+msgid "ligne {n} : texte après </{bloc}>"
+msgstr "línea {n}: texto después de </{bloc}>"
+
+#: validation.py:187
+msgid "ligne {n} : ligne de plus de {max} octets dans <{bloc}>"
+msgstr "línea {n}: línea de más de {max} bytes en <{bloc}>"
+
+#: validation.py:222
 msgid "Le .ovpn déclare « script-security {niveau} » — sans effet, le daemon impose le niveau 1 après --config. Supprimez cette ligne : elle n'a aucune utilité ici et tenterait d'autoriser l'exécution de code par le daemon, en root."
 msgstr "El .ovpn declara «script-security {niveau}» — sin efecto, el daemon impone el nivel 1 después de --config. Elimine esta línea: aquí no sirve de nada e intentaría permitir que el daemon ejecute código como root."
 
@@ -2240,47 +2248,47 @@ msgstr "Redirección del tráfico"
 msgid "Réseaux locaux"
 msgstr "Redes locales"
 
-#: katakomba-cli.sh:537
+#: katakomba-cli.sh:558
 msgid "serveur"
 msgstr "servidor"
 
-#: katakomba-cli.sh:539
+#: katakomba-cli.sh:560
 msgid "domaine ~."
 msgstr "dominio ~."
 
-#: katakomba-cli.sh:543 katakomba-cli.sh:545 katakomba-cli.sh:549 katakomba-cli.sh:553
+#: katakomba-cli.sh:564 katakomba-cli.sh:566 katakomba-cli.sh:570 katakomba-cli.sh:574
 msgid "DNS du tunnel"
 msgstr "DNS del túnel"
 
-#: katakomba-cli.sh:556
+#: katakomba-cli.sh:577
 msgid "DNS split"
 msgstr "DNS dividido"
 
-#: katakomba-cli.sh:556
+#: katakomba-cli.sh:577
 msgid "drop-in en place"
 msgstr "drop-in en su sitio"
 
-#: katakomba-cli.sh:577 katakomba-cli.sh:579 katakomba-cli.sh:584
+#: katakomba-cli.sh:598 katakomba-cli.sh:600 katakomba-cli.sh:605
 msgid "Chemin des requêtes DNS"
 msgstr "Ruta de las consultas DNS"
 
-#: katakomba-cli.sh:598 katakomba-cli.sh:601 katakomba-cli.sh:605
+#: katakomba-cli.sh:619 katakomba-cli.sh:622 katakomba-cli.sh:626
 msgid "Blocage hors tunnel"
 msgstr "Bloqueo fuera del túnel"
 
-#: katakomba-cli.sh:599
+#: katakomba-cli.sh:620
 msgid "actif — seuls le tunnel, Tor et le réseau local sortent"
 msgstr "activo — solo salen el túnel, Tor y la red local"
 
-#: katakomba-cli.sh:621
+#: katakomba-cli.sh:642
 msgid "Exclusions vers Internet"
 msgstr "Exclusiones hacia Internet"
 
-#: katakomba-cli.sh:633 katakomba-cli.sh:641 katakomba-cli.sh:645
+#: katakomba-cli.sh:654 katakomba-cli.sh:662 katakomba-cli.sh:666
 msgid "Sortie Internet"
 msgstr "Salida a Internet"
 
-#: katakomba-cli.sh:656
+#: katakomba-cli.sh:677
 msgid "C'est normal et passager : relancez le diagnostic dans 30 s."
 msgstr "Es normal y pasajero: vuelva a ejecutar el diagnóstico dentro de 30 s."
 
@@ -2320,31 +2328,39 @@ msgstr "Protección de los guards de Tor"
 msgid "aucune route /32 — Tor risque de joindre ses relais par le tunnel"
 msgstr "ninguna ruta /32 — Tor podría alcanzar sus relés por el túnel"
 
-#: katakomba-cli.sh:580
+#: katakomba-cli.sh:527 katakomba-cli.sh:532
+msgid "systemd-networkd"
+msgstr "systemd-networkd"
+
+#: katakomba-cli.sh:532
+msgid "ne retire pas les routes du tunnel"
+msgstr "no elimina las rutas del túnel"
+
+#: katakomba-cli.sh:601
 msgid "trop rapide pour passer par Tor — vérifiez une éventuelle fuite"
 msgstr "demasiado rápido para pasar por Tor — compruebe una posible fuga"
 
-#: katakomba-cli.sh:591
+#: katakomba-cli.sh:612
 msgid "bloqué"
 msgstr "bloqueado"
 
-#: katakomba-cli.sh:602
+#: katakomba-cli.sh:623
 msgid "activé dans les réglages mais inactif — cause dans le journal (katakomba logs)"
 msgstr "activado en los ajustes pero inactivo — causa en el registro (katakomba logs)"
 
-#: katakomba-cli.sh:612 katakomba-cli.sh:615
+#: katakomba-cli.sh:633 katakomba-cli.sh:636
 msgid "Connexions entrantes"
 msgstr "Conexiones entrantes"
 
-#: katakomba-cli.sh:613
+#: katakomba-cli.sh:634
 msgid "réponses par la carte réseau — SSH et services restent joignables"
 msgstr "respuestas por la tarjeta de red — SSH y los servicios siguen accesibles"
 
-#: katakomba-cli.sh:616
+#: katakomba-cli.sh:637
 msgid "réponses envoyées dans le tunnel — une session SSH distante serait coupée (cause dans le journal)"
 msgstr "respuestas enviadas al túnel — una sesión SSH remota se cortaría (causa en el registro)"
 
-#: katakomba-cli.sh:666
+#: katakomba-cli.sh:687
 msgid "Piste : sudo katakomba restart (3 s de coupure), puis relancez ce diagnostic."
 msgstr "Pista: sudo katakomba restart (3 s de corte) y vuelva a ejecutar este diagnóstico."
 
@@ -2382,23 +2398,23 @@ msgid_plural "{n} réseaux en accès direct"
 msgstr[0] "{n} red de acceso directo"
 msgstr[1] "{n} redes de acceso directo"
 
-#: katakomba-cli.sh:593
+#: katakomba-cli.sh:614
 msgid "bloqué hors tunnel"
 msgstr "bloqueado fuera del túnel"
 
-#: katakomba-cli.sh:595
+#: katakomba-cli.sh:616
 msgid "non bloqué (option désactivée dans les paramètres)"
 msgstr "no bloqueado (opción desactivada en los ajustes)"
 
-#: katakomba-cli.sh:606
+#: katakomba-cli.sh:627
 msgid "désactivé — pendant une reconnexion, le trafic peut sortir à découvert"
 msgstr "desactivado — durante una reconexión, el tráfico puede salir sin protección"
 
-#: katakomba-cli.sh:622
+#: katakomba-cli.sh:643
 msgid "{reseaux} — ce trafic sort hors du tunnel, avec votre adresse réelle"
 msgstr "{reseaux} — este tráfico sale fuera del túnel, con su dirección real"
 
-#: katakomba-cli.sh:654
+#: katakomba-cli.sh:675
 msgid "Reconnexion en cours ({raison}) : les contrôles du tunnel sont reportés."
 msgstr "Reconexión en curso ({raison}): las comprobaciones del túnel se aplazan."
 
@@ -2434,37 +2450,41 @@ msgid_plural "{n} routes /32 hors tunnel"
 msgstr[0] "{n} ruta /32 fuera del túnel"
 msgstr[1] "{n} rutas /32 fuera del túnel"
 
-#: katakomba-cli.sh:546
+#: katakomba-cli.sh:528
+msgid "{reglages} actif : à chaque redémarrage de networkd, le tunnel est coupé jusqu'à 30 s — « =no » dans networkd.conf l'évite (README)"
+msgstr "{reglages} activo: en cada reinicio de networkd, el túnel se corta hasta 30 s — «=no» en networkd.conf lo evita (README)"
+
+#: katakomba-cli.sh:567
 msgid "incomplet ({manquants}) — risque de requêtes hors tunnel"
 msgstr "incompleto ({manquants}) — riesgo de consultas fuera del túnel"
 
-#: katakomba-cli.sh:582
+#: katakomba-cli.sh:603
 msgid " (résolveur local via {uplink} : {ms} ms)"
 msgstr " (resolutor local por {uplink}: {ms} ms)"
 
-#: katakomba-cli.sh:643
+#: katakomba-cli.sh:664
 msgid " — adresse privée, sortie anormale"
 msgstr " — dirección privada, salida anómala"
 
-#: katakomba-cli.sh:645
+#: katakomba-cli.sh:666
 msgid "aucune réponse via {tun}"
 msgstr "ninguna respuesta por {tun}"
 
-#: katakomba-cli.sh:658
+#: katakomba-cli.sh:679
 msgid "{n} autre problème bloquant ci-dessus, à revoir ensuite."
 msgid_plural "{n} autres problèmes bloquants ci-dessus, à revoir ensuite."
 msgstr[0] "{n} otro problema bloqueante arriba, para revisar después."
 msgstr[1] "{n} otros problemas bloqueantes arriba, para revisar después."
 
-#: katakomba-cli.sh:673
+#: katakomba-cli.sh:694
 msgid "Aucun problème vu, mais l'état du daemon (Tor, tunnel, blocage hors tunnel) n'est pas lisible par ce compte."
 msgstr "Ningún problema detectado, pero esta cuenta no puede leer el estado del daemon (Tor, túnel, bloqueo fuera del túnel)."
 
-#: katakomba-cli.sh:675
+#: katakomba-cli.sh:696
 msgid "Supervision : sudo katakomba autoriser <compte> --statut (lecture seule), ou lancez avec sudo."
 msgstr "Supervisión: sudo katakomba autoriser <cuenta> --statut (solo lectura), o ejecute con sudo."
 
-#: katakomba-cli.sh:678
+#: katakomba-cli.sh:699
 msgid "Tout est conforme."
 msgstr "Todo está en orden."
 
@@ -2496,27 +2516,27 @@ msgstr "{kbs} KB/s (~{mbps} Mb/s), medido hace {age}"
 msgid "compte {n} ({min} min)"
 msgstr "cuenta {n} ({min} min)"
 
-#: katakomba-cli.sh:550
+#: katakomba-cli.sh:571
 msgid "{serveurs} · ~. — default-route non vérifiable (format resolvectl inconnu)"
 msgstr "{serveurs} · ~. — default-route no verificable (formato de resolvectl desconocido)"
 
-#: katakomba-cli.sh:642
+#: katakomba-cli.sh:663
 msgid "IP publique {ip}"
 msgstr "IP pública {ip}"
 
-#: katakomba-cli.sh:664
+#: katakomba-cli.sh:685
 msgid "{n} avertissement."
 msgid_plural "{n} avertissements."
 msgstr[0] "{n} advertencia."
 msgstr[1] "{n} advertencias."
 
-#: katakomba-cli.sh:669
+#: katakomba-cli.sh:690
 msgid "Aucun problème bloquant, {n} avertissement à surveiller."
 msgid_plural "Aucun problème bloquant, {n} avertissements à surveiller."
 msgstr[0] "Ningún problema bloqueante, {n} advertencia que vigilar."
 msgstr[1] "Ningún problema bloqueante, {n} advertencias que vigilar."
 
-#: katakomba-cli.sh:662
+#: katakomba-cli.sh:683
 msgid "{n} problème bloquant"
 msgid_plural "{n} problèmes bloquants"
 msgstr[0] "{n} problema bloqueante"

@@ -396,7 +396,8 @@ class VerifierRoutageTest(unittest.TestCase):
 
     def _daemon(self):
         d = FakeDaemon(_tun_iface="tun-katakomba", _orig_gw="192.168.1.1",
-                       _orig_iface="eth0", _retour_actif=True, _retour_local="10.8.0.2")
+                       _orig_iface="eth0", _retour_actif=True, _retour_voulu=True,
+                       _retour_local="10.8.0.2")
         d._routes_exclues = ["10.20.0.0/16"]
         d.retour = []
         d._retour_entrant_on = lambda local: d.retour.append(local) or True
@@ -441,17 +442,42 @@ class VerifierRoutageTest(unittest.TestCase):
         with patched_run(r):
             self.assertEqual(d._verifier_routage(), ["retour des connexions entrantes"])
 
-    def test_retour_inactif_non_verifie(self):
+    def test_retour_jamais_pose_non_verifie(self):
+        """Sans passerelle d'origine, il n'a jamais été posé : rien à tenir."""
         d = self._daemon()
-        d._retour_actif = False
+        d._retour_actif = d._retour_voulu = False
         r = Recorder({"route show table main": (0, self.TABLE)})
         with patched_run(r):
             self.assertEqual(d._verifier_routage(), [])
         self.assertFalse(r.ran("rule show"))
 
+    def test_retour_reessaye_apres_un_echec(self):
+        """Un échec à le reposer le désactive : il doit être retenté au
+        passage suivant, pas oublié jusqu'au prochain tunnel."""
+        d = self._daemon()
+        essais = []
+
+        def poser(local):
+            essais.append(local)
+            d._retour_actif = len(essais) > 1        # échoue la première fois
+            return d._retour_actif
+        d._retour_entrant_on = poser
+        r = Recorder({"route show table main": (0, self.TABLE),
+                      "rule show": (0, b"32766:\tfrom all lookup main\n")})
+        with patched_run(r):
+            self.assertEqual(d._verifier_routage(), [])
+            self.assertEqual(d._verifier_routage(), ["retour des connexions entrantes"])
+        self.assertEqual(essais, ["10.8.0.2", "10.8.0.2"])
+
+    def test_oublie_au_demontage(self):
+        d = self._daemon()
+        with patched_run(Recorder()):
+            d._demonter_tunnel()
+        self.assertFalse(d._retour_voulu)
+
     def test_echec_signale_et_non_compte(self):
         d = self._daemon()
-        d._retour_actif = False
+        d._retour_actif = d._retour_voulu = False
         r = Recorder({"route show table main": (0, b""),
                       "route replace": (2, b"")})
         with patched_run(r):
@@ -464,6 +490,7 @@ class VerifierRoutageTest(unittest.TestCase):
         with patched_run(Recorder()):
             self.assertTrue(d._retour_entrant_on("10.8.0.2"))
         self.assertEqual(d._retour_local, "10.8.0.2")
+        self.assertTrue(d._retour_voulu)
 
 
 class RetourEntrantTest(unittest.TestCase):

@@ -192,6 +192,7 @@ class NetworkMixin:
             _run("ip", "route", "del", net)
         self._routes_exclues = []
         _run("ip", "link", "del", "dev", self._tun_iface)
+        self._retour_voulu = False
         self._retour_entrant_off()
 
     # ── Retour des connexions entrantes ──────────────────────────────────────
@@ -289,6 +290,7 @@ class NetworkMixin:
         except OSError as e:
             self._log(f"[tunnel] src_valid_mark : {e}", "WARN")
         self._retour_actif = True
+        self._retour_voulu = True
         self._log(f"[tunnel] Connexions entrantes : réponses par {self._orig_iface} "
                   "(SSH et services restent joignables).", "OK")
         return True
@@ -428,7 +430,11 @@ class NetworkMixin:
             if tun not in routes.get(moitie, ()):
                 reposer(moitie, "ip", "route", "replace", moitie,
                         "dev", tun, "scope", "global")
-        if (self._retour_actif and not self._retour_en_place()
+        # « Voulu » et non « actif » : un échec à le reposer le désactive, et
+        # il doit être retenté au passage suivant, pas oublié jusqu'au
+        # prochain tunnel — une session SSH distante en dépend.
+        if (self._retour_voulu
+                and not (self._retour_actif and self._retour_en_place())
                 and self._retour_entrant_on(self._retour_local)):
             reposes.append("retour des connexions entrantes")
         if reposes:
@@ -486,9 +492,10 @@ class NetworkMixin:
         """Utilisateur effectif d'un processus (0 si inconnu : root ou
         processus disparu).  /proc/<pid>/status est lisible sans droit."""
         try:
-            for ligne in open(f"/proc/{int(pid)}/status"):
-                if ligne.startswith("Uid:"):
-                    return int(ligne.split()[2])
+            with open(f"/proc/{int(pid)}/status") as f:
+                for ligne in f:
+                    if ligne.startswith("Uid:"):
+                        return int(ligne.split()[2])
         except (OSError, ValueError, IndexError):
             pass
         return 0

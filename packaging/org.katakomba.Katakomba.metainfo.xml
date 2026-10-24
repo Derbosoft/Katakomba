@@ -92,6 +92,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.13.0" date="2026-10-24" urgency="high">
+      <description>
+        <p>Security fix: a crafted OpenVPN configuration file could hide a directive from Katakomba's checks, so that OpenVPN would load an external library. Such files are now rejected.</p>
+        <ul>
+          <li>Configuration files are now read exactly the way OpenVPN reads them</li>
+          <li>A malformed setting pushed by the VPN server no longer stops the tunnel from coming up</li>
+          <li>The diagnostics warn when the system network service would cut the tunnel each time it restarts</li>
+          <li>Every change is now checked against a real kernel and the real OpenVPN program</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.13.0</url>
+    </release>
     <release version="3.12.2" date="2026-10-24">
       <description>
         <p>Maintenance release with no change in behaviour: every change to the code is now checked by static analysis tools, and a few dead imports and fragile shell constructs were cleaned up.</p>

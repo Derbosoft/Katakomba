@@ -40,7 +40,7 @@ from pathlib import Path
 
 from i18n import N_, _, ngettext
 from validation import (OVPN_AUTORISEES, OVPN_BLOCS, OVPN_SCRIPTS, _RAISONS,
-                        _jetons, analyser_ovpn)
+                        _jetons, analyser_ovpn, fin_de_bloc)
 
 OVPN_MAX   = 1_000_000        # octets par fichier, comme le daemon
 ZIP_MAX    = 20_000_000       # octets lus au total dans une archive
@@ -115,7 +115,7 @@ def _presentes(texte: str) -> set:
     for brute in texte.splitlines():
         ligne = brute.strip()
         if bloc:
-            bloc = None if ligne == f"</{bloc}>" else bloc
+            bloc = None if fin_de_bloc(ligne, bloc) else bloc
             continue
         if ligne.startswith("<") and ligne.endswith(">"):
             tag = ligne[1:-1]
@@ -147,7 +147,7 @@ def _adapter_un(nom: str, texte: str, lire_annexe) -> _Fichier:
         ligne = brute.strip()
         if bloc is not None:
             f.lignes.append(brute)
-            if ligne == f"</{bloc}>":
+            if fin_de_bloc(ligne, bloc):
                 bloc = None
             continue
         if not ligne or ligne[0] in "#;":

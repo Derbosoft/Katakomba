@@ -54,6 +54,7 @@ _REDIRECTIONS = {
     "TORRC_RUN":          _RUN / "torrc",
     "LAN_DNSMASQ_PID":    _RUN / "dnsmasq.pid",
     "TOR_ROUTES_FILE":    _STATE / "tor-routes.txt",
+    "REPRISES_FILE":      _STATE / "reprises.json",
     "TOR_DATA_DIR":       _STATE / "tor_data",
     "TOR_COOKIE":         _STATE / "tor_data" / "control_auth_cookie",
     "LEGACY_TOR_DATA":    _BAC_A_SABLE / "etc" / "tor_data",
