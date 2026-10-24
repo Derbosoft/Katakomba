@@ -91,12 +91,12 @@ Subject: ITP: katakomba -- route all traffic through OpenVPN tunnelled inside To
 
 Package: wnpp
 Severity: wishlist
-Owner: Sévag Derboghossian <ADRESSE>
+Owner: Derbo <200386924+Derbosoft@users.noreply.github.com>
 X-Debbugs-Cc: debian-devel@lists.debian.org
 
 * Package name    : katakomba
   Version         : 3.7.2
-  Upstream Contact: Sévag Derboghossian <ADRESSE>
+  Upstream Contact: Derbo <200386924+Derbosoft@users.noreply.github.com>
 * URL             : https://github.com/Derbosoft/Katakomba
 * License         : GPL-3.0+
   Programming Lang: Python, Bash

@@ -787,7 +787,8 @@ class IntegriteDesVersionsTest(unittest.TestCase):
         self.assertIn('touch -h -d "@$SOURCE_DATE_EPOCH"', build)
         self.assertIn("--root-owner-group", build)
         self.assertNotIn("du -sk", build, "taille dépendante du système de fichiers")
-        self.assertIn("log -1 --format='%an <%ae>'", build)
+        # Maintainer fixe : même champ en CI et sur un poste (IdentitePubliqueTest).
+        self.assertIn('MAINTAINER="${DEB_MAINTAINER:-Derbo ', build)
         ci = (ROOT / ".github" / "workflows" / "tests.yml").read_text()
         self.assertIn("Reproductibilité", ci)
 
@@ -829,6 +830,17 @@ class StatutLectureSeuleScriptsTest(unittest.TestCase):
         bloc = CLI[CLI.index("    autoriser)"):CLI.index("    uninstall|desinstaller)")]
         self.assertIn("--statut|--status) GROUPE=katakomba-statut", bloc)
         self.assertIn('usermod -aG "$GROUPE" "$CIBLE"', bloc)
+
+
+class IdentitePubliqueTest(unittest.TestCase):
+    """Le champ Maintainer des paquets publiés ne vient jamais de l'identité
+    git du poste qui construit : un pseudonyme fixe, une adresse anonyme."""
+
+    def test_maintainer_fixe(self):
+        build = (PAQ / "build-deb.sh").read_text()
+        self.assertIn('MAINTAINER="${DEB_MAINTAINER:-Derbo '
+                      '<200386924+Derbosoft@users.noreply.github.com>}"', build)
+        self.assertNotIn("%ae", build, "adresse de l'auteur du commit reprise")
 
 
 class DoctorNetworkdTest(unittest.TestCase):

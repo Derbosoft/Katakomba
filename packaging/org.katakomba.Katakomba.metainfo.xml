@@ -92,6 +92,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.13.1" date="2026-10-24">
+      <description>
+        <p>Maintenance release with no change in behaviour: the packages now name their maintainer by a fixed pseudonym and an anonymous address.</p>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v3.13.1</url>
+    </release>
     <release version="3.13.0" date="2026-10-24" urgency="high">
       <description>
         <p>Security fix: a crafted OpenVPN configuration file could hide a directive from Katakomba's checks, so that OpenVPN would load an external library. Such files are now rejected.</p>

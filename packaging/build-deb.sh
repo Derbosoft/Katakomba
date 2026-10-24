@@ -16,14 +16,16 @@
 # (.github/workflows/publication.yml) ; chacun peut les reconstruire et
 # comparer.
 #
-# Le champ Maintainer vient de DEB_MAINTAINER, sinon de l'auteur du commit —
-# il est visible de quiconque inspecte le paquet.
+# Le champ Maintainer est visible de quiconque inspecte le paquet (apt show) :
+# fixe, sous pseudonyme, et jamais repris de l'auteur du commit — une
+# identité git mal réglée finirait sinon dans un paquet publié.
+# DEB_MAINTAINER le remplace au besoin.
 set -euo pipefail
 umask 022
 
 RACINE="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(python3 -B -c "import sys; sys.path.insert(0, '$RACINE'); from constants import VERSION; print(VERSION)")"
-MAINTAINER="${DEB_MAINTAINER:-$(git -C "$RACINE" log -1 --format='%an <%ae>' 2>/dev/null || echo "Katakomba <root@localhost>")}"
+MAINTAINER="${DEB_MAINTAINER:-Derbo <200386924+Derbosoft@users.noreply.github.com>}"
 # Date du commit : celle de chaque fichier du paquet et de l'archive.
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$RACINE" log -1 --format=%ct 2>/dev/null || echo 0)}"
 export SOURCE_DATE_EPOCH
