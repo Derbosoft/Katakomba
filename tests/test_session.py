@@ -111,6 +111,38 @@ class OrdreDesTransportsTest(unittest.TestCase):
                              ["wireguard", "openvpn"], valeur)
 
 
+class OrdreParFournisseurTest(unittest.TestCase):
+    """v4.1.0 : un fournisseur peut imposer son ordre (clé « transports »)."""
+
+    def test_ordre_propre_au_fournisseur(self):
+        lent = {**provider_wg("ivpn", 1, ovpn="/dev/null", n_accounts=1),
+                "transports": ["openvpn", "wireguard"]}
+        _, essais = boucle([lent, provider_wg("proton", 1, ovpn="/dev/null", n_accounts=1)],
+                           ["refus", "refus", "arret"])
+        self.assertEqual(essais, [(0, "openvpn", 0), (0, "wireguard", 0),
+                                  (1, "wireguard", 0)])
+
+    def test_prime_sur_le_reglage_general(self):
+        seul = {**provider_wg("ivpn", 1, ovpn="/dev/null", n_accounts=1),
+                "transports": ["openvpn"]}
+        _, essais = boucle([seul], ["arret"], transports=["wireguard"])
+        self.assertEqual(essais, [(0, "openvpn", 0)])
+
+    def test_secours_dans_l_ordre_du_fournisseur(self):
+        p = {**provider_wg("ivpn", 1, ovpn="/dev/null", n_accounts=1),
+             "transports": ["openvpn", "wireguard"]}
+        d, essais = boucle([p], ["identifiants", "arret"])
+        self.assertEqual(essais, [(0, "openvpn", 0), (0, "wireguard", 0)])
+        self.assertTrue(d.has_log("ivpn : OpenVPN épuisé → WireGuard", "WARN"))
+
+    def test_valeur_illisible_vaut_le_reglage_general(self):
+        for valeur in (None, [], ["ssh"], "openvpn", ["openvpn", "openvpn"]):
+            self.assertEqual(m_session.ordre_transports(
+                {"transports": ["openvpn"]}, {"transports": valeur}), ["openvpn"], valeur)
+        self.assertEqual(m_session.ordre_transports({}, {"name": "x"}),
+                         ["wireguard", "openvpn"])
+
+
 class QuarantaineParTransportTest(unittest.TestCase):
 
     def test_cles_separees(self):

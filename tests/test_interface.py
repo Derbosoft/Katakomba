@@ -317,6 +317,22 @@ class FenetreTest(unittest.TestCase):
         page.transports.set_selected(2)
         self.assertEqual(self.config_disque()["transports"], ["wireguard"])
 
+    def test_ordre_propre_a_un_fournisseur(self):
+        cfg = self.fen.config
+        cfg["providers"][0]["wireguard"] = [{"conf": "providers/vpn-a/nl.conf"}]
+        page = self.fen.pages["fournisseurs"]
+        choix = page._rangee_transports(0, cfg["providers"][0])
+        self.assertEqual(choix.get_selected(), 0, "suit le réglage général")
+        choix.set_selected(2)
+        self.assertEqual(self.config_disque()["providers"][0]["transports"],
+                         ["openvpn", "wireguard"])
+        choix = page._rangee_transports(0, cfg["providers"][0])
+        self.assertEqual(choix.get_selected(), 2)
+        choix.set_selected(0)
+        self.assertNotIn("transports", self.config_disque()["providers"][0])
+        page.recharger()
+        pomper()
+
     def test_assistant_wireguard_sans_identifiants(self):
         import base64
         from gui.assistant import Assistant

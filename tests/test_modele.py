@@ -972,8 +972,45 @@ class WireGuardSauvegardeTest(Bac):
         self.assertEqual(nouvelle["transports"], ["wireguard", "openvpn"])
         self.assertTrue(any("Transports" in e for e in ecartes))
 
+    def test_ordre_illisible_d_un_fournisseur_retire(self):
+        zip_ = self.base / "s.zip"
+        with zipfile.ZipFile(zip_, "w") as zf:
+            zf.writestr("config.json", json.dumps({"providers": [
+                {"name": "a", "transports": ["openvpn", "ssh"]},
+                {"name": "b", "transports": "openvpn"},
+                {"name": "c", "transports": ["openvpn", "wireguard"]}]}))
+        nouvelle, ecartes = modele.lire_sauvegarde(zip_)
+        self.assertEqual([p.get("transports") for p in nouvelle["providers"]],
+                         [None, None, ["openvpn", "wireguard"]])
+        self.assertEqual(len([e for e in ecartes if "ordre des transports" in e]), 2)
+
 
 class TransportsReglageTest(unittest.TestCase):
+
+    def test_ordre_du_fournisseur(self):
+        p = {"name": "ivpn"}
+        modele.regler_transports(p, ("openvpn", "wireguard"))
+        self.assertEqual(p["transports"], ["openvpn", "wireguard"])
+        modele.regler_transports(p, None)
+        self.assertNotIn("transports", p)
+        with self.assertRaises(ValueError):
+            modele.regler_transports(p, ("ssh",))
+        self.assertNotIn("transports", p)
+
+    def test_deux_transports(self):
+        self.assertFalse(modele.deux_transports({"wireguard": [{"conf": "a"}]}))
+        self.assertFalse(modele.deux_transports({"ovpn_file": "a.ovpn", "wireguard": []}))
+        self.assertTrue(modele.deux_transports({"ovpn_file": "a.ovpn",
+                                                "wireguard": [{"conf": "a"}]}))
+
+    def test_ordre_general(self):
+        self.assertEqual(modele.ordre_general({}), ("wireguard", "openvpn"))
+        self.assertEqual(modele.ordre_general({"transports": ["openvpn"]}), ("openvpn",))
+        self.assertEqual(modele.ordre_general({"transports": ["ssh"]}),
+                         ("wireguard", "openvpn"))
+
+    def test_libelles_alignes_sur_les_ordres(self):
+        self.assertEqual(len(modele.noms_ordres()), len(modele.ORDRES_TRANSPORTS))
 
     def test_ordres_admis(self):
         for ordre in modele.ORDRES_TRANSPORTS:

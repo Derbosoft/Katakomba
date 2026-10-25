@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.0.0
+# Katakomba — v4.1.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.0.0-blue)
+![Version](https://img.shields.io/badge/Version-4.1.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -277,6 +277,7 @@ Run as root, or as a member of the `katakomba` group (no `sudo` needed, like the
 | `provider add <file.ovpn\|.zip\|.conf…> [--name NAME] [--stdin]` | Adds a provider, at the lowest priority: OpenVPN (`.ovpn`, `.zip`) or WireGuard (`.conf`) |
 | `provider remove <name>` | Removes it (its files stay on disk) |
 | `provider priority <name> <rank>` | Moves it in the failover order |
+| `provider transports <name> <order\|default>` | Transport order for this provider only (`openvpn,wireguard`…), or `default` to follow the general setting |
 | `account list\|add\|remove <provider> …` | Accounts of a provider: `add` asks for the OpenVPN credentials, or adds the `.conf` files given as arguments; `remove <provider> wg2` removes a WireGuard file |
 | `exclude list\|add\|remove <address\|network\|domain>` | Exclusions from the tunnel and local domains, same checks as the interface |
 | `set` | Current settings |
@@ -354,6 +355,8 @@ The daemon walks through **stages**: a provider and one of its transports. Setti
 | `wireguard,openvpn` (default) | WireGuard first; OpenVPN as fallback once every `.conf` has failed |
 | `openvpn,wireguard` | The reverse |
 | `wireguard` or `openvpn` | One transport only; the other is never tried |
+
+*(v4.1.0)* A provider can have **its own order**, which overrides the general setting: the provider's "Transport" row on the Providers page (shown when it serves both transports), or `katakomba provider transports <name> openvpn,wireguard` (`default` to follow the general setting again). Useful when a wrapping is slow at one provider: for example WireGuard at Proton, OpenVPN first at IVPN.
 
 A provider with a single transport uses that one: a configuration from before v4.0.0, without `.conf` files, behaves exactly as before. In a WireGuard stage:
 
@@ -1307,7 +1310,8 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
       ],
       "wireguard": [
         { "conf": "providers/ProtonVPN/nl-free-153.conf" }
-      ]
+      ],
+      "transports": ["openvpn", "wireguard"]
     }
   ],
   "auto_reconnect": true,
@@ -1336,6 +1340,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 | `providers[].accounts[].u` | string | Base64-encoded username |
 | `providers[].accounts[].p` | string | Base64-encoded password |
 | `providers[].wireguard[].conf` | string | WireGuard file, relative to the install directory (v4.0.0) |
+| `providers[].transports` | list | Optional: this provider's own order, same values as `transports`, which it overrides for that provider (v4.1.0) |
 | `transports` | list | Transports tried for each provider, in order: `["wireguard", "openvpn"]` (default), the reverse, or just one (v4.0.0) |
 | `excluded_ips` | list | CIDRs/IPs routed via local gateway |
 | `excluded_domains` | list | Domains routed to local DNS |
@@ -1350,7 +1355,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 
 ## Tests
 
-The project is covered by a suite of **984 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **996 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything

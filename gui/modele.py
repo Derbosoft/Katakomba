@@ -217,10 +217,39 @@ def erreurs_lan(passerelle: str, sous_reseau: str) -> list:
     return erreurs
 
 
-# Ordres de transport proposés (config["transports"]) : WireGuard puis
-# OpenVPN en secours par défaut, l'inverse, ou un seul des deux.
+# Ordres de transport proposés (config["transports"], et celui d'un
+# fournisseur depuis la v4.1.0) : WireGuard puis OpenVPN en secours par
+# défaut, l'inverse, ou un seul des deux.
 ORDRES_TRANSPORTS = (("wireguard", "openvpn"), ("openvpn", "wireguard"),
                      ("wireguard",), ("openvpn",))
+
+
+def noms_ordres() -> list:
+    """Libellés de ORDRES_TRANSPORTS, dans le même ordre."""
+    return [_("WireGuard, puis OpenVPN en secours"),
+            _("OpenVPN, puis WireGuard en secours"),
+            _("WireGuard seulement"), _("OpenVPN seulement")]
+
+
+def ordre_general(config: dict) -> tuple:
+    """L'ordre du réglage général ; le défaut si la valeur est illisible."""
+    ordre = tuple(config.get("transports", ORDRES_TRANSPORTS[0]))
+    return ordre if ordre in ORDRES_TRANSPORTS else ORDRES_TRANSPORTS[0]
+
+
+def regler_transports(p: dict, ordre) -> None:
+    """Ordre propre au fournisseur `p` ; None : il suit le réglage général."""
+    if ordre is None:
+        p.pop("transports", None)
+    elif tuple(ordre) in ORDRES_TRANSPORTS:
+        p["transports"] = list(ordre)
+    else:
+        raise ValueError(ordre)
+
+
+def deux_transports(p: dict) -> bool:
+    """Le fournisseur sert WireGuard et OpenVPN : l'ordre a un sens."""
+    return bool(p.get("wireguard")) and bool(p.get("ovpn_file") or p.get("accounts"))
 
 
 def erreurs_config(config: dict) -> list:
@@ -768,6 +797,14 @@ def assainir_reglages(config: dict) -> list:
         ecartes.append(_("Transports : valeur illisible, remplacée par "
                          "« wireguard, openvpn »"))
         config["transports"] = ["wireguard", "openvpn"]
+    for p in config.get("providers", []):
+        if (isinstance(p, dict) and "transports" in p
+                and (not isinstance(p["transports"], list)
+                     or tuple(p["transports"]) not in ORDRES_TRANSPORTS)):
+            del p["transports"]
+            ecartes.append(_("{fournisseur} : ordre des transports illisible, "
+                             "réglage général utilisé").format(
+                                 fournisseur=p.get("name", "?")))
     iface = config.get("lan_iface", "")
     if iface and not interface_lan_admissible(iface):
         ecartes.append(_("Partage LAN : interface « {nom} » refusée").format(nom=iface))

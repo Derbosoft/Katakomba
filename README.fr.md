@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.0.0
+# Katakomba — v4.1.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.0.0-blue)
+![Version](https://img.shields.io/badge/Version-4.1.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -277,6 +277,7 @@ En root, ou en membre du groupe `katakomba` (sans `sudo`, comme l'interface). Le
 | `fournisseur ajouter <fichier.ovpn\|.zip\|.conf…> [--name NOM] [--stdin]` | Ajoute un fournisseur, en dernière priorité : OpenVPN (`.ovpn`, `.zip`) ou WireGuard (`.conf`) |
 | `fournisseur retirer <nom>` | Le retire (ses fichiers restent sur le disque) |
 | `fournisseur priorite <nom> <rang>` | Le déplace dans l'ordre de bascule |
+| `fournisseur transports <nom> <ordre\|default>` | Ordre des transports propre à ce fournisseur (`openvpn,wireguard`…), ou `default` pour suivre le réglage général |
 | `compte liste\|ajouter\|retirer <fournisseur> …` | Comptes d'un fournisseur : `ajouter` demande les identifiants OpenVPN, ou ajoute des `.conf` donnés en argument ; `retirer <fournisseur> wg2` retire un fichier WireGuard |
 | `exclusion liste\|ajouter\|retirer <adresse\|réseau\|domaine>` | Exclusions du tunnel et domaines locaux, mêmes contrôles que l'interface |
 | `reglage` | Réglages actuels |
@@ -354,6 +355,8 @@ Le parcours se fait par **étapes** : un fournisseur et l'un de ses transports. 
 | `wireguard,openvpn` (défaut) | WireGuard d'abord ; OpenVPN en secours quand tous les `.conf` ont échoué |
 | `openvpn,wireguard` | L'inverse |
 | `wireguard` ou `openvpn` | Un seul transport ; l'autre n'est jamais essayé |
+
+*(v4.1.0)* Un fournisseur peut avoir **son propre ordre**, qui prime sur le réglage général : ligne « Transport » du fournisseur dans la page Fournisseurs (affichée quand il sert les deux transports), ou `katakomba fournisseur transports <nom> openvpn,wireguard` (`default` pour revenir au réglage général). Utile quand un emballage est lent chez un fournisseur : par exemple WireGuard chez Proton, OpenVPN d'abord chez IVPN.
 
 Un fournisseur qui n'a qu'un transport utilise celui-là : une configuration d'avant la v4.0.0, sans `.conf`, se comporte exactement comme avant. Dans une étape WireGuard :
 
@@ -1356,7 +1359,8 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
       ],
       "wireguard": [
         { "conf": "providers/ProtonVPN/nl-free-153.conf" }
-      ]
+      ],
+      "transports": ["openvpn", "wireguard"]
     }
   ],
   "auto_reconnect": true,
@@ -1385,6 +1389,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 | `providers[].accounts[].u` | string | Identifiant en base64 |
 | `providers[].accounts[].p` | string | Mot de passe en base64 |
 | `providers[].wireguard[].conf` | string | Fichier WireGuard, relatif au répertoire d'installation (v4.0.0) |
+| `providers[].transports` | liste | Facultatif : ordre propre au fournisseur, mêmes valeurs que `transports`, qu'il remplace pour lui (v4.1.0) |
 | `transports` | liste | Transports essayés chez chaque fournisseur, dans l'ordre : `["wireguard", "openvpn"]` (défaut), l'inverse, ou un seul (v4.0.0) |
 | `excluded_ips` | liste | CIDRs/IPs passant par la passerelle locale |
 | `excluded_domains` | liste | Domaines routés vers le DNS local |
@@ -1399,7 +1404,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **984 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **996 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout

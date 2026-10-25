@@ -95,6 +95,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.1.0" date="2026-10-25">
+      <description>
+        <p>Transport order per provider.</p>
+        <ul>
+          <li>Each provider can have its own order (for example WireGuard for one provider, OpenVPN for another), or follow the general setting</li>
+          <li>Set it on the Providers page, or with katakomba provider transports</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.1.0</url>
+    </release>
     <release version="4.0.0" date="2026-10-25">
       <description>
         <p>WireGuard through Tor, alongside OpenVPN. Providers are dropping OpenVPN: Katakomba now carries WireGuard inside Tor too, wrapped in TCP the way each provider expects.</p>

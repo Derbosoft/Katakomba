@@ -10,7 +10,7 @@ Depuis la v4.0.0, un fournisseur peut offrir deux transports :
 
 Le parcours se fait par ÉTAPES : un fournisseur et l'un de ses transports,
 dans l'ordre de config["transports"] (WireGuard d'abord par défaut, OpenVPN
-en secours).  Dans une étape, les comptes passent dans l'ordre planifié
+en secours), ou dans celui du fournisseur s'il en a un (v4.1.0).  Dans une étape, les comptes passent dans l'ordre planifié
 (_plan_accounts) ; une étape épuisée laisse la place à l'autre transport du
 même fournisseur, puis au fournisseur suivant.
 
@@ -39,14 +39,17 @@ NOMS_TRANSPORT = {"wireguard": "WireGuard", "openvpn": "OpenVPN"}
 ECHECS_PAR_CONF = 2
 
 
-def ordre_transports(config) -> list:
-    """Transports à essayer, dans l'ordre.  Une valeur illisible vaut le
-    défaut : mieux vaut les deux transports qu'aucun."""
-    voulu = config.get("transports")
-    if (isinstance(voulu, list) and voulu
-            and all(t in TRANSPORTS for t in voulu)
-            and len(set(voulu)) == len(voulu)):
-        return list(voulu)
+def ordre_transports(config, fournisseur=None) -> list:
+    """Transports à essayer, dans l'ordre : celui du fournisseur s'il en
+    impose un (sa clé « transports »), sinon le réglage général.  Une valeur
+    illisible est ignorée ; le défaut prend le relais : mieux vaut les deux
+    transports qu'aucun."""
+    for source in (fournisseur or {}, config):
+        voulu = source.get("transports")
+        if (isinstance(voulu, list) and voulu
+                and all(t in TRANSPORTS for t in voulu)
+                and len(set(voulu)) == len(voulu)):
+            return list(voulu)
     return list(TRANSPORTS)
 
 
@@ -96,7 +99,7 @@ class SessionMixin:
         if not self._transport:
             # Étape pas encore fixée (appel avant l'entrée dans la boucle) :
             # le premier transport que ce fournisseur sert.
-            offerts = transports_du(p, ordre_transports(self.config))
+            offerts = transports_du(p, ordre_transports(self.config, p))
             self._transport = offerts[0] if offerts else ""
         if self._transport == "wireguard":
             return p.get("wireguard", [])
@@ -109,7 +112,7 @@ class SessionMixin:
         sinon sur son premier transport ; planifie l'ordre des comptes."""
         providers = self.config.get("providers", [])
         self._current_provider_idx = idx
-        offerts = (transports_du(providers[idx], ordre_transports(self.config))
+        offerts = (transports_du(providers[idx], ordre_transports(self.config, providers[idx]))
                    if 0 <= idx < len(providers) else [])
         self._transport = (transport if transport in offerts
                            else offerts[0] if offerts else "")
@@ -127,7 +130,7 @@ class SessionMixin:
         providers = self.config.get("providers", [])
         if 0 <= self._current_provider_idx < len(providers):
             p = providers[self._current_provider_idx]
-            offerts = transports_du(p, ordre_transports(self.config))
+            offerts = transports_du(p, ordre_transports(self.config, p))
             if self._transport in offerts:
                 rang = offerts.index(self._transport)
                 if rang + 1 < len(offerts):

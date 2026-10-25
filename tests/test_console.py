@@ -394,6 +394,28 @@ class WireGuardConsoleTest(Console):
         _, sortie, _ = self.lancer("set")
         self.assertIn("openvpn,wireguard", sortie)
 
+    def test_ordre_d_un_fournisseur(self):
+        self.ajouter()                                  # OpenVPN, « ivpn »
+        self.lancer("account", "add", "ivpn", str(self.conf))
+        code, sortie, err = self.lancer("provider", "transports", "IVPN", "openvpn,wireguard")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.config()["providers"][0]["transports"], ["openvpn", "wireguard"])
+        self.assertNotIn("qu'un transport", sortie)
+        _, sortie, _ = self.lancer("provider", "list")
+        self.assertIn("[openvpn,wireguard]", sortie)
+        self.assertEqual(self.lancer("provider", "transports", "ivpn", "ssh")[0], 1)
+        self.assertEqual(self.config()["providers"][0]["transports"], ["openvpn", "wireguard"])
+        code, sortie, err = self.lancer("fournisseur", "transports", "ivpn", "default")
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("transports", self.config()["providers"][0])
+        self.assertIn("suit le réglage général (wireguard,openvpn)", sortie)
+
+    def test_ordre_d_un_fournisseur_a_un_seul_transport(self):
+        self.ajouter_wg()
+        code, sortie, err = self.lancer("provider", "transports", "proton", "openvpn")
+        self.assertEqual(code, 0, err)
+        self.assertIn("qu'un transport", sortie)
+
     def test_sauvegarde_emporte_les_conf(self):
         self.ajouter_wg()
         zip_ = self.base / "s.zip"

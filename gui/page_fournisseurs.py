@@ -1,7 +1,8 @@
 """
 Fournisseurs : ordre de priorité, et pour chacun ses deux transports :
 OpenVPN (fichier de configuration et comptes) et WireGuard (fichiers .conf,
-chacun avec sa clé, son adresse et son serveur).  Chaque modification est
+chacun avec sa clé, son adresse et son serveur), avec, s'il le faut, un
+ordre des transports propre au fournisseur.  Chaque modification est
 enregistrée aussitôt.
 """
 
@@ -89,6 +90,9 @@ class PageFournisseurs(Gtk.Stack):
             (_("Supprimer le fournisseur…"), lambda: self._supprimer(i), True, True),
         )))
 
+        if modele.deux_transports(p) or "transports" in p:
+            r.add_row(self._rangee_transports(i, p))
+
         for j, entree in enumerate(confs):
             titre, detail = modele.decrire_conf(entree)
             c = Adw.ActionRow(title=titre, subtitle=_("WireGuard {n} · {detail}").format(
@@ -133,6 +137,27 @@ class PageFournisseurs(Gtk.Stack):
         ajout.connect("activated", lambda _r: self._compte_ajouter(i))
         r.add_row(ajout)
         return r
+
+    def _rangee_transports(self, i, p):
+        """Ordre propre à ce fournisseur ; le premier choix le laisse suivre
+        le réglage général (page Réglages)."""
+        choix = Adw.ComboRow(
+            title=_("Transport"),
+            subtitle=_("Pour ce fournisseur seulement."),
+            model=Gtk.StringList.new([_("Comme le réglage général")]
+                                     + modele.noms_ordres()))
+        choix.add_prefix(Gtk.Image(icon_name="network-transmit-receive-symbolic"))
+        ordre = tuple(p.get("transports", ()))
+        choix.set_selected(modele.ORDRES_TRANSPORTS.index(ordre) + 1
+                           if ordre in modele.ORDRES_TRANSPORTS else 0)
+        choix.connect("notify::selected", self._transports_change, i)
+        return choix
+
+    def _transports_change(self, choix, _p, i):
+        n = choix.get_selected()
+        modele.regler_transports(self.fournisseurs[i],
+                                 modele.ORDRES_TRANSPORTS[n - 1] if n else None)
+        self._modifie()
 
     def _depliage(self, rangee, _p, nom):
         (self._ouverts.add if rangee.get_expanded() else self._ouverts.discard)(nom)

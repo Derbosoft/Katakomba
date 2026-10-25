@@ -151,7 +151,8 @@ def fournisseur(action: str, args: list):
         print(_("Fournisseurs, par ordre de priorité :"))
         for i, p in enumerate(fournisseurs, 1):
             print(f"  {i}. {p.get('name', '?'):<20} {modele.resume_comptes(p)}"
-                  + (f"   {p['ovpn_file']}" if p.get("ovpn_file") else ""))
+                  + (f"   {p['ovpn_file']}" if p.get("ovpn_file") else "")
+                  + (f"   [{','.join(p['transports'])}]" if p.get("transports") else ""))
         return
 
     _verifier_droits()
@@ -210,6 +211,23 @@ def fournisseur(action: str, args: list):
         fournisseurs.remove(p)
         fournisseurs.insert(rang - 1, p)
         print(_("« {nom} » passe en priorité {rang}.").format(nom=p["name"], rang=rang))
+        _enregistrer(config)
+        return
+
+    if action == "transports":
+        _attendre(args, 2, _("katakomba provider transports <nom> <ordre|default>"))
+        p = _fournisseur(config, args[0])
+        if args[1].strip().lower() in ("default", "defaut", "défaut"):
+            modele.regler_transports(p, None)
+            print(_("« {nom} » suit le réglage général ({ordre}).").format(
+                nom=p["name"], ordre=",".join(modele.ordre_general(config))))
+        else:
+            modele.regler_transports(p, _ordre(args[1]))
+            print(f"{p['name']} : {','.join(p['transports'])}")
+            if not modele.deux_transports(p):
+                print(_("Ce fournisseur ne sert pour l'instant qu'un transport : "
+                        "l'ordre ne vaudra qu'une fois l'autre ajouté, et un "
+                        "transport qu'il ne sert pas le fait sauter."))
         _enregistrer(config)
         return
     raise Erreur(_("Action inconnue : {action}").format(action=action))
@@ -359,6 +377,15 @@ def exclusion(action: str, args: list):
 
 # ── Réglages ─────────────────────────────────────────────────────────────────
 
+def _ordre(brut: str) -> tuple:
+    """« openvpn,wireguard » → ("openvpn", "wireguard") ; Erreur sinon."""
+    ordre = tuple(m.strip().lower() for m in brut.split(",") if m.strip())
+    if ordre not in modele.ORDRES_TRANSPORTS:
+        raise Erreur(_("Valeur attendue : wireguard,openvpn (défaut), "
+                       "openvpn,wireguard, wireguard ou openvpn."))
+    return ordre
+
+
 def _afficher(valeur, genre: str) -> str:
     if genre == "bool":
         return "on" if valeur else "off"
@@ -385,10 +412,7 @@ def reglage(args: list):
             raise Erreur(_("Valeur attendue : on ou off."))
         valeur = brut.lower() in OUI
     elif genre == "transports":
-        valeur = [m.strip().lower() for m in brut.split(",") if m.strip()]
-        if tuple(valeur) not in modele.ORDRES_TRANSPORTS:
-            raise Erreur(_("Valeur attendue : wireguard,openvpn (défaut), "
-                           "openvpn,wireguard, wireguard ou openvpn."))
+        valeur = list(_ordre(brut))
     elif genre == "dns":
         valeur = "" if brut.lower() in ("none", "aucun", "-", "") else brut
         erreur = modele.erreur_dns(valeur)
@@ -465,6 +489,8 @@ def aide():
         (_("Configuration (sudo, ou membre du groupe katakomba) :"), [
             (_("provider list | add <fichier.ovpn|.zip|.conf…> [--name NOM] [--stdin]"), ""),
             (_("provider remove <nom> | priority <nom> <rang>"), ""),
+            (_("provider transports <nom> <ordre|default>"),
+             _("Ordre propre au fournisseur (ex. openvpn,wireguard)")),
             (_("account list <fournisseur> | add <fournisseur> [--stdin]"), ""),
             (_("account add <fournisseur> <fichier.conf>…"),
              _("Fichiers WireGuard (Proton, Mullvad, IVPN)")),
