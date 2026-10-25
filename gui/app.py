@@ -1,10 +1,10 @@
 """
 Katakomba — interface graphique (GTK 4 + libadwaita).
 
-Le daemon (katakomba.service) gère Tor + OpenVPN de façon autonome ; cette
-interface écrit la configuration et pilote le service.  Elle tourne sans
-root : la configuration est accessible via le groupe « katakomba », les
-actions privilégiées passent par polkit.
+Le daemon (katakomba.service) gère Tor et le VPN (WireGuard ou OpenVPN) de
+façon autonome ; cette interface écrit la configuration et pilote le
+service.  Elle tourne sans root : la configuration est accessible via le
+groupe « katakomba », les actions privilégiées passent par polkit.
 
 Fermer la fenêtre la cache seulement (réglable) : l'interface continue de
 veiller sur la connexion et prévient par une notification du bureau.

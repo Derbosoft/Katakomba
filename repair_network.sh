@@ -34,10 +34,14 @@ if [[ $INTERNAL -eq 0 ]]; then
   sleep 1
 fi
 
-echo "[2/8] Arrêt des processus OpenVPN/Tor restants..."
+echo "[2/8] Arrêt des processus OpenVPN/WireGuard/Tor restants..."
 # Uniquement ceux de ce programme, reconnus à leur ligne de commande :
 # « pkill -x openvpn » couperait un autre VPN, « pkill -x tor » Tor Browser.
 pkill -f -- "^openvpn .*--auth-user-pass [^ ]*katakomba(-vpn)?/auth\.tmp" 2>/dev/null || true
+pkill -f -- "pont_wg\.py .*--ecoute 127\.0\.0\.1:51871" 2>/dev/null || true
+# Clé privée WireGuard d'une interface en cours de création (le daemon
+# l'efface dès que wg l'a lue ; un arrêt brutal pourrait la laisser).
+rm -f /etc/wireguard/katakomba-wg.conf
 pkill -f -- "^tor .*katakomba/tor(rc|_data)" 2>/dev/null || true
 
 echo "[3/8] Nettoyage du blocage hors tunnel et des règles IPv6..."

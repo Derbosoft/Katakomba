@@ -820,6 +820,205 @@ class ReglagesRelusTest(unittest.TestCase):
             self.assertIn(cle, DEFAULT_CONFIG)
 
 
+# ── WireGuard (v4.0.0) ───────────────────────────────────────────────────────
+
+import base64 as _b64                                          # noqa: E402
+
+CONF = (f"[Interface]\nPrivateKey = {_b64.b64encode(bytes(32)).decode()}\n"
+        "Address = 10.2.0.2/32\nDNS = 10.2.0.1\n\n[Peer]\n"
+        f"PublicKey = {_b64.b64encode(bytes(range(32))).decode()}\n"
+        "AllowedIPs = 0.0.0.0/0\nEndpoint = 185.107.56.211:51820\n")
+
+
+class WireGuardImportTest(Bac):
+
+    def test_resume_et_avertissement(self):
+        f = self.base / "nl.conf"
+        f.write_text(CONF.replace("DNS = 10.2.0.1", "DNS = 10.2.0.1\nPostUp = x"))
+        prets, erreurs = modele.preparer_import_wg([str(f)])
+        self.assertEqual(erreurs, [])
+        resume = modele.resume_import(prets)
+        self.assertIn("nl.conf — Proton (TLS) · 185.107.56.211:443", resume)
+        self.assertIn("wg-quick", resume, "avertissement absent du résumé")
+
+    def test_fichier_illisible(self):
+        prets, erreurs = modele.preparer_import_wg(["/inexistant/x.conf"])
+        self.assertEqual(prets, [])
+        self.assertTrue(erreurs)
+
+    def test_conf_refuse_jamais_pret(self):
+        f = self.base / "x.conf"
+        f.write_text(CONF.replace("Endpoint = 185.107.56.211:51820", "Endpoint = a.b:1"))
+        prets, erreurs = modele.preparer_import_wg([str(f)])
+        self.assertEqual(prets, [])
+        self.assertTrue(any(e.startswith("x.conf : ") for e in erreurs), erreurs)
+
+    def test_ajout_cree_le_fournisseur_sans_doublon(self):
+        f = self.base / "nl.conf"
+        f.write_text(CONF)
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        self.assertEqual(modele.ajouter_confs_wg(cfg, "vpn", [str(f)]), 1)
+        p = cfg["providers"][0]
+        self.assertEqual(p["wireguard"], [{"conf": "providers/vpn/nl.conf"}])
+        self.assertEqual((modele.PROVIDERS_DIR / "vpn" / "nl.conf").read_text(), CONF)
+        self.assertEqual(modele.ajouter_confs_wg(cfg, "VPN", [str(f)]), 0,
+                         "doublon ajouté, ou second fournisseur créé")
+        self.assertEqual(len(cfg["providers"]), 1)
+
+    def test_ajout_a_un_fournisseur_openvpn(self):
+        """Les deux transports chez le même fournisseur : rien d'OpenVPN ne
+        doit se perdre."""
+        f = self.base / "nl.conf"
+        f.write_text(CONF)
+        cfg = {"providers": [{"name": "ivpn", "ovpn_file": "providers/ivpn/a.ovpn",
+                              "accounts": [{"u": "dQ==", "p": "cA=="}]}]}
+        modele.ajouter_confs_wg(cfg, "ivpn", [str(f)])
+        p = cfg["providers"][0]
+        self.assertEqual(p["ovpn_file"], "providers/ivpn/a.ovpn")
+        self.assertEqual(len(p["accounts"]), 1)
+        self.assertEqual(len(p["wireguard"]), 1)
+        self.assertEqual(modele.resume_comptes(p), "1 compte OpenVPN · 1 fichier WireGuard")
+
+    def test_meme_nom_contenu_different(self):
+        """Un .conf du même nom ne remplace jamais l'autre (autre serveur)."""
+        a, b = self.base / "a", self.base / "b"
+        a.mkdir()
+        b.mkdir()
+        (a / "nl.conf").write_text(CONF)
+        (b / "nl.conf").write_text(CONF.replace("10.2.0.2", "10.2.0.3"))
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        modele.ajouter_confs_wg(cfg, "vpn", [str(a / "nl.conf"), str(b / "nl.conf")])
+        self.assertEqual([c["conf"] for c in cfg["providers"][0]["wireguard"]],
+                         ["providers/vpn/nl.conf", "providers/vpn/nl-2.conf"])
+
+    def test_description(self):
+        f = self.base / "nl.conf"
+        f.write_text(CONF)
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        modele.ajouter_confs_wg(cfg, "vpn", [str(f)])
+        entree = cfg["providers"][0]["wireguard"][0]
+        self.assertEqual(modele.decrire_conf(entree),
+                         ("nl.conf", "Proton (TLS) · 185.107.56.211:443"))
+        self.assertEqual(modele.decrire_conf({"conf": "/etc/shadow"})[1], "chemin refusé")
+        self.assertEqual(modele.decrire_conf({"u": "x"})[1], "aucun fichier WireGuard")
+
+    def test_genre_reconnu_au_contenu(self):
+        wg, ovpn_conf, ovpn = (self.base / n for n in ("wg.conf", "o.conf", "o.ovpn"))
+        wg.write_text(CONF)
+        ovpn_conf.write_text("client\nremote 1.2.3.4 443 tcp\n")
+        ovpn.write_text("client\n")
+        self.assertEqual(modele.genre_fichiers([wg]), "wireguard")
+        self.assertEqual(modele.genre_fichiers([ovpn_conf]), "openvpn",
+                         "configuration OpenVPN livrée en .conf prise pour WireGuard")
+        self.assertEqual(modele.genre_fichiers([ovpn]), "openvpn")
+        self.assertEqual(modele.genre_fichiers([wg, ovpn]), "")
+        self.assertEqual(modele.genre_fichiers([self.base / "absent.conf"]), "wireguard")
+
+
+class WireGuardSauvegardeTest(Bac):
+
+    def _sauver_puis_lire(self, cfg):
+        zip_ = self.base / "s.zip"
+        modele.exporter(cfg, zip_)
+        return modele.lire_sauvegarde(zip_)
+
+    def test_aller_retour(self):
+        (modele.PROVIDERS_DIR / "v").mkdir(parents=True)
+        (modele.PROVIDERS_DIR / "v" / "v.conf").write_text(CONF)
+        cfg = {**copy.deepcopy(DEFAULT_CONFIG),
+               "providers": [{"name": "v", "wireguard": [{"conf": "providers/v/v.conf"}]}]}
+        zip_ = self.base / "s.zip"
+        modele.exporter(cfg, zip_)
+        (modele.PROVIDERS_DIR / "v" / "v.conf").unlink()
+        nouvelle, ecartes = modele.lire_sauvegarde(zip_)
+        self.assertEqual(ecartes, [])
+        self.assertEqual(nouvelle["providers"][0]["wireguard"], [{"conf": "providers/v/v.conf"}])
+        self.assertEqual((modele.PROVIDERS_DIR / "v" / "v.conf").read_text(), CONF)
+
+    def test_chemin_refuse_ecarte(self):
+        zip_ = self.base / "s.zip"
+        with zipfile.ZipFile(zip_, "w") as zf:
+            zf.writestr("config.json", json.dumps({"providers": [{"name": "x", "wireguard": [
+                {"conf": "/etc/shadow"}, {"conf": "providers/x/ok.conf"}]}]}))
+        nouvelle, ecartes = modele.lire_sauvegarde(zip_)
+        self.assertEqual(nouvelle["providers"][0]["wireguard"], [{"conf": "providers/x/ok.conf"}])
+        self.assertTrue(any("chemin refusé" in e for e in ecartes), ecartes)
+
+    def test_conf_piege_refuse(self):
+        zip_ = self.base / "s.zip"
+        with zipfile.ZipFile(zip_, "w") as zf:
+            zf.writestr("config.json", "{}")
+            zf.writestr("providers/x/x.conf", "[Interface]\nPostUp = sh\n")
+        _nouvelle, ecartes = modele.lire_sauvegarde(zip_)
+        self.assertFalse((modele.PROVIDERS_DIR / "x" / "x.conf").exists())
+        self.assertTrue(ecartes)
+
+    def test_lien_jamais_exporte(self):
+        victime = self.base / "secret"
+        victime.write_text("SECRET")
+        (modele.PROVIDERS_DIR / "x").mkdir(parents=True)
+        (modele.PROVIDERS_DIR / "x" / "x.conf").symlink_to(victime)
+        zip_ = self.base / "s.zip"
+        modele.exporter({"providers": [{"name": "x", "wireguard": [
+            {"conf": "providers/x/x.conf"}, {"conf": "/etc/shadow"}]}]}, zip_)
+        with zipfile.ZipFile(zip_) as zf:
+            self.assertEqual([n for n in zf.namelist() if n.endswith(".conf")], [])
+
+    def test_transports_illisibles_remplaces(self):
+        zip_ = self.base / "s.zip"
+        with zipfile.ZipFile(zip_, "w") as zf:
+            zf.writestr("config.json", json.dumps({"transports": ["ssh"]}))
+        nouvelle, ecartes = modele.lire_sauvegarde(zip_)
+        self.assertEqual(nouvelle["transports"], ["wireguard", "openvpn"])
+        self.assertTrue(any("Transports" in e for e in ecartes))
+
+
+class TransportsReglageTest(unittest.TestCase):
+
+    def test_ordres_admis(self):
+        for ordre in modele.ORDRES_TRANSPORTS:
+            self.assertEqual(modele.erreurs_config({"transports": list(ordre)}), [], ordre)
+
+    def test_ordres_refuses(self):
+        for valeur in ([], ["ssh"], ["wireguard", "wireguard"], "wireguard"):
+            self.assertTrue(modele.erreurs_config({"transports": valeur}), valeur)
+
+    def test_defaut(self):
+        self.assertEqual(DEFAULT_CONFIG["transports"], ["wireguard", "openvpn"])
+
+
+class WireGuardEtatTest(unittest.TestCase):
+
+    def test_assistant_attend_que_tous_les_conf_soient_ecartes(self):
+        st = {"tor_ready": True, "provider": "vpn", "transport": "wireguard",
+              "accounts_cooldown": {"1": 800}}
+        self.assertEqual(modele.etat_connexion("active", st, "vpn", 0, 2)[0], "attente",
+                         "échec annoncé alors qu'un autre .conf reste à essayer")
+        st["accounts_cooldown"]["2"] = 800
+        niveau, msg, fini = modele.etat_connexion("active", st, "vpn", 0, 2)
+        self.assertEqual((niveau, fini), ("erreur", True))
+        self.assertIn("poignée de main", msg)
+
+    def test_transport_affiche(self):
+        st = {"tunnel_up": True, "tor_ready": True, "provider": "vpn",
+              "transport": "wireguard", "account_index": 1}
+        vpn = next(e for e in modele.trajet("active", st) if e["cle"] == "vpn")
+        self.assertEqual(vpn["detail"], "WireGuard · fichier 2")
+        st["transport"] = "openvpn"
+        vpn = next(e for e in modele.trajet("active", st) if e["cle"] == "vpn")
+        self.assertEqual(vpn["detail"], "OpenVPN · compte 2")
+
+    def test_evenements(self):
+        lignes = [
+            "2026-09-24T22:00:00+02:00 h katakomba[1]: [2026-09-24 22:00:00] [WARN ] "
+            ".conf 3 (vpn) sans poignée de main — mis en quarantaine 15 min.",
+            "2026-09-24T22:00:05+02:00 h katakomba[1]: [2026-09-24 22:00:05] [WARN ] "
+            "vpn : WireGuard épuisé → OpenVPN",
+        ]
+        self.assertEqual([e[3] for e in modele.evenements(lignes)],
+                         ["Bascule vers OpenVPN", "Fichier WireGuard 3 : aucune réponse du serveur"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

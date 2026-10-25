@@ -33,11 +33,12 @@ from constants import (
 )
 from constants import CONFIG_DIR  # noqa: F401  (réexporté : console.py lit modele.CONFIG_DIR)
 from i18n import LANGUES, N_, _, ngettext, nombre
-from validation import (analyser_ovpn, analyser_torrc, chemin_ovpn_sur, composant_sur,
-                        interface_lan_admissible, verifier_dns, verifier_domaine,
-                        verifier_exclusion)
+from validation import (analyser_ovpn, analyser_torrc, analyser_wg, chemin_fournisseur_sur,
+                        composant_sur, interface_lan_admissible, verifier_dns,
+                        verifier_domaine, verifier_exclusion)
 
 OVPN_MAX = 1_000_000      # octets, comme le daemon
+WG_MAX   = 65536          # octets par .conf, comme le daemon
 
 
 # ── Petits outils ────────────────────────────────────────────────────────────
@@ -216,6 +217,12 @@ def erreurs_lan(passerelle: str, sous_reseau: str) -> list:
     return erreurs
 
 
+# Ordres de transport proposés (config["transports"]) : WireGuard puis
+# OpenVPN en secours par défaut, l'inverse, ou un seul des deux.
+ORDRES_TRANSPORTS = (("wireguard", "openvpn"), ("openvpn", "wireguard"),
+                     ("wireguard",), ("openvpn",))
+
+
 def erreurs_config(config: dict) -> list:
     """Réglages invalides, en clair.  Liste vide : tout est enregistrable.
     Une valeur invalide n'est jamais ignorée en silence ni transmise telle
@@ -236,6 +243,9 @@ def erreurs_config(config: dict) -> list:
     except (TypeError, ValueError):
         erreurs.append(_("Qualité du circuit : débit minimum entier ≥ 0, "
                          "essais entre 1 et 10."))
+    if config.get("transports", ["wireguard", "openvpn"]) not in [list(o) for o in ORDRES_TRANSPORTS]:
+        erreurs.append(_("Transports : wireguard, openvpn, ou les deux dans "
+                         "l'ordre voulu."))
     if config.get("lan_auto"):
         erreurs += [_("Partage LAN : {erreur}").format(erreur=m) for m in
                     erreurs_lan(config.get("lan_gateway", ""),
@@ -328,6 +338,150 @@ def ajouter_fournisseur_adapte(config: dict, nom, res, chemins, identifiant,
         "accounts": [{"u": obf(identifiant), "p": obf(mot_de_passe)}],
     })
     enregistrer_config(config)
+
+
+# ── WireGuard (v4.0.0) ───────────────────────────────────────────────────────
+#
+# Un fournisseur peut porter, en plus ou à la place de son .ovpn et de ses
+# identifiants, des fichiers .conf WireGuard : config « wireguard », liste de
+# {"conf": chemin relatif}.  Chaque .conf a sa clé, son adresse et son serveur.
+
+EMBALLAGES_LISIBLES = {"proton": "Proton (TLS)", "ivpn": "IVPN (VMess)",
+                       "mullvad": "Mullvad (udp-over-tcp)"}
+
+
+def est_conf_wireguard(chemin) -> bool:
+    """Fichier WireGuard ?  Reconnu à sa section [Interface], pas à son
+    extension : des fournisseurs livrent aussi leurs configurations OpenVPN
+    en .conf.  Un .conf illisible est compté comme WireGuard : la lecture
+    qui suit dira pourquoi il est refusé."""
+    if not str(chemin).lower().endswith(".conf"):
+        return False
+    try:
+        texte = lire_sans_lien(Path(chemin), OVPN_MAX).decode("utf-8", errors="replace")
+    except (OSError, ValueError):
+        return True
+    return any(l.strip().lower() == "[interface]" for l in texte.splitlines())
+
+
+def genre_fichiers(chemins) -> str:
+    """« wireguard » si tous les fichiers sont des .conf WireGuard,
+    « openvpn » s'il n'y en a aucun, "" si les deux sont mêlés."""
+    wg = [est_conf_wireguard(c) for c in chemins]
+    if wg and all(wg):
+        return "wireguard"
+    return "" if any(wg) else "openvpn"
+
+
+def preparer_import_wg(chemins):
+    """Lit et contrôle des .conf WireGuard ; renvoie (prêts, erreurs).
+    prêts : liste de (chemin, réglages, avertissements).  Mêmes contrôles
+    que le daemon (validation.analyser_wg) : un fichier qu'il refuserait
+    n'est jamais enregistré."""
+    prets, erreurs = [], []
+    for chemin in chemins:
+        nom = Path(chemin).name
+        if not nom.lower().endswith(".conf"):
+            erreurs.append(_("{fichier} : un fichier WireGuard .conf est attendu").format(
+                fichier=nom))
+            continue
+        try:
+            data = lire_sans_lien(Path(chemin), WG_MAX)
+        except (OSError, ValueError) as e:
+            erreurs.append(_("{fichier} : {raison}").format(
+                fichier=nom, raison=getattr(e, "strerror", None) or e))
+            continue
+        reglages, refus, avert = analyser_wg(data.decode("utf-8", errors="replace"))
+        if refus:
+            erreurs += [_("{fichier} : {raison}").format(fichier=nom, raison=m) for m in refus]
+            continue
+        prets.append((chemin, reglages, avert))
+    return prets, erreurs
+
+
+def resume_conf(reglages: dict) -> str:
+    """« Proton (TLS) · 185.107.56.211:443 »."""
+    return " · ".join((EMBALLAGES_LISIBLES.get(reglages["emballage"], reglages["emballage"]),
+                       reglages["serveur"]))
+
+
+def resume_import(prets) -> str:
+    lignes = [ngettext("{n} fichier prêt :", "{n} fichiers prêts :", len(prets)).format(
+        n=len(prets))]
+    for chemin, reglages, avert in prets:
+        lignes.append(f"• {Path(chemin).name} — {resume_conf(reglages)}")
+        lignes += [f"  ⚠ {a}" for a in avert]
+    return "\n".join(lignes)
+
+
+def ecrire_conf_wg(fournisseur: str, chemin) -> str:
+    """Copie un .conf sous providers/<fournisseur>/ ; renvoie son chemin
+    relatif.  Un fichier du même nom au contenu différent n'est jamais
+    écrasé : le nouveau prend un suffixe."""
+    data = lire_sans_lien(Path(chemin), WG_MAX)
+    base = "".join(c if c.isalnum() or c in "-_." else "-"
+                   for c in Path(chemin).stem).strip(".") or "wireguard"
+    dossier = dossier_fournisseur(fournisseur)
+    for n in range(1, 1000):
+        dest = dossier / (f"{base}.conf" if n == 1 else f"{base}-{n}.conf")
+        try:
+            if lire_sans_lien(dest, WG_MAX) == data:
+                break
+        except FileNotFoundError:
+            break
+        except (OSError, ValueError):
+            pass
+    ecrire_sans_lien(dest, data)
+    return str(dest.relative_to(SCRIPT_DIR))
+
+
+def ajouter_confs_wg(config: dict, nom: str, chemins) -> int:
+    """Ajoute des .conf au fournisseur `nom`, créé au besoin en fin de
+    liste (la priorité des autres ne change pas).  Enregistre la
+    configuration ; renvoie le nombre de .conf ajoutés."""
+    fournisseurs = config.setdefault("providers", [])
+    p = next((f for f in fournisseurs if f.get("name", "").lower() == nom.lower()), None)
+    if p is None:
+        p = {"name": nom, "ovpn_file": "", "accounts": [], "wireguard": []}
+        fournisseurs.append(p)
+    confs = p.setdefault("wireguard", [])
+    ajoutes = 0
+    for chemin in chemins:
+        rel = ecrire_conf_wg(p["name"], chemin)
+        if not any(c.get("conf") == rel for c in confs):
+            confs.append({"conf": rel})
+            ajoutes += 1
+    enregistrer_config(config)
+    return ajoutes
+
+
+def decrire_conf(entree: dict) -> tuple:
+    """(titre, détail) d'un .conf pour l'affichage."""
+    rel = entree.get("conf", "") if isinstance(entree, dict) else ""
+    if not rel:
+        return _("Entrée illisible"), _("aucun fichier WireGuard")
+    titre = Path(rel).name
+    if not chemin_fournisseur_sur(rel):
+        return titre, _("chemin refusé")
+    try:
+        texte = lire_sans_lien(SCRIPT_DIR / rel, WG_MAX).decode("utf-8", errors="replace")
+    except (OSError, ValueError):
+        return titre, _("fichier introuvable ou illisible")
+    reglages, refus, _avert = analyser_wg(texte)
+    return titre, resume_conf(reglages) if reglages else refus[0]
+
+
+def resume_comptes(p: dict) -> str:
+    """« 2 comptes OpenVPN · 3 fichiers WireGuard »."""
+    morceaux = []
+    n = len(p.get("accounts", []))
+    if n or p.get("ovpn_file"):
+        morceaux.append(ngettext("{n} compte OpenVPN", "{n} comptes OpenVPN", n).format(n=n))
+    n = len(p.get("wireguard", []))
+    if n:
+        morceaux.append(ngettext("{n} fichier WireGuard", "{n} fichiers WireGuard",
+                                 n).format(n=n))
+    return " · ".join(morceaux) or _("aucun compte")
 
 
 def deplacer(liste: list, i: int, delta: int) -> int:
@@ -538,7 +692,7 @@ def exporter(config: dict, chemin):
             # Mêmes chemins que ceux qu'accepte le daemon, lus sans suivre
             # de lien : en root, un lien déposé dans providers/ ferait
             # sinon copier un fichier système dans la sauvegarde.
-            if not chemin_ovpn_sur(ovpn):
+            if not chemin_fournisseur_sur(ovpn):
                 continue
             chemin_ovpn = SCRIPT_DIR / ovpn
             try:
@@ -546,6 +700,16 @@ def exporter(config: dict, chemin):
             except (OSError, ValueError):
                 continue
             zf.writestr(f"providers/{p['name']}/{chemin_ovpn.name}", data)
+        for p in config.get("providers", []):
+            for entree in p.get("wireguard", []):
+                rel = entree.get("conf", "") if isinstance(entree, dict) else ""
+                if not rel or not chemin_fournisseur_sur(rel):
+                    continue
+                try:
+                    data = lire_sans_lien(SCRIPT_DIR / rel, WG_MAX)
+                except (OSError, ValueError):
+                    continue
+                zf.writestr(rel, data)
         try:
             zf.writestr("torrc", lire_sans_lien(TORRC_FILE))
         except (OSError, ValueError):
@@ -600,6 +764,10 @@ def assainir_reglages(config: dict) -> list:
     if erreur:
         ecartes.append(_("Serveur DNS local : {erreur}").format(erreur=erreur))
     config["local_dns"] = dns
+    if config.get("transports", ["wireguard", "openvpn"]) not in [list(o) for o in ORDRES_TRANSPORTS]:
+        ecartes.append(_("Transports : valeur illisible, remplacée par "
+                         "« wireguard, openvpn »"))
+        config["transports"] = ["wireguard", "openvpn"]
     iface = config.get("lan_iface", "")
     if iface and not interface_lan_admissible(iface):
         ecartes.append(_("Partage LAN : interface « {nom} » refusée").format(nom=iface))
@@ -617,7 +785,7 @@ def importer_fichiers(zf, nouvelle: dict) -> list:
         if not (nom.startswith("providers/") and nom.endswith((".ovpn", ".conf"))):
             continue
         parts = nom.split("/")
-        if not chemin_ovpn_sur(nom):
+        if not chemin_fournisseur_sur(nom):
             ecartes.append(_("{fichier} : chemin refusé").format(fichier=nom))
             continue
         try:
@@ -625,8 +793,14 @@ def importer_fichiers(zf, nouvelle: dict) -> list:
         except ValueError as e:
             ecartes.append(str(e))
             continue
-        refus, _avert = analyser_ovpn(data.decode("utf-8", errors="replace"))
-        if len(data) > OVPN_MAX or refus:
+        texte = data.decode("utf-8", errors="replace")
+        # WireGuard reconnu à sa section [Interface] : des fournisseurs
+        # livrent aussi leurs configurations OpenVPN en .conf.
+        if any(l.strip().lower() == "[interface]" for l in texte.splitlines()):
+            refus, limite = analyser_wg(texte)[1], WG_MAX
+        else:
+            refus, limite = analyser_ovpn(texte)[0], OVPN_MAX
+        if len(data) > limite or refus:
             ecartes.append(_("{fichier} : {raison}").format(
                 fichier=f"{parts[1]}/{parts[2]}",
                 raison=refus[0] if refus else _("trop volumineux")))
@@ -640,10 +814,20 @@ def importer_fichiers(zf, nouvelle: dict) -> list:
     # absolu ferait lire au daemon, en root, un fichier arbitraire.
     for p in nouvelle.get("providers", []):
         ovpn = p.get("ovpn_file", "")
-        if ovpn and not chemin_ovpn_sur(ovpn):
+        if ovpn and not chemin_fournisseur_sur(ovpn):
             p["ovpn_file"] = ""
             ecartes.append(_("{fournisseur} : chemin .ovpn refusé (hors de "
                              "providers/)").format(fournisseur=p.get("name", "?")))
+        confs = p.get("wireguard", [])
+        if not isinstance(confs, list):
+            confs = []
+        gardes = [c for c in confs if isinstance(c, dict)
+                  and chemin_fournisseur_sur(c.get("conf", ""))]
+        if len(gardes) != len(confs):
+            ecartes.append(_("{fournisseur} : fichier(s) WireGuard au chemin refusé "
+                             "(hors de providers/)").format(fournisseur=p.get("name", "?")))
+        if gardes or "wireguard" in p:
+            p["wireguard"] = gardes
     if "torrc" in zf.namelist():
         try:
             texte = _lire_membre(zf, "torrc").decode("utf-8", errors="replace")
@@ -809,10 +993,13 @@ def regler_lancement_session(actif: bool):
 
 # Raisons de reconnexion publiées par le daemon (en français, dans ses
 # journaux) : traduites à l'affichage.
-RAISONS = (N_("démarrage du service"), N_("redémarrage complet de Tor et d'OpenVPN"),
-           N_("perte de connectivité, relance d'OpenVPN"),
+RAISONS = (N_("démarrage du service"), N_("redémarrage complet de Tor et du VPN"),
+           N_("perte de connectivité, relance du VPN"),
            N_("circuit Tor trop lent, nouveau tirage"), N_("connexion VPN interrompue"),
-           N_("identifiants refusés, compte suivant"))
+           N_("identifiants refusés, compte suivant"),
+           N_("aucune poignée de main, nouvel essai"),
+           N_("aucune poignée de main, .conf suivant"), N_("fichier .conf refusé"),
+           N_("interface tunnel impossible à créer"), N_("tunnel impossible à monter"))
 
 
 def raison_lisible(raison: str) -> str:
@@ -894,7 +1081,12 @@ def trajet(service: str, st: dict, nb_fournisseurs: int = 1) -> list:
 
     fournisseur = st.get("provider") if actif else ""
     if vpn_ok:
-        vpn = ("ok", _("Compte {n}").format(n=st.get("account_index", 0) + 1))
+        if st.get("transport") == "wireguard":
+            vpn = ("ok", _("WireGuard · fichier {n}").format(n=st.get("account_index", 0) + 1))
+        elif st.get("transport") == "openvpn":
+            vpn = ("ok", _("OpenVPN · compte {n}").format(n=st.get("account_index", 0) + 1))
+        else:
+            vpn = ("ok", _("Compte {n}").format(n=st.get("account_index", 0) + 1))
     elif reconnexion and tor_ok:
         vpn = ("attente", _("Reconnexion…") if st.get("reconnect_reason")
                and st.get("reconnect_reason") != "démarrage du service" else _("Connexion…"))
@@ -968,10 +1160,11 @@ def tuiles(service: str, st: dict) -> list:
 
 
 def etat_connexion(service: str, st: dict, fournisseur: str = "",
-                   compte: int = 0):
+                   compte: int = 0, nb_confs: int = 0):
     """Assistant : (niveau, message, fini) pendant la première connexion.
     niveau : « attente », « ok » ou « erreur » ; fini : plus rien à attendre
-    (connecté et débit mesuré, ou échec)."""
+    (connecté et débit mesuré, ou échec).  nb_confs : fournisseur WireGuard
+    de nb_confs fichiers, en échec seulement quand tous sont écartés."""
     if service == "failed":
         return ("erreur", _("Le service s'est arrêté sur une erreur. Le détail "
                             "est visible dans la page Journal."), True)
@@ -985,7 +1178,13 @@ def etat_connexion(service: str, st: dict, fournisseur: str = "",
                 debit=kbs_en_mbps(kbs)), True)
         return ("ok", message + " " + _("Mesure du débit en cours…"), False)
     refus = st.get("accounts_cooldown") or {}
-    if st.get("provider") == fournisseur and str(compte + 1) in refus:
+    if nb_confs:
+        if (st.get("provider") == fournisseur and st.get("transport") == "wireguard"
+                and len(refus) >= nb_confs):
+            return ("erreur", _("Le serveur n'a pas répondu (aucune poignée de main "
+                                "WireGuard) : clé révoquée, serveur arrêté ou mode TCP "
+                                "non proposé. Essayez un autre fichier .conf."), True)
+    elif st.get("provider") == fournisseur and str(compte + 1) in refus:
         return ("erreur", _("Le fournisseur a refusé l'identifiant ou le mot de "
                             "passe. Vérifiez-les : ce sont les identifiants OpenVPN, "
                             "souvent différents de ceux de votre compte sur le site "
@@ -1026,12 +1225,16 @@ _EVENEMENTS = (
     (re.compile(r"^\[circuit\] Débit toujours faible \((?P<kbs>\d+) KB/s\)"), "attente",
      N_("Circuit lent conservé ({debit})")),
     (re.compile(r"^Watchdog : Tor est sain"), "attente",
-     N_("Connexion perdue : relance d'OpenVPN")),
+     N_("Connexion perdue : relance du VPN")),
     (re.compile(r"^Watchdog : redémarrage complet"), "attente",
      N_("Connexion perdue : redémarrage complet")),
     (re.compile(r"^Compte (?P<n>\d+) refusé"), "erreur",
      N_("Compte {n} refusé par le fournisseur")),
+    (re.compile(r"^\.conf (?P<n>\d+) \(.*\) sans poignée de main"), "erreur",
+     N_("Fichier WireGuard {n} : aucune réponse du serveur")),
     (re.compile(r"^Fournisseur suivant"), "attente", N_("Bascule vers le fournisseur suivant")),
+    (re.compile(r" : (WireGuard|OpenVPN) épuisé → (?P<vers>WireGuard|OpenVPN)$"), "attente",
+     N_("Bascule vers {vers}")),
 )
 
 
@@ -1040,7 +1243,7 @@ _EVENEMENTS = (
 # aucun événement utile.
 _FILTRE_EVENEMENTS = (r"démarré \(PID|arrêté proprement|Tunnel VPN actif|"
                       r"\[circuit\] Débit|Watchdog : (Tor est sain|redémarrage complet)|"
-                      r"refusé|Fournisseur suivant")
+                      r"refusé|sans poignée de main|Fournisseur suivant|épuisé →")
 
 
 def lire_evenements(maximum: int = 8) -> list:

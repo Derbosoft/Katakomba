@@ -18,10 +18,11 @@ from .core import (_run, _read_regular, _sd_notify, _write_private, CONN_FAIL_MA
 class WatchdogMixin:
 
     def _vpn_is_active(self) -> bool:
-        # Uniquement le processus lancé par ce daemon.  L'ancien repli sur
-        # « pgrep -x openvpn » comptait n'importe quel OpenVPN de la machine.
-        return bool(self.openvpn_process
-                    and self.openvpn_process.poll() is None)
+        # Uniquement le processus lancé par ce daemon (OpenVPN, ou le pont
+        # WireGuard).  L'ancien repli sur « pgrep -x openvpn » comptait
+        # n'importe quel OpenVPN de la machine.
+        proc = self._processus_vpn()
+        return bool(proc and proc.poll() is None)
 
     _CONN_GRACE = 30  # secondes de grâce après tunnel up avant de vérifier la connectivité
     _CANAL_MORT_TICKS = 3   # ~9 s d'émission sans réception → canal mort
@@ -123,7 +124,7 @@ class WatchdogMixin:
 
     def _full_restart(self):
         self._full_restart_count += 1
-        self._reconnect_reason = "redémarrage complet de Tor et d'OpenVPN"
+        self._reconnect_reason = "redémarrage complet de Tor et du VPN"
         self._log(
             f"Watchdog : redémarrage complet "
             f"({self._full_restart_count}/{REPAIR_THRESHOLD}) …", "ERROR")
@@ -131,7 +132,7 @@ class WatchdogMixin:
             self._emergency_repair()
         self._stop_vpn      = True
         self._stop_tor_flag = True
-        self._stop_openvpn()
+        self._stop_vpn_process()
         self._stop_tor()
         self._wait_vpn_loop_exit()
         self._cleanup_tor_routes()
@@ -166,7 +167,7 @@ class WatchdogMixin:
     # Mesuré sur ~5 semaines de production : les redémarrages complets
     # faisaient 83 % du temps de coupure (médiane 28 s), alors que Tor allait
     # bien — il était de nouveau prêt 2 s après sa relance.  Le tunnel était
-    # mort, pas Tor.  Premier recours : relancer OpenVPN seul, sur un circuit
+    # mort, pas Tor.  Premier recours : relancer le VPN seul, sur un circuit
     # neuf.  Le redémarrage complet ne vient qu'en second.
     _LIGHT_TIMEOUT = 45   # s sans tunnel après une relance légère → complet
 
@@ -180,16 +181,17 @@ class WatchdogMixin:
             return False
         return "circuit-established=1" in rep
 
-    def _restart_openvpn(self):
-        """Relance OpenVPN seul, même compte, sur un circuit Tor neuf.
+    def _restart_vpn(self):
+        """Relance OpenVPN (ou le pont WireGuard) seul, même compte, sur un
+        circuit Tor neuf.
 
         Même mécanisme que le re-tirage de circuit : NEWNYM, puis arrêt du
-        processus SANS _stop_vpn — la boucle OpenVPN reconnecte d'elle-même,
+        processus SANS _stop_vpn — la boucle VPN reconnecte d'elle-même,
         après 2 s, sans temporisation ni changement de compte."""
-        proc = self.openvpn_process
+        proc = self._processus_vpn()
         self._new_tor_circuit()
         self._circuit_retry = True
-        self._reconnect_reason = "perte de connectivité, relance d'OpenVPN"
+        self._reconnect_reason = "perte de connectivité, relance du VPN"
         if proc and proc.poll() is None:
             proc.terminate()
 
@@ -255,12 +257,12 @@ class WatchdogMixin:
             self._light_restart_done = True
             self._light_restart_at   = time.time()
             self._light_restart_count += 1
-            self._log("Watchdog : Tor est sain — relance d'OpenVPN seul, sur "
+            self._log("Watchdog : Tor est sain — relance du VPN seul, sur "
                       "un circuit neuf …", "WARN")
-            self._restart_openvpn()
+            self._restart_vpn()
             return
         if self._light_restart_done:
-            self._log("Watchdog : la relance d'OpenVPN n'a pas suffi — "
+            self._log("Watchdog : la relance du VPN n'a pas suffi — "
                       "redémarrage complet.", "ERROR")
         self._conn_restart_pending = True
         self._full_restart()
@@ -298,7 +300,7 @@ class WatchdogMixin:
                               "canal de données muet.", "WARN")
 
             # ── Filet anti-inertie ────────────────────────────────────────
-            # Les boucles Tor/OpenVPN abandonnent après un nombre borné de
+            # Les boucles Tor/VPN abandonnent après un nombre borné de
             # tentatives : sans ce filet, une longue coupure réseau laisserait
             # le daemon vivant mais inerte pour toujours.  Si plus aucune
             # boucle VPN ne tourne (et reconnexion auto active), on sort au
@@ -346,7 +348,7 @@ class WatchdogMixin:
 
             # Relance légère restée sans effet : le tunnel ne remonte pas (Tor
             # malade malgré les apparences, serveur injoignable…).  Sans ce
-            # garde, la boucle OpenVPN pourrait s'user seule en tentatives de
+            # garde, la boucle VPN pourrait s'user seule en tentatives de
             # 60 s au lieu de rendre la main au redémarrage complet.
             if (self._light_restart_at and not self._tunnel_up
                     and self.config.get("auto_reconnect", True)
@@ -355,7 +357,7 @@ class WatchdogMixin:
                     and time.time() - self._light_restart_at > self._LIGHT_TIMEOUT):
                 self._log(f"Watchdog : tunnel toujours absent "
                           f"{self._LIGHT_TIMEOUT} s après la relance "
-                          "d'OpenVPN — redémarrage complet.", "ERROR")
+                          "du VPN — redémarrage complet.", "ERROR")
                 self._light_restart_at = 0.0
                 self._conn_restart_pending = True
                 self._noter_reprise()

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "3.13.1"
+VERSION       = "4.0.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")
@@ -45,6 +45,10 @@ DEFAULT_CONFIG = {
     # déterministe).  L'ordre des FOURNISSEURS n'est jamais mélangé : il reste
     # l'ordre de priorité défini dans la configuration.
     "random_account":    True,
+    # Transports essayés chez chaque fournisseur, dans l'ordre (v4.0.0) :
+    # WireGuard d'abord, OpenVPN en secours.  Un fournisseur sans .conf ou
+    # sans .ovpn saute simplement le transport qu'il n'a pas.
+    "transports":        ["wireguard", "openvpn"],
     "block_ipv6":        False,
     # Blocage hors tunnel (kill switch) : tant que le service tourne, rien ne
     # sort hors du tunnel, sauf Tor et le réseau local — y compris pendant

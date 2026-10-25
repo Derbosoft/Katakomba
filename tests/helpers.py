@@ -3,7 +3,7 @@ Utilitaires communs aux tests : daemon factice et interception des commandes.
 
 Principe de sûreté : AUCUN test ne doit exécuter de commande réelle.  Toutes
 les fonctions qui touchent au système (iptables, ip, resolvectl, systemctl,
-curl, openvpn, tor) passent par `_run` ou `subprocess`, tous deux remplacés
+curl, openvpn, wg, tor) passent par `_run` ou `subprocess`, tous deux remplacés
 par les enregistreurs ci-dessous.  Un test qui oublierait de les remplacer
 serait détecté par `tests/test_safety.py`.
 """
@@ -31,10 +31,13 @@ import daemon.dns       as m_dns              # noqa: E402
 import daemon.firewall  as m_firewall         # noqa: E402
 import daemon.network   as m_network          # noqa: E402
 import daemon.openvpn   as m_openvpn          # noqa: E402
+import daemon.session   as m_session          # noqa: E402
 import daemon.tor       as m_tor              # noqa: E402
 import daemon.watchdog  as m_watchdog         # noqa: E402
+import daemon.wireguard as m_wireguard        # noqa: E402
 
-RUN_MODULES = (m_core, m_dns, m_firewall, m_network, m_openvpn, m_tor, m_watchdog)
+RUN_MODULES = (m_core, m_dns, m_firewall, m_network, m_openvpn, m_session, m_tor,
+               m_watchdog, m_wireguard)
 
 # ── Bac à sable des fichiers du daemon ───────────────────────────────────────
 # Sur une machine déployée, /run/katakomba et /var/lib/katakomba
@@ -51,6 +54,8 @@ _REDIRECTIONS = {
     "STATE_DIR":          _STATE,
     "AUTH_TMP":           _RUN / "auth.tmp",
     "OVPN_RUN":           _RUN / "openvpn.conf",
+    # Sous /etc/wireguard en production : les tests ne doivent jamais y écrire.
+    "WG_CONF_RUN":        _RUN / "wg.conf",
     "TORRC_RUN":          _RUN / "torrc",
     "LAN_DNSMASQ_PID":    _RUN / "dnsmasq.pid",
     "TOR_ROUTES_FILE":    _STATE / "tor-routes.txt",
@@ -246,3 +251,12 @@ def provider(name, n_accounts=1, ovpn="/dev/null", obfuscate=True):
         "accounts": [{"u": enc(f"user{i}"), "p": enc(f"pass{i}")}
                      for i in range(n_accounts)],
     }
+
+
+def provider_wg(name, n_confs=1, ovpn="", n_accounts=0):
+    """Fournisseur WireGuard : un .conf par entrée ; OpenVPN en plus si
+    `ovpn` et `n_accounts` sont donnés."""
+    p = provider(name, n_accounts, ovpn) if (ovpn or n_accounts) else {"name": name}
+    p["wireguard"] = [{"conf": f"providers/{name}/serveur{i}.conf"}
+                      for i in range(n_confs)]
+    return p

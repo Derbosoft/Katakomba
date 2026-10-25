@@ -78,8 +78,8 @@ class ChoixDeLaLangueTest(unittest.TestCase):
                 continue
             i18n.activer(code)
             self.assertNotEqual(i18n._("Se déconnecter"), "Se déconnecter", code)
-            self.assertNotEqual(i18n.ngettext("{n} compte", "{n} comptes", 2),
-                                "{n} comptes", code)
+            self.assertNotEqual(i18n.ngettext("{n} compte OpenVPN", "{n} comptes OpenVPN", 2),
+                                "{n} comptes OpenVPN", code)
 
     def test_langue_inconnue_langue_du_systeme(self):
         with mock.patch.dict("os.environ", {"LANGUAGE": "", "LC_ALL": "",
@@ -97,10 +97,11 @@ class ChoixDeLaLangueTest(unittest.TestCase):
 
     def test_pluriels_selon_la_langue(self):
         i18n.activer("en")
-        self.assertEqual(i18n.ngettext("{n} compte", "{n} comptes", 1), "{n} account")
-        self.assertEqual(i18n.ngettext("{n} compte", "{n} comptes", 0), "{n} accounts")
+        compte = ("{n} compte OpenVPN", "{n} comptes OpenVPN")
+        self.assertEqual(i18n.ngettext(*compte, 1), "{n} OpenVPN account")
+        self.assertEqual(i18n.ngettext(*compte, 0), "{n} OpenVPN accounts")
         i18n.activer("pt")                   # portugais du Brésil : 0 est singulier
-        self.assertEqual(i18n.ngettext("{n} compte", "{n} comptes", 0), "{n} conta")
+        self.assertEqual(i18n.ngettext(*compte, 0), "{n} conta OpenVPN")
 
     def test_separateur_decimal(self):
         i18n.activer("en")

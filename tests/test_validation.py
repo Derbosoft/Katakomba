@@ -154,10 +154,10 @@ class ReglagesConfigTest(unittest.TestCase):
         self.assertEqual(validation.verifier_dns("192.168.1.53\nDNSSEC=no")[0], "")
 
     def test_chemin_ovpn(self):
-        self.assertTrue(validation.chemin_ovpn_sur("providers/vpn-a/a.ovpn"))
+        self.assertTrue(validation.chemin_fournisseur_sur("providers/vpn-a/a.ovpn"))
         for mauvais in ("/etc/shadow", "providers/../x/y", "providers/a/b/c.ovpn",
                         "providers/.a/b.ovpn", "providers/a/b\0.ovpn", "autre/a/b.ovpn"):
-            self.assertFalse(validation.chemin_ovpn_sur(mauvais), mauvais)
+            self.assertFalse(validation.chemin_fournisseur_sur(mauvais), mauvais)
 
     def test_interface_lan(self):
         self.assertTrue(validation.interface_lan_admissible("enp3s0"))

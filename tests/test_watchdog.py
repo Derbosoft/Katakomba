@@ -186,7 +186,7 @@ class GraduatedRecoveryTest(unittest.TestCase):
         d = FakeDaemon(config={"auto_reconnect": True})
         d.appels = []
         d._tor_is_healthy = lambda: tor_sain
-        d._restart_openvpn = lambda: d.appels.append("leger")
+        d._restart_vpn = lambda: d.appels.append("leger")
         d._full_restart = lambda: d.appels.append("complet")
         return d
 
@@ -216,7 +216,7 @@ class GraduatedRecoveryTest(unittest.TestCase):
         p._rc = None
         d.openvpn_process = p
         d._new_tor_circuit = lambda: d.logs.append(("OK", "newnym"))
-        d._restart_openvpn()
+        d._restart_vpn()
         self.assertTrue(p.terminated)
         self.assertTrue(d._circuit_retry, "la boucle ferait un failover")
         self.assertFalse(d._stop_vpn, "la boucle ne reconnecterait pas")
@@ -417,7 +417,7 @@ class BoucleDu23OctobreTest(unittest.TestCase):
         def complet():
             d.appels.append("complet")
             d._conn_restart_pending = False
-        d._restart_openvpn = relance_legere
+        d._restart_vpn = relance_legere
         d._full_restart = complet
 
         def ancien_test_reseau():
@@ -445,7 +445,7 @@ class DelaiDeRepriseTest(unittest.TestCase):
     def test_recover_note_la_reprise(self):
         d = FakeDaemon(config={"auto_reconnect": True})
         d._tor_is_healthy = lambda: True
-        d._restart_openvpn = lambda: None
+        d._restart_vpn = lambda: None
         d._recover()
         self.assertEqual(d._reprises_sans_succes, 1)
         self.assertTrue(d._reprise_differee())
@@ -648,5 +648,5 @@ class RaisonDeReconnexionTest(unittest.TestCase):
         p._rc = None
         d.openvpn_process = p
         d._new_tor_circuit = lambda: None
-        d._restart_openvpn()
-        self.assertIn("relance d'OpenVPN", d._reconnect_reason)
+        d._restart_vpn()
+        self.assertIn("relance du VPN", d._reconnect_reason)

@@ -1,18 +1,18 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v3.13.1
+# Katakomba — v4.0.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-3.13.1-blue)
+![Version](https://img.shields.io/badge/Version-4.0.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
 
 > [English documentation](README.md)
 
-Daemon + interface graphique pour router **tout le trafic réseau via OpenVPN tunnelé dans Tor** sur Ubuntu/Debian. Le daemon tourne en arrière-plan en tant que service systemd et gère automatiquement Tor, OpenVPN, le blocage hors tunnel (kill switch), le blocage IPv6, le partage LAN et la surveillance de connectivité. Il fonctionne aussi sur un **serveur sans écran**, configuré en ligne de commande : SSH et les services du serveur restent joignables une fois le tunnel monté.
+Daemon + interface graphique pour router **tout le trafic réseau via WireGuard ou OpenVPN tunnelé dans Tor** sur Ubuntu/Debian. Le daemon tourne en arrière-plan en tant que service systemd et gère automatiquement Tor, WireGuard et OpenVPN, le blocage hors tunnel (kill switch), le blocage IPv6, le partage LAN et la surveillance de connectivité. Il fonctionne aussi sur un **serveur sans écran**, configuré en ligne de commande : SSH et les services du serveur restent joignables une fois le tunnel monté.
 
 *Katakomba s'appelait auparavant « Tor-VPN Manager » : une installation existante est migrée automatiquement (voir [Migration depuis Tor-VPN Manager](#migration-depuis-tor-vpn-manager)).*
 
@@ -24,22 +24,23 @@ Daemon + interface graphique pour router **tout le trafic réseau via OpenVPN tu
 2. [Prérequis](#prérequis)
 3. [Installation](#installation)
 4. [Serveur sans écran](#serveur-sans-écran)
-5. [Structure du projet](#structure-du-projet)
-6. [Interface graphique](#interface-graphique)
-7. [CLI `katakomba`](#cli-katakomba)
-8. [Fonctionnement détaillé du daemon](#fonctionnement-détaillé-du-daemon)
-9. [Chaînes iptables](#chaînes-iptables)
-10. [Failover et watchdog](#failover-et-watchdog)
-11. [Partage LAN](#partage-lan)
-12. [DNS split — Domaines locaux](#dns-split--domaines-locaux)
-13. [Configuration Tor (torrc)](#configuration-tor-torrc)
-14. [Réparation réseau automatique](#réparation-réseau-automatique)
-15. [Format config.json](#format-configjson)
-16. [Tests](#tests)
-17. [Traductions](#traductions)
-18. [Sécurité](#sécurité)
-19. [Premiers pas](#premiers-pas)
-20. [Désinstallation](#désinstallation)
+5. [WireGuard à travers Tor](#wireguard-à-travers-tor)
+6. [Structure du projet](#structure-du-projet)
+7. [Interface graphique](#interface-graphique)
+8. [CLI `katakomba`](#cli-katakomba)
+9. [Fonctionnement détaillé du daemon](#fonctionnement-détaillé-du-daemon)
+10. [Chaînes iptables](#chaînes-iptables)
+11. [Failover et watchdog](#failover-et-watchdog)
+12. [Partage LAN](#partage-lan)
+13. [DNS split — Domaines locaux](#dns-split--domaines-locaux)
+14. [Configuration Tor (torrc)](#configuration-tor-torrc)
+15. [Réparation réseau automatique](#réparation-réseau-automatique)
+16. [Format config.json](#format-configjson)
+17. [Tests](#tests)
+18. [Traductions](#traductions)
+19. [Sécurité](#sécurité)
+20. [Premiers pas](#premiers-pas)
+21. [Désinstallation](#désinstallation)
 
 ---
 
@@ -67,13 +68,17 @@ Utilisateur
                                          ├── OpenVPN ──► SOCKS5 127.0.0.1:9050 ──► Tor ──► Internet
                                          │              (katakomba-vpn user, no privileges; tun-katakomba)
                                          │
+                                         ├── WireGuard (noyau, tun-katakomba) ──► pont_wg.py ──► SOCKS5 9050 ──► Tor
+                                         │              (pont sous katakomba-vpn, sans aucun droit)
+                                         │
                                          ├── iptables  (kill switch, IPv6 block, LAN sharing)
                                          │
                                          └── Watchdog  (connectivité)
 
 
 Flux réseau complet :
-  Application → tunX → OpenVPN → SOCKS5:9050 → Tor → Relais Tor → Serveur VPN → Internet
+  Application → tun-katakomba → OpenVPN → SOCKS5:9050 → Tor → Relais Tor → Serveur VPN → Internet
+  Application → tun-katakomba → WireGuard → pont (TCP) → SOCKS5:9050 → Tor → … → Serveur VPN → Internet
 ```
 
 Le GUI et le daemon sont **entièrement découplés** : le GUI écrit uniquement des fichiers de configuration et invoque systemd. Il ne surveille aucun processus et ne peut pas interférer avec la connexion active.
@@ -88,7 +93,9 @@ Le GUI et le daemon sont **entièrement découplés** : le GUI écrit uniquement
 | Python | 3.8+ | Daemon + GUI |
 | GTK 4 + libadwaita | 1.5+ | Interface graphique (`python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `librsvg2-common`). Inutile sans interface (serveur) |
 | tor | — | Proxy SOCKS5 et réseau Tor |
-| openvpn | 2.4+ | Tunnel chiffré vers le fournisseur VPN |
+| openvpn | 2.4+ | Tunnel chiffré vers le fournisseur VPN (transport OpenVPN) |
+| wireguard-tools + module noyau `wireguard` | — | Transport WireGuard (module présent dans tout noyau Linux ≥ 5.6) |
+| python3-cryptography | — | Emballage VMess du pont WireGuard (IVPN seulement) |
 | dnsmasq | — | **Optionnel** — serveur DHCP, uniquement pour le partage LAN |
 | curl | — | Mesure de débit et tests de connectivité |
 | systemd + systemd-resolved | — | Gestion du service et DNS |
@@ -246,6 +253,7 @@ sudo bash install.sh --sans-interface
 
 ```bash
 katakomba fournisseur ajouter ivpn.ovpn       # ou un .zip ; identifiant et mot de passe OpenVPN demandés
+katakomba fournisseur ajouter nl-153.conf --name proton   # WireGuard : rien à saisir
 sudo katakomba start --essai                  # s'arrête seul au bout de 5 min sans confirmation
 katakomba doctor                              # tout est OK ?
 sudo katakomba confirm                        # on le garde
@@ -266,13 +274,13 @@ En root, ou en membre du groupe `katakomba` (sans `sudo`, comme l'interface). Le
 | Commande | Effet |
 |---|---|
 | `fournisseur liste` | Fournisseurs par ordre de priorité, avec leur nombre de comptes |
-| `fournisseur ajouter <fichier.ovpn\|.zip>… [--name NOM] [--stdin]` | Ajoute un fournisseur, en dernière priorité |
-| `fournisseur retirer <nom>` | Le retire (son fichier reste sur le disque) |
+| `fournisseur ajouter <fichier.ovpn\|.zip\|.conf…> [--name NOM] [--stdin]` | Ajoute un fournisseur, en dernière priorité : OpenVPN (`.ovpn`, `.zip`) ou WireGuard (`.conf`) |
+| `fournisseur retirer <nom>` | Le retire (ses fichiers restent sur le disque) |
 | `fournisseur priorite <nom> <rang>` | Le déplace dans l'ordre de bascule |
-| `compte liste\|ajouter\|retirer <fournisseur> …` | Comptes d'un fournisseur (`ajouter` demande les identifiants) |
+| `compte liste\|ajouter\|retirer <fournisseur> …` | Comptes d'un fournisseur : `ajouter` demande les identifiants OpenVPN, ou ajoute des `.conf` donnés en argument ; `retirer <fournisseur> wg2` retire un fichier WireGuard |
 | `exclusion liste\|ajouter\|retirer <adresse\|réseau\|domaine>` | Exclusions du tunnel et domaines locaux, mêmes contrôles que l'interface |
 | `reglage` | Réglages actuels |
-| `reglage <réglage> <valeur>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `local-dns` (adresse ou `aucun`), `circuit-check`, `circuit-min-kbs`, `circuit-retries` |
+| `reglage <réglage> <valeur>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (adresse ou `aucun`), `circuit-check`, `circuit-min-kbs`, `circuit-retries` |
 | `sauvegarde exporter\|restaurer <fichier.zip>` | Même format que la sauvegarde de l'interface ; l'export est en `600` (il contient les identifiants) |
 
 Messages et aide (`katakomba help`) suivent la langue du système. Les commandes existent aussi en anglais (`provider add`, `exclude remove`, `set`, `backup`, `start --trial`…), le nom sous lequel les présente l'aide.
@@ -285,13 +293,108 @@ Le daemon marque désormais les connexions entrantes et renvoie leurs réponses 
 
 ---
 
+## WireGuard à travers Tor
+
+*(v4.0.0)* Chaque fournisseur peut servir **WireGuard**, **OpenVPN**, ou les deux. Des fournisseurs abandonnent OpenVPN (Mullvad l'a fait en 2026) : Katakomba fait passer WireGuard dans Tor de la même façon, avec les mêmes protections.
+
+### Le problème, et la solution
+
+Tor ne transporte que du TCP ; WireGuard ne parle qu'UDP. Entre les deux, un **pont** (`pont_wg.py`) emballe les paquets de WireGuard dans une connexion TCP, de la façon que le fournisseur sait déballer, et la fait passer par Tor :
+
+```
+interface WireGuard (noyau, tun-katakomba) ──UDP──► pont, 127.0.0.1:51871
+                                                      │  emballage du fournisseur
+                                                      ▼
+                                              SOCKS de Tor ──► circuit Tor ──► serveur du fournisseur (TCP)
+                                                                                 │ déballage
+                                                                                 ▼
+                                                                            serveur WireGuard
+```
+
+Rien de ce qui entoure WireGuard n'est chiffré ni vérifié par le pont : ce n'est qu'un moyen de passer. L'authentification et le chiffrement, c'est WireGuard qui les assure, de bout en bout.
+
+### Fournisseurs et emballages
+
+L'emballage est choisi d'après le fichier `.conf`, sans rien régler :
+
+| Fournisseur | Emballage | Port | Fichier WireGuard | Reconnu à |
+|---|---|---|---|---|
+| **Proton VPN** | mode « Stealth » : TLS, trames TunSafe | TCP 443, même IP que le serveur | téléchargé sur account.protonvpn.com (offre gratuite comprise) | par défaut |
+| **Mullvad** | udp-over-tcp : chaque paquet précédé de sa taille | TCP 443, même IP que le serveur | générateur de configuration de mullvad.net | son DNS (10.64.0.1) ou son adresse IPv6 interne |
+| **IVPN** | V2Ray : VMess sans chiffrement, déguisé en HTTP | TCP 80, adresse V2Ray du serveur | créé par `ivpn.py` (voir plus bas) | ses commentaires `# Katakomba-…` |
+
+Les formats viennent du code source publié par les fournisseurs (ProtonVPN/wireguard-go, mullvad/udp-over-tcp, ivpn/desktop-app) et de V2Ray (v2fly/v2ray-core). Proton et IVPN ont été vérifiés pour de vrai à travers Tor ; les ports udp-over-tcp de Mullvad (80, 443, 5001) acceptent les connexions venues de sorties Tor. Un réglage explicite reste possible en tête du fichier : `# Katakomba-Emballage = mullvad`, `# Katakomba-Serveur = IP:80`.
+
+**IVPN** ne fournit pas de fichier WireGuard : son application génère une clé et l'enregistre sur le compte. `ivpn.py` fait de même, **à travers Tor** (certificat de l'API vérifié), sans jamais forcer une session :
+
+```bash
+python3 /opt/katakomba/ivpn.py --socks 127.0.0.1:9050 --compte-katakomba 1 --pays NL --sortie ivpn-nl.conf
+# numéro de compte : --compte-katakomba N (compte n° N du fournisseur « ivpn » de Katakomba),
+# ou la variable IVPN_COMPTE — jamais en argument
+```
+
+Chaque fichier créé occupe une place d'appareil sur le compte IVPN.
+
+### Ajouter des fichiers WireGuard
+
+```bash
+katakomba fournisseur ajouter nl-free-153.conf ch-12.conf --name proton   # nouveau fournisseur
+katakomba compte ajouter ivpn ivpn-nl.conf                                 # WireGuard pour un fournisseur OpenVPN
+katakomba compte liste ivpn                                                # 1. … (OpenVPN), wg1. … (WireGuard)
+```
+
+Dans l'interface : l'assistant accepte des `.conf` (aucun identifiant demandé : chaque fichier contient sa clé), et la page Fournisseurs a une ligne « Ajouter des fichiers WireGuard (.conf)… » sous chaque fournisseur. Un `.conf` est reconnu à sa section `[Interface]`, pas à son extension : une configuration OpenVPN livrée en `.conf` reste traitée comme OpenVPN.
+
+### Ordre des transports et secours
+
+Le parcours se fait par **étapes** : un fournisseur et l'un de ses transports. Réglage `transports` (page Réglages, ou `katakomba reglage transports …`) :
+
+| Valeur | Effet chez un fournisseur qui a les deux |
+|---|---|
+| `wireguard,openvpn` (défaut) | WireGuard d'abord ; OpenVPN en secours quand tous les `.conf` ont échoué |
+| `openvpn,wireguard` | L'inverse |
+| `wireguard` ou `openvpn` | Un seul transport ; l'autre n'est jamais essayé |
+
+Un fournisseur qui n'a qu'un transport utilise celui-là : une configuration d'avant la v4.0.0, sans `.conf`, se comporte exactement comme avant. Dans une étape WireGuard :
+
+- **aucune poignée de main** (serveur arrêté, clé révoquée, circuit Tor bloqué) : un second essai avec le même fichier, puis le suivant. Le fichier abandonné passe en quarantaine 15 minutes, jamais exclu ;
+- **tunnel monté puis perdu** : le même fichier, après temporisation ; le suivant après 5 pertes d'affilée ;
+- **WireGuard absent de la machine** (module noyau, `wg`) : l'étape OpenVPN prend le relais tout de suite.
+
+Le tunnel est déclaré actif à la première poignée de main WireGuard, et mort quand le pont s'arrête ou que les poignées de main cessent (plus de 200 s).
+
+### Ce qui ne change pas
+
+Blocage hors tunnel, routes des relais Tor hors du tunnel, retour des connexions entrantes, blocage IPv6, DNS du VPN et split DNS, exclusions, contrôle du débit du circuit, watchdog et reprise graduée (la relance légère relance le pont seul), partage LAN, réparation d'urgence, `katakomba doctor` : tout passe par le même montage du tunnel, posé par le daemon.
+
+### Sécurité
+
+- Le pont tourne **sans aucun droit**, sous l'utilisateur `katakomba-vpn`, comme OpenVPN : c'est lui qui analyse ce que le réseau envoie.
+- Les `.conf` sont lus par liste blanche (`validation.analyser_wg`). Le daemon réécrit lui-même le fichier remis à `wg` : ni `PostUp`, ni adresse autre que le pont local. Aucun message ne recopie une valeur : une clé mal formée ne finit jamais dans le journal (`wg` recopie la clé qu'il refuse : sa sortie n'est jamais journalisée).
+- La clé privée ne passe que par `/etc/wireguard/katakomba-wg.conf`, en 0600, effacée dès que `wg` l'a lue (et au démarrage, après un arrêt brutal). Ubuntu confine `wg` par AppArmor à ce seul répertoire, d'où ce choix.
+- `Endpoint` doit être une adresse IP : rien n'est résolu hors de Tor.
+- Les fichiers `.conf` contiennent votre clé privée : ne les partagez pas, et ne copiez jamais le même `.conf` sur deux machines (même clé : les deux connexions se coupent l'une l'autre).
+
+### Débit et essai
+
+Le pont ajoute peu ; c'est le circuit Tor qui décide. Mesures réelles, 10 Mo téléchargés : Proton entre 9 et 18 Mbit/s, IVPN entre 1 et 2 Mbit/s selon le circuit. Pour essayer un `.conf` sans rien installer ni toucher au réseau de la machine (Tor privé, espace réseau isolé, sans root) :
+
+```bash
+bash essai/essai_wg_tor.sh fichier.conf
+```
+
+---
+
 ## Structure du projet
 
 ```
 katakomba/
 ├── main.py              Point d'entrée de l'interface (lance gui/app.py)
 ├── constants.py         Constantes partagées interface + daemon (chemins, config par défaut)
-├── validation.py        Listes blanches des directives .ovpn et des options torrc (daemon + GUI)
+├── validation.py        Listes blanches : directives .ovpn, .conf WireGuard, options torrc (daemon + GUI)
+├── pont_wg.py           Pont WireGuard → Tor : emballages Proton (TLS), IVPN (VMess), Mullvad (udp-over-tcp)
+├── ivpn.py              Configuration WireGuard d'un compte IVPN, obtenue par son API à travers Tor
+├── essai/               essai_wg_tor.sh : essai réel d'un .conf par Tor, sans root ni installation
 ├── adaptation.py        Adaptation automatique d'un .ovpn de fournisseur (GUI)
 ├── i18n.py              Traductions : choix de la langue, lecture des catalogues po/
 ├── install.sh           Script d'installation Ubuntu/Debian (sources, ou mode paquet)
@@ -314,7 +417,9 @@ katakomba/
 │   ├── network.py       NetworkMixin — gateway, SOCKS, protection routes Tor /32
 │   ├── firewall.py      FirewallMixin — iptables/ip6tables, blocage IPv6, partage LAN, dnsmasq
 │   ├── dns.py           DNSMixin — split DNS via systemd-resolved drop-in
-│   ├── openvpn.py       OpenVPNMixin — boucle OpenVPN, failover fournisseurs
+│   ├── session.py       SessionMixin — boucle VPN : fournisseurs, transports, comptes, failover, circuit
+│   ├── openvpn.py       OpenVPNMixin — transport OpenVPN
+│   ├── wireguard.py     WireGuardMixin — transport WireGuard : interface, clés, pont, poignées de main
 │   └── watchdog.py      WatchdogMixin — surveillance connectivité, redémarrage complet
 │
 ├── gui/                 Interface graphique (GTK 4 + libadwaita)
@@ -335,6 +440,11 @@ katakomba/
 │   ├── test_dns.py          DNS du VPN, split DNS, revérification périodique
 │   ├── test_firewall.py     blocage IPv6, partage LAN, plage DHCP
 │   ├── test_openvpn.py      identifiants, qualité de circuit, reconnexion
+│   ├── test_session.py      ordre des transports, secours WireGuard → OpenVPN, quarantaines
+│   ├── test_wireguard.py    lecture des .conf, interface, pont, poignées de main
+│   ├── test_pont_wg.py      pont : trames TunSafe, TLS, udp-over-tcp, SOCKS
+│   ├── test_vmess.py        VMess d'IVPN, comparé à des vecteurs de V2Ray
+│   ├── test_ivpn.py         API d'IVPN (sans réseau)
 │   ├── test_watchdog.py     connectivité, filet anti-inertie, redémarrage
 │   ├── test_config_status.py  chargement de config, socket de statut
 │   ├── test_core_lifecycle.py ControlPort réel, nettoyage, arrêt propre
@@ -344,16 +454,17 @@ katakomba/
 │   ├── test_polkit.py       règle polkit exécutée contre un faux polkit, invites
 │   ├── test_i18n.py         catalogues complets, choix de la langue, textes jamais figés
 │   ├── test_validation.py   listes blanches .ovpn / torrc
-│   ├── test_fuzz.py         fuzzing : .ovpn lu comme OpenVPN, options poussées, torrc
+│   ├── test_fuzz.py         fuzzing : .ovpn lu comme OpenVPN, .conf WireGuard, options poussées, torrc
 │   ├── test_adaptation.py   adaptation automatique des fichiers de fournisseur
 │   ├── test_scripts.py      syntaxe shell, unité systemd, cohérence des versions
 │   └── test_safety.py       garde-fou : la suite ne touche pas au système
 │
 ├── tests_noyau/         Vérifications sur vrai noyau, espace réseau neuf (lancer.sh)
 │
-└── providers/           Dossier des fichiers .ovpn par fournisseur (non versionné)
+└── providers/           Dossier des fichiers .ovpn et .conf par fournisseur (non versionné)
     └── <NomFournisseur>/
-        └── <fichier>.ovpn
+        ├── <fichier>.ovpn
+        └── <fichier>.conf
 ```
 
 **Fichiers générés à l'installation / à l'usage :**
@@ -371,6 +482,8 @@ katakomba/
 /run/katakomba-vpn/     Écrit par le daemon (root:katakomba-vpn, 0750, volatil)
 ├── auth.tmp                  Identifiants OpenVPN temporaires (0400, au nom de katakomba-vpn, créé/supprimé à chaque connexion)
 └── openvpn.conf              Copie validée du .ovpn, lue par OpenVPN (0640)
+
+/etc/wireguard/katakomba-wg.conf   Clé de l'interface WireGuard, le temps que wg la lise (0600, effacée aussitôt)
 
 /var/lib/katakomba/     Écrit par le daemon (root, 0755, persistant)
 ├── tor-routes.txt        Routes /32 Tor actives (persistance inter-redémarrages)
@@ -1240,11 +1353,15 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
       "ovpn_file": "providers/ProtonVPN/server.ovpn",
       "accounts": [
         { "u": "dXNlcm5hbWU=", "p": "cGFzc3dvcmQ=" }
+      ],
+      "wireguard": [
+        { "conf": "providers/ProtonVPN/nl-free-153.conf" }
       ]
     }
   ],
   "auto_reconnect": true,
   "random_account": true,
+  "transports": ["wireguard", "openvpn"],
   "kill_switch": true,
   "block_ipv6": false,
   "excluded_ips": ["192.168.1.0/24", "192.168.50.0/24"],
@@ -1267,6 +1384,8 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 | `providers[].ovpn_file` | string | Chemin relatif au répertoire d'installation |
 | `providers[].accounts[].u` | string | Identifiant en base64 |
 | `providers[].accounts[].p` | string | Mot de passe en base64 |
+| `providers[].wireguard[].conf` | string | Fichier WireGuard, relatif au répertoire d'installation (v4.0.0) |
+| `transports` | liste | Transports essayés chez chaque fournisseur, dans l'ordre : `["wireguard", "openvpn"]` (défaut), l'inverse, ou un seul (v4.0.0) |
 | `excluded_ips` | liste | CIDRs/IPs passant par la passerelle locale |
 | `excluded_domains` | liste | Domaines routés vers le DNS local |
 | `local_dns` | string | IP du serveur DNS local |
@@ -1280,7 +1399,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **826 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **984 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout
@@ -1288,7 +1407,7 @@ bash run-tests.sh -v              # détail test par test
 bash run-tests.sh tests.test_openvpn   # un module
 ```
 
-**La suite ne touche jamais au système.** `iptables`, `ip`, `resolvectl`, `systemctl`, `curl`, `openvpn` et `tor` sont interceptés et enregistrés au lieu d'être exécutés : les tests vérifient *quelles commandes auraient été lancées*, avec quels arguments et dans quel ordre. On peut donc lancer la suite sur la machine de production, tunnel monté, sans risque. `run-tests.sh` relève une empreinte réseau avant et après pour le prouver, et `tests/test_safety.py` interdit à un futur test de contourner cette règle.
+**La suite ne touche jamais au système.** `iptables`, `ip`, `resolvectl`, `systemctl`, `curl`, `openvpn`, `wg` et `tor` sont interceptés et enregistrés au lieu d'être exécutés : les tests vérifient *quelles commandes auraient été lancées*, avec quels arguments et dans quel ordre. On peut donc lancer la suite sur la machine de production, tunnel monté, sans risque. `run-tests.sh` relève une empreinte réseau avant et après pour le prouver, et `tests/test_safety.py` interdit à un futur test de contourner cette règle.
 
 Ce qui est couvert, au-delà des chemins nominaux :
 

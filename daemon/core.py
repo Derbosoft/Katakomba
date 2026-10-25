@@ -33,6 +33,17 @@ LEGACY_TOR_DATA   = CONFIG_DIR / "tor_data"          # avant la v3.7.0
 TOR_COOKIE        = TOR_DATA_DIR / "control_auth_cookie"
 TORRC_RUN         = RUN_DIR / "torrc"                # copie validée du torrc
 OVPN_RUN          = VPN_RUN_DIR / "openvpn.conf"     # copie validée du .ovpn
+# Configuration remise à « wg setconf », clé privée comprise : écrite en root,
+# 0600, effacée dès que wg l'a lue.  Sous /etc/wireguard parce que le profil
+# AppArmor de wg (Ubuntu) ne lui laisse lire que ce répertoire.
+WG_CONF_RUN       = Path("/etc/wireguard") / "katakomba-wg.conf"
+# Écoute UDP du pont WireGuard, que WireGuard prend pour son serveur.  Port
+# peu courant : un WireGuard de la machine écoute souvent sur 51820.
+PONT_ECOUTE       = "127.0.0.1:51871"
+# MTU du tunnel WireGuard quand le .conf n'en donne pas.  Les paquets voyagent
+# dans un flux TCP : la taille n'y est pas limitée, mais 1320 reste sûr
+# partout (valeur du client tiers pvpn pour Proton Stealth).
+WG_MTU_DEFAUT     = 1320
 TOR_USER          = "debian-tor"                     # Tor abandonne root
 RESOLVED_DROP_IN  = Path("/etc/systemd/resolved.conf.d/katakomba-split.conf")
 LAN_DNSMASQ_PID   = RUN_DIR / "dnsmasq.pid"
@@ -47,6 +58,7 @@ REPRISES_MEMOIRE  = 900   # s : au-delà, une ancienne panne ne compte plus
 # commande.  Jamais « pkill -x openvpn » ni « pkill -x tor » : ce serait
 # couper un autre VPN de la machine, ou le Tor de Tor Browser.
 OPENVPN_PATTERN   = r"^openvpn .*--auth-user-pass [^ ]*katakomba(-vpn)?/auth\.tmp"
+PONT_PATTERN      = r"pont_wg\.py .*--ecoute 127\.0\.0\.1:51871"
 TOR_PATTERN       = r"^tor .*katakomba/tor(rc|_data)"
 
 # Sortie « aucun fournisseur configuré » : systemd ne relance pas
@@ -227,6 +239,7 @@ class DaemonCore:
 
         self.tor_process     = None
         self.openvpn_process = None
+        self.pont_process    = None       # pont WireGuard → Tor
         self._tor_thread     = None
 
         self._tor_ready          = threading.Event()
@@ -245,16 +258,22 @@ class DaemonCore:
         self._dnsmasq_proc       = None
 
         self._current_provider_idx = 0
+        # Transport de l'étape en cours chez ce fournisseur : « wireguard » ou
+        # « openvpn » (voir SessionMixin) ; vide si le fournisseur n'en a
+        # aucun d'utilisable.
+        self._transport            = ""
         self._current_account_idx  = 0
-        # Ordre de passage des comptes du fournisseur courant : indices de
-        # `accounts`, tirés au hasard si config["random_account"].  On garde un
+        # Ordre de passage des comptes de l'étape courante : indices de
+        # `accounts` (OpenVPN) ou de `wireguard`, tirés au hasard si
+        # config["random_account"].  On garde un
         # ordre explicite plutôt qu'un tirage à chaque essai, sinon « tous les
         # comptes épuisés » n'aurait aucun sens — un tirage indépendant peut
         # redonner dix fois le même compte et ne jamais couvrir la liste.
         self._account_order        = []
         self._account_pos          = 0
-        # Comptes ayant récemment essuyé un AUTH_FAILED : (idx_fournisseur,
-        # idx_compte) → horodatage de fin de quarantaine.  Un compte en
+        # Comptes ayant récemment essuyé un AUTH_FAILED (OpenVPN) ou sans
+        # poignée de main (WireGuard) : clé de SessionMixin._cle_compte →
+        # horodatage de fin de quarantaine.  Un compte en
         # quarantaine passe en FIN d'ordre, il n'est jamais exclu — un refus
         # signifie souvent « quota de connexions simultanées atteint », donc un
         # compte parfaitement valide qui remarchera plus tard.
@@ -269,8 +288,9 @@ class DaemonCore:
         self._conn_restart_pending = False
         self._full_restart_count   = 0
         self._inert_ticks          = 0
-        # Reprise graduée du watchdog : relance d'OpenVPN seul avant tout
-        # redémarrage complet (voir WatchdogMixin._recover).
+        # Reprise graduée du watchdog : relance d'OpenVPN (ou du pont
+        # WireGuard) seul avant tout redémarrage complet (voir
+        # WatchdogMixin._recover).
         self._light_restart_done   = False  # déjà tentée pour cette panne
         self._light_restart_at     = 0.0    # instant de la dernière tentative
         self._light_restart_count  = 0
@@ -366,7 +386,7 @@ class DaemonCore:
         self._stop_flag     = True
         self._stop_vpn      = True
         self._stop_tor_flag = True
-        self._stop_openvpn()
+        self._stop_vpn_process()
         self._stop_tor()
         self._revert_vpn_dns()
         self._demonter_tunnel()
@@ -430,6 +450,15 @@ class DaemonCore:
         # Emplacement d'avant la v3.7.0 : un dnsmasq lancé par l'ancienne
         # version peut encore tourner après la mise à jour.
         _run("pkill", "-f", str(LEGACY_DNSMASQ_PID))
+        # Pont WireGuard d'une session précédente (daemon tué sans nettoyage) :
+        # il garderait son port, et le pont suivant ne pourrait pas démarrer.
+        _run("pkill", "-f", PONT_PATTERN)
+        # Clé privée WireGuard laissée par un arrêt brutal entre son écriture
+        # et la lecture par wg.
+        try:
+            WG_CONF_RUN.unlink(missing_ok=True)
+        except OSError:
+            pass
 
         self._cleanup_tor_routes()
         # Interface tunnel d'une session précédente : la supprimer emporte
@@ -474,7 +503,7 @@ class DaemonCore:
         if not ready:
             self._log("Tor n'a pas démarré dans les temps.", "ERROR")
             return False
-        threading.Thread(target=self._openvpn_loop, daemon=True).start()
+        threading.Thread(target=self._vpn_loop, daemon=True).start()
         return True
 
     # ── Point d'entrée ────────────────────────────────────────────────────────

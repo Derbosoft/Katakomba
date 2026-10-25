@@ -1,21 +1,29 @@
-"""Fuzzing des analyseurs exposés à un tiers : le .ovpn (fournisseur, fichier
-importé), les options poussées par le serveur VPN, le torrc, les réglages de
-config.json.  Bibliothèque standard seulement, graines fixes : un échec se
+"""Fuzzing des analyseurs exposés à un tiers : le .ovpn et le .conf WireGuard
+(fournisseur, fichier importé, sauvegarde), les options poussées par le
+serveur VPN, le torrc, les réglages de config.json.  Bibliothèque standard seulement, graines fixes : un échec se
 rejoue à l'identique.
 
 Le .ovpn est confronté à un MODÈLE de la lecture d'OpenVPN 2.7 (vérifié sur
 le vrai binaire, voir tests_noyau/test_openvpn_lecture.py) : si validation.py
 accepte un fichier, OpenVPN ne doit y lire aucune directive hors liste
 blanche.  C'est ainsi qu'ont été trouvées les fins de bloc par préfixe et les
-lignes découpées par morceaux de 255 octets (v3.13.0)."""
+lignes découpées par morceaux de 255 octets (v3.13.0).
 
+Le .conf est lu par le daemon en root.  Propriétés vérifiées sur des
+fichiers aléatoires : jamais d'exception ; aucun message ne recopie une
+valeur (clé privée en tête) ; un fichier accepté donne des réglages bien
+formés, et le fichier que le daemon remet à wg n'en contient pas d'autres —
+ni script, ni adresse autre que le pont local."""
+
+import base64
 import ipaddress
 import random
 import unittest
 
 import validation
 from validation import (OVPN_AUTORISEES, OVPN_BLOCS, _RAISONS, _TORRC_RAISONS,
-                        analyser_ovpn, analyser_push, analyser_torrc)
+                        analyser_ovpn, analyser_push, analyser_torrc, analyser_wg,
+                        conf_wg_noyau)
 
 GRAINES = range(8)
 PAR_GRAINE = 400
@@ -282,6 +290,125 @@ class PushFuzzTest(unittest.TestCase):
 
 # ── torrc et réglages ────────────────────────────────────────────────────────
 
+# ── .conf WireGuard ───────────────────────────────────────────────────────────
+
+SECRET = "Zm9vYmFyU0VDUkVU"          # marqueur : ne doit jamais ressortir
+_CLES = [base64.b64encode(bytes(range(i, i + 32))).decode() for i in (0, 32, 64)]
+_VALEURS = {
+    "privatekey": _CLES + [SECRET, "", "AAAA", _CLES[0][:-1]],
+    "publickey": _CLES + [SECRET + "=", " "],
+    "presharedkey": _CLES + [SECRET],
+    "address": ["10.2.0.2/32", "10.2.0.2/32, fd00::2/128",
+                "10.66.0.2/32,fc00:bbbb:bbbb:bb01::2/128", "fd00::2/128", "x", "10.2.0.2",
+                "300.1.1.1/32", ""],
+    "dns": ["10.2.0.1", "10.2.0.1, 1.1.1.1", "lan", "", "fd00::1", "10.64.0.1"],
+    "mtu": ["1280", "1420", "9000", "-1", "x", ""],
+    "endpoint": ["185.107.56.211:51820", "[2001:db8::1]:443", "vpn.example:51820",
+                 "1.2.3.4", "1.2.3.4:0", "1.2.3.4:70000", ":443"],
+    "allowedips": ["0.0.0.0/0", "0.0.0.0/0, ::/0", "10.0.0.0/8"],
+    "persistentkeepalive": ["25", "x"],
+    "postup": ["rm -rf /", SECRET], "predown": ["sh -c x"],
+    "listenport": ["51820"], "table": ["off"], "inconnue": [SECRET],
+}
+_KATAKOMBA = {
+    "Emballage": ["proton", "ivpn", "IVPN", "mullvad", "autre", ""],
+    "Serveur": ["95.211.198.169:80", "nom:80", "1.2.3.4", SECRET],
+    "Cible": ["95.211.198.167:15351", "x:1", ""],
+    "UUID": ["27de860d-5601-412d-8b71-baa048a94b98", "27DE860D-5601-412D-8B71-BAA048A94B98",
+             SECRET],
+    "Session": [SECRET],
+}
+_SECTIONS = ["[Interface]", "[Peer]", "[peer]", "[ Interface ]", "[Autre]", "[Peer"]
+_FINS = ["\n", "\r\n", "\n\n"]
+
+
+_REQUIS = {"[Interface]": ("privatekey", "address"), "[Peer]": ("publickey", "endpoint")}
+
+
+def _valeur(rng, nom):
+    """La première valeur de la liste est valide : tirée deux fois sur trois."""
+    valeurs = _VALEURS[nom]
+    return valeurs[0] if rng.random() < 0.66 else rng.choice(valeurs)
+
+
+def conf_aleatoire(rng) -> str:
+    """Un .conf bien structuré, puis abîmé au hasard : valeurs fausses,
+    champ manquant, section en trop, clés inconnues, scripts."""
+    lignes = []
+    if rng.random() < 0.6:
+        for nom in rng.sample(sorted(_KATAKOMBA), rng.randint(0, len(_KATAKOMBA))):
+            valeurs = _KATAKOMBA[nom]
+            v = valeurs[0] if rng.random() < 0.7 else rng.choice(valeurs)
+            lignes.append(f"# Katakomba-{nom} = {v}")
+    sections = ["[Interface]", "[Peer]"]
+    if rng.random() < 0.15:
+        sections.append(rng.choice(_SECTIONS))
+    autres = sorted(set(_VALEURS) - {n for r in _REQUIS.values() for n in r})
+    for section in sections:
+        lignes.append(section if rng.random() < 0.9 else rng.choice(_SECTIONS))
+        noms = [n for n in _REQUIS.get(section, ()) if rng.random() < 0.95]
+        noms += rng.sample(autres, rng.randint(0, 4))
+        rng.shuffle(noms)
+        for nom in noms:
+            nom_ecrit = "".join(c.upper() if rng.random() < 0.3 else c for c in nom)
+            sep = rng.choice((" = ", "=", " =", "  =  ", " = ", " : "))
+            lignes.append(f"{nom_ecrit}{sep}{_valeur(rng, nom)}")
+        if rng.random() < 0.2:
+            lignes.append(rng.choice(("# commentaire", "", "  ", "x", SECRET)))
+    fin = rng.choice(_FINS)
+    return fin.join(lignes) + fin
+
+
+class WgFuzzTest(unittest.TestCase):
+
+    def test_proprietes(self):
+        acceptes = 0
+        for graine in GRAINES:
+            rng = random.Random(graine)
+            for _ in range(PAR_GRAINE):
+                texte = conf_aleatoire(rng)
+                r, refus, avert = analyser_wg(texte)
+                for m in refus + avert:
+                    self.assertNotIn(SECRET, m, f"valeur recopiée : {texte!r}")
+                    for cle in _CLES:
+                        self.assertNotIn(cle, m)
+                self.assertEqual(r is None, bool(refus), texte)
+                if r is None:
+                    continue
+                acceptes += 1
+                self._bien_forme(r, texte)
+        self.assertGreater(acceptes, 50, "fuzzing trop peu productif : rien n'est accepté")
+
+    def _bien_forme(self, r, texte):
+        for cle in ("cle_privee", "cle_publique"):
+            self.assertTrue(validation.cle_wg_valide(r[cle]), texte)
+        self.assertEqual(ipaddress.ip_address(r["adresse"]).version, 4)
+        for d in r["dns"]:
+            self.assertEqual(ipaddress.ip_address(d).version, 4)
+        self.assertIn(r["emballage"], validation.WG_EMBALLAGES)
+        hote, _, port = r["serveur"].rpartition(":")
+        ipaddress.ip_address(hote.strip("[]"))
+        self.assertTrue(0 < int(port) < 65536)
+        if r["emballage"] == "ivpn":
+            self.assertTrue(r["cible"] and r["uuid"], texte)
+        noyau = conf_wg_noyau(r, "127.0.0.1:51871")
+        self.assertNotIn(SECRET, noyau)
+        lignes = [l for l in noyau.splitlines() if "=" in l]
+        self.assertEqual({l.split("=")[0].strip() for l in lignes} - {"PresharedKey"},
+                         {"PrivateKey", "PublicKey", "AllowedIPs", "Endpoint",
+                          "PersistentKeepalive"})
+        self.assertIn("Endpoint = 127.0.0.1:51871", noyau)
+
+    def test_jamais_d_exception_sur_n_importe_quoi(self):
+        rng = random.Random(9)
+        alphabet = "[]=#\n\r\t\x00éKatakomba-PrivateKey/+0123456789.: "
+        for _ in range(4000):
+            texte = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 120)))
+            r, refus, avert = analyser_wg(texte)
+            self.assertIsInstance(refus, list)
+            self.assertIsInstance(avert, list)
+
+
 class TorrcFuzzTest(unittest.TestCase):
 
     def test_option_dangereuse_toujours_refusee(self):
@@ -317,7 +444,7 @@ class ReglagesFuzzTest(unittest.TestCase):
                 self.assertIsInstance(valeur, str)
                 self.assertIsInstance(erreur, str)
             self.assertIsInstance(validation.composant_sur(saisie), bool)
-            self.assertIsInstance(validation.chemin_ovpn_sur(saisie), bool)
+            self.assertIsInstance(validation.chemin_fournisseur_sur(saisie), bool)
             self.assertIsInstance(validation.interface_lan_admissible(saisie), bool)
 
     def test_valeurs_admises_bien_formees(self):

@@ -31,6 +31,16 @@ class PageReglages(Adw.PreferencesPage):
             g, "random_account", _("Choisir un compte au hasard"),
             _("Parmi les comptes du fournisseur. L'ordre des fournisseurs, lui, "
               "reste celui de la liste."))
+        # Même ordre que modele.ORDRES_TRANSPORTS.
+        noms = [_("WireGuard, puis OpenVPN en secours"),
+                _("OpenVPN, puis WireGuard en secours"),
+                _("WireGuard seulement"), _("OpenVPN seulement")]
+        self.transports = Adw.ComboRow(
+            title=_("Transport"), model=Gtk.StringList.new(noms),
+            subtitle=_("Chez chaque fournisseur qui propose les deux. Un fournisseur "
+                       "qui n'en a qu'un utilise celui-là."))
+        self.transports.connect("notify::selected", self._transports_change)
+        g.add(self.transports)
         self.add(g)
 
         g = Adw.PreferencesGroup(title=_("Démarrage"))
@@ -132,6 +142,9 @@ class PageReglages(Adw.PreferencesPage):
         try:
             self.auto.set_active(c.get("auto_reconnect", True))
             self.hasard.set_active(c.get("random_account", True))
+            ordre = tuple(c.get("transports", ("wireguard", "openvpn")))
+            self.transports.set_selected(modele.ORDRES_TRANSPORTS.index(ordre)
+                                         if ordre in modele.ORDRES_TRANSPORTS else 0)
             self.blocage.set_active(c.get("kill_switch", True))
             self.ipv6.set_active(c.get("block_ipv6", False))
             self.mesure.set_active(c.get("circuit_check", True))
@@ -168,6 +181,12 @@ class PageReglages(Adw.PreferencesPage):
     def _maj_seuil(self):
         self.seuil.set_subtitle(_("≈ {debit} sur un test de débit").format(
             debit=modele.kbs_en_mbps(self.seuil.get_value())))
+
+    def _transports_change(self, *_args):
+        if not self._charge:
+            self.fen.config["transports"] = list(
+                modele.ORDRES_TRANSPORTS[self.transports.get_selected()])
+            self.fen.reglage_modifie()
 
     def _seuil_change(self, *_args):
         self._maj_seuil()

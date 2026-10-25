@@ -37,6 +37,7 @@ REGLAGES = {
     "block-ipv6":      ("block_ipv6", "bool"),
     "auto-reconnect":  ("auto_reconnect", "bool"),
     "random-account":  ("random_account", "bool"),
+    "transports":      ("transports", "transports"),
     "local-dns":       ("local_dns", "dns"),
     "circuit-check":   ("circuit_check", "bool"),
     "circuit-min-kbs": ("circuit_min_kbs", "int"),
@@ -145,14 +146,12 @@ def fournisseur(action: str, args: list):
         _attendre(args, 0, "katakomba provider list")
         if not fournisseurs:
             print(_("Aucun fournisseur. Ajoutez-en un : katakomba provider add "
-                    "<fichier.ovpn>"))
+                    "<fichier.ovpn|fichier.conf>"))
             return
         print(_("Fournisseurs, par ordre de priorité :"))
         for i, p in enumerate(fournisseurs, 1):
-            n = len(p.get("accounts", []))
-            print(f"  {i}. {p.get('name', '?'):<20} "
-                  + ngettext("{n} compte", "{n} comptes", n).format(n=n)
-                  + f"   {p.get('ovpn_file', '')}")
+            print(f"  {i}. {p.get('name', '?'):<20} {modele.resume_comptes(p)}"
+                  + (f"   {p['ovpn_file']}" if p.get("ovpn_file") else ""))
         return
 
     _verifier_droits()
@@ -160,12 +159,23 @@ def fournisseur(action: str, args: list):
         opts, fichiers = _options(args, {"--name": True, "--stdin": False})
         if not fichiers:
             raise Erreur(_("Usage : {usage}").format(
-                usage=_("katakomba provider add <fichier.ovpn|archive.zip>… "
+                usage=_("katakomba provider add <fichier.ovpn|archive.zip|fichier.conf>… "
                         "[--name NOM] [--stdin]")))
         nom = (opts.get("--name") or modele.nom_depuis_fichier(fichiers[0])).strip()
         erreur = modele.verifier_nom(nom, fournisseurs)
         if erreur:
             raise Erreur(erreur)
+        genre = modele.genre_fichiers(fichiers)
+        if not genre:
+            raise Erreur(_("Un seul type à la fois : des fichiers .conf (WireGuard) "
+                           "ou un .ovpn (OpenVPN). Ajoutez l'autre ensuite avec "
+                           "« katakomba account add »."))
+        if genre == "wireguard":
+            _ajouter_confs(config, nom, fichiers)
+            print(_("Fournisseur « {nom} » ajouté (priorité {rang}).").format(
+                nom=nom, rang=len(fournisseurs)))
+            _rappel_demarrage()
+            return
         res, erreurs = modele.preparer_import(fichiers)
         if erreurs:
             raise Erreur("\n".join(erreurs))
@@ -184,7 +194,7 @@ def fournisseur(action: str, args: list):
         p = _fournisseur(config, args[0])
         fournisseurs.remove(p)
         print(_("Fournisseur « {nom} » retiré.").format(nom=p.get("name", "")),
-              _("Son fichier de configuration reste sur le disque."))
+              _("Ses fichiers de configuration restent sur le disque."))
         _enregistrer(config)
         return
 
@@ -205,18 +215,49 @@ def fournisseur(action: str, args: list):
     raise Erreur(_("Action inconnue : {action}").format(action=action))
 
 
+def _ajouter_confs(config: dict, nom: str, fichiers: list) -> int:
+    """Contrôle puis ajoute des .conf WireGuard au fournisseur `nom` (créé
+    au besoin) ; renvoie le nombre ajouté."""
+    prets, erreurs = modele.preparer_import_wg(fichiers)
+    if erreurs:
+        raise Erreur("\n".join(erreurs))
+    print(modele.resume_import(prets))
+    print()
+    return modele.ajouter_confs_wg(config, nom, [c for c, _r, _a in prets])
+
+
 def compte(action: str, args: list):
+    """Comptes OpenVPN (identifiant et mot de passe), numérotés 1, 2… ;
+    fichiers WireGuard (.conf), numérotés wg1, wg2…"""
     config = modele.charger_config()
     if action == "list":
         _attendre(args, 1, _("katakomba account list <fournisseur>"))
         p = _fournisseur(config, args[0])
-        for i, c in enumerate(p.get("accounts", []), 1):
-            print(f"  {i}. {modele.deobf(c.get('u', ''))}")
+        if p.get("accounts"):
+            print("OpenVPN :")
+            for i, c in enumerate(p.get("accounts", []), 1):
+                print(f"  {i}. {modele.deobf(c.get('u', ''))}")
+        if p.get("wireguard"):
+            print("WireGuard :")
+            for i, c in enumerate(p.get("wireguard", []), 1):
+                titre, detail = modele.decrire_conf(c)
+                print(f"  wg{i}. {titre:<28} {detail}")
         return
 
     _verifier_droits()
     if action == "add":
         opts, reste = _options(args, {"--stdin": False})
+        if len(reste) > 1:
+            p = _fournisseur(config, reste[0])
+            if modele.genre_fichiers(reste[1:]) != "wireguard":
+                raise Erreur(_("Usage : {usage}").format(
+                    usage=_("katakomba account add <fournisseur> <fichier.conf>…")))
+            n = _ajouter_confs(config, p["name"], reste[1:])
+            print(ngettext("{n} fichier WireGuard ajouté à {fournisseur}.",
+                           "{n} fichiers WireGuard ajoutés à {fournisseur}.", n).format(
+                n=n, fournisseur=p["name"]))
+            _rappel_demarrage()
+            return
         _attendre(reste, 1, _("katakomba account add <fournisseur> [--stdin]"))
         p = _fournisseur(config, reste[0])
         identifiant, mot_de_passe = _identifiants(opts.get("--stdin", False))
@@ -228,8 +269,23 @@ def compte(action: str, args: list):
         return
 
     if action == "remove":
-        _attendre(args, 2, _("katakomba account remove <fournisseur> <numéro>"))
+        _attendre(args, 2, _("katakomba account remove <fournisseur> <numéro|wgN>"))
         p = _fournisseur(config, args[0])
+        if args[1].lower().startswith("wg"):
+            confs = p.setdefault("wireguard", [])
+            try:
+                i = int(args[1][2:]) - 1
+            except ValueError:
+                i = -1
+            if not 0 <= i < len(confs):
+                raise Erreur(_("Fichier WireGuard entre wg1 et wg{n} (katakomba account "
+                               "list {fournisseur}).").format(n=len(confs),
+                                                             fournisseur=p["name"]))
+            c = confs.pop(i)
+            print(_("Le fichier « {nom} » sera retiré de ce fournisseur ; il reste "
+                    "sur le disque.").format(nom=modele.decrire_conf(c)[0]))
+            _enregistrer(config)
+            return
         comptes = p.setdefault("accounts", [])
         try:
             i = int(args[1]) - 1
@@ -306,6 +362,8 @@ def exclusion(action: str, args: list):
 def _afficher(valeur, genre: str) -> str:
     if genre == "bool":
         return "on" if valeur else "off"
+    if genre == "transports":
+        return ",".join(valeur) if isinstance(valeur, list) else str(valeur)
     return str(valeur) if valeur not in ("", None) else "—"
 
 
@@ -326,6 +384,11 @@ def reglage(args: list):
         if brut.lower() not in OUI + NON:
             raise Erreur(_("Valeur attendue : on ou off."))
         valeur = brut.lower() in OUI
+    elif genre == "transports":
+        valeur = [m.strip().lower() for m in brut.split(",") if m.strip()]
+        if tuple(valeur) not in modele.ORDRES_TRANSPORTS:
+            raise Erreur(_("Valeur attendue : wireguard,openvpn (défaut), "
+                           "openvpn,wireguard, wireguard ou openvpn."))
     elif genre == "dns":
         valeur = "" if brut.lower() in ("none", "aucun", "-", "") else brut
         erreur = modele.erreur_dns(valeur)
@@ -400,10 +463,12 @@ def aide():
             ("enable | disable", _("Démarrage automatique au boot")),
         ]),
         (_("Configuration (sudo, ou membre du groupe katakomba) :"), [
-            (_("provider list | add <fichier.ovpn|.zip>… [--name NOM] [--stdin]"), ""),
+            (_("provider list | add <fichier.ovpn|.zip|.conf…> [--name NOM] [--stdin]"), ""),
             (_("provider remove <nom> | priority <nom> <rang>"), ""),
             (_("account list <fournisseur> | add <fournisseur> [--stdin]"), ""),
-            (_("account remove <fournisseur> <numéro>"), ""),
+            (_("account add <fournisseur> <fichier.conf>…"),
+             _("Fichiers WireGuard (Proton, Mullvad, IVPN)")),
+            (_("account remove <fournisseur> <numéro|wgN>"), ""),
             (_("exclude list | add <adresse|réseau|domaine> | remove <…>"), ""),
             (_("set [<réglage> <valeur>]"), _("sans argument : réglages actuels")),
             (_("backup export | restore <fichier.zip>"), ""),

@@ -8,6 +8,7 @@ import time
 import unittest
 
 import daemon.openvpn as m_openvpn
+import daemon.session as m_session
 from constants import DEFAULT_CONFIG
 from tests.helpers import (FakeDaemon, FakeProc, Recorder, no_sleep,
                            patched_run, patched_subprocess, provider)
@@ -336,13 +337,13 @@ class MeasureWarmupTest(unittest.TestCase):
     def _mesure(self, octets_par_sec, still_valid=None):
         d = FakeDaemon()
         seq = SequenceCurl(octets_par_sec)
-        with patched_subprocess(m_openvpn, seq), no_sleep(m_openvpn):
+        with patched_subprocess(m_session, seq), no_sleep(m_openvpn, m_session):
             kbs = d._measure_tunnel_speed("tun0", still_valid=still_valid)
         return kbs, seq, d
 
     def test_echauffement_effectue(self):
         """1 échauffement + _SPEED_SAMPLES échantillons."""
-        M = m_openvpn.OpenVPNMixin
+        M = m_session.SessionMixin
         _, seq, _ = self._mesure([100_000] * (M._SPEED_SAMPLES + 1))
         self.assertEqual(seq.n_curl(), M._SPEED_SAMPLES + 1,
                          f"requêtes : {seq.calls}")
@@ -350,7 +351,7 @@ class MeasureWarmupTest(unittest.TestCase):
     def test_echauffement_plus_petit_que_les_echantillons(self):
         """Son rôle est d'ouvrir le circuit, pas de mesurer : il doit être bon
         marché.  Les échantillons, eux, restent à la taille de calibration."""
-        M = m_openvpn.OpenVPNMixin
+        M = m_session.SessionMixin
         self.assertLess(M._SPEED_WARMUP_BYTES, M._SPEED_BYTES)
 
     def test_taille_d_echantillon_non_reduite(self):
@@ -359,11 +360,11 @@ class MeasureWarmupTest(unittest.TestCase):
         Mesuré après échauffement sur le même circuit : 500 Ko → 383 KB/s,
         2 Mo → 1061 KB/s.  Le seuil circuit_min_kbs est calibré sur 2 Mo ;
         réduire l'échantillon ferait rejeter des circuits sains."""
-        self.assertGreaterEqual(m_openvpn.OpenVPNMixin._SPEED_BYTES, 2_000_000,
+        self.assertGreaterEqual(m_session.SessionMixin._SPEED_BYTES, 2_000_000,
                                 "échantillon réduit : la mesure sous-estimera")
 
     def test_echauffement_et_echantillons_de_tailles_distinctes(self):
-        M = m_openvpn.OpenVPNMixin
+        M = m_session.SessionMixin
         _, seq, _ = self._mesure([100_000] * (M._SPEED_SAMPLES + 1))
         curls = [c for c in seq.calls if c.startswith("curl")]
         self.assertIn(f"bytes={M._SPEED_WARMUP_BYTES}", curls[0])
@@ -384,13 +385,13 @@ class MeasureWarmupTest(unittest.TestCase):
 
     def test_empreinte_reseau_bornee(self):
         """Le contrôle n'a lieu qu'une fois par tunnel, mais reste borné."""
-        M = m_openvpn.OpenVPNMixin
+        M = m_session.SessionMixin
         total = M._SPEED_WARMUP_BYTES + M._SPEED_BYTES * M._SPEED_SAMPLES
         self.assertLessEqual(total, 5_000_000,
                              f"{total} octets par contrôle — empreinte excessive")
 
     def test_seconde_salve_si_tous_les_echantillons_echouent(self):
-        M = m_openvpn.OpenVPNMixin
+        M = m_session.SessionMixin
         par_salve = M._SPEED_SAMPLES + 1
         # 1re salve entièrement en échec, 2e exploitable.
         kbs, seq, d = self._mesure([0] * par_salve + [1, 500 * 1024, 400 * 1024])
@@ -400,7 +401,7 @@ class MeasureWarmupTest(unittest.TestCase):
 
     def test_deux_salves_au_maximum(self):
         """Jamais de boucle : deux salves puis abandon."""
-        M = m_openvpn.OpenVPNMixin
+        M = m_session.SessionMixin
         kbs, seq, _ = self._mesure([0] * 20)
         self.assertEqual(kbs, -1.0)
         self.assertEqual(seq.n_curl(), (M._SPEED_SAMPLES + 1) * 2,
@@ -423,7 +424,7 @@ class MeasureWarmupTest(unittest.TestCase):
 
     def test_budget_total_borne(self):
         """Le contrôle ne doit pas durer plus que la reconnexion qu'il décide."""
-        M = m_openvpn.OpenVPNMixin
+        M = m_session.SessionMixin
         pire = 2 * (M._SPEED_SAMPLES + 1) * M._SPEED_TIMEOUT + M._SPEED_RETRY
         self.assertGreater(pire, M._SPEED_BUDGET,
                            "le budget ne sert à rien s'il dépasse le pire cas")
@@ -444,12 +445,12 @@ class MeasureWarmupTest(unittest.TestCase):
             return seq(*a, **k)
         m_openvpn.time.time = faux_temps
         try:
-            with patched_subprocess(m_openvpn, avance), no_sleep(m_openvpn):
+            with patched_subprocess(m_session, avance), no_sleep(m_openvpn, m_session):
                 kbs = d._measure_tunnel_speed("tun0")
         finally:
             m_openvpn.time.time = vrai
         self.assertEqual(kbs, -1.0)
-        M = m_openvpn.OpenVPNMixin
+        M = m_session.SessionMixin
         self.assertLess(seq.n_curl(), (M._SPEED_SAMPLES + 1) * 2,
                         f"le budget n'a pas interrompu : {seq.n_curl()} requêtes")
 
@@ -467,10 +468,10 @@ class MeasureSpeedTest(unittest.TestCase):
         if exc:
             def boom(*a, **k):
                 raise exc
-            with patched_subprocess(m_openvpn, boom), no_sleep(m_openvpn):
+            with patched_subprocess(m_session, boom), no_sleep(m_openvpn, m_session):
                 return d._measure_tunnel_speed(iface), None
         rec = Recorder({"curl": (rc, out)})
-        with patched_subprocess(m_openvpn, rec), no_sleep(m_openvpn):
+        with patched_subprocess(m_session, rec), no_sleep(m_openvpn, m_session):
             return d._measure_tunnel_speed(iface), rec
 
     def test_interface_transmise_a_curl(self):
@@ -488,7 +489,7 @@ class MeasureSpeedTest(unittest.TestCase):
 
     def test_max_time_present(self):
         _, rec = self._measure()
-        self.assertTrue(rec.ran(f"--max-time {m_openvpn.OpenVPNMixin._SPEED_TIMEOUT}"))
+        self.assertTrue(rec.ran(f"--max-time {m_session.SessionMixin._SPEED_TIMEOUT}"))
 
     def test_debit_nul_renvoie_moins_un(self):
         self.assertEqual(self._measure(out="0")[0], -1.0)
@@ -518,7 +519,7 @@ class CircuitQualityTest(unittest.TestCase):
         return d
 
     def _run(self, d):
-        with no_sleep(m_openvpn):
+        with no_sleep(m_openvpn, m_session):
             d._circuit_quality_check()
         return d
 
@@ -635,14 +636,14 @@ class FailoverDecisionTest(unittest.TestCase):
     def test_next_provider_saute_les_comptes(self):
         d = FakeDaemon(config={"random_account": False,
                                "providers": [provider("a", 10), provider("b", 3)]})
-        self.assertTrue(d._try_next_provider())
+        self.assertTrue(d._etape_suivante())
         self.assertEqual((d._current_provider_idx, d._current_account_idx), (1, 0),
                          "les comptes du fournisseur courant n'ont pas été sautés")
-        self.assertFalse(d._try_next_provider())
+        self.assertFalse(d._etape_suivante())
         self.assertEqual(d._current_provider_idx, 1, "ne doit pas boucler sur 0")
 
     def test_next_provider_sans_fournisseur(self):
-        self.assertFalse(FakeDaemon(config={"providers": []})._try_next_provider())
+        self.assertFalse(FakeDaemon(config={"providers": []})._etape_suivante())
 
 
 class AccountCooldownTest(unittest.TestCase):
@@ -875,9 +876,9 @@ class ReconnectLoopTest(unittest.TestCase):
             d.openvpn_process = p
             return p
 
-        with patched_run(Recorder()), no_sleep(m_openvpn), \
+        with patched_run(Recorder()), no_sleep(m_openvpn, m_session), \
                 patched_subprocess(m_openvpn, Recorder(), popen=popen):
-            d._openvpn_loop_body(0)
+            d._vpn_loop_body(0)
         return d
 
     def test_coupure_reseau_garde_le_meme_compte(self):
@@ -951,12 +952,12 @@ class ReconnectLoopTest(unittest.TestCase):
             d.openvpn_process = p
             return p
 
-        with patched_run(Recorder()), no_sleep(m_openvpn), \
+        with patched_run(Recorder()), no_sleep(m_openvpn, m_session), \
                 patched_subprocess(m_openvpn, Recorder(), popen=popen):
             if start_account_idx == "absent":
-                d._openvpn_loop_body(0)
+                d._vpn_loop_body(0)
             else:
-                d._openvpn_loop_body(0, start_account_idx)
+                d._vpn_loop_body(0, start_account_idx)
         return d
 
     def test_argv_impose_script_security_1_apres_config(self):
@@ -980,9 +981,9 @@ class ReconnectLoopTest(unittest.TestCase):
             d.openvpn_process = p
             return p
 
-        with patched_run(Recorder()), no_sleep(m_openvpn), \
+        with patched_run(Recorder()), no_sleep(m_openvpn, m_session), \
                 patched_subprocess(m_openvpn, Recorder(), popen=popen):
-            d._openvpn_loop_body(0)
+            d._vpn_loop_body(0)
 
         argv = next(c for c in vus if c and c[0] == "openvpn")
         self.assertIn("--script-security", argv, f"argv : {argv}")
@@ -1042,11 +1043,11 @@ class ReconnectLoopTest(unittest.TestCase):
             d.openvpn_process = p
             return p
 
-        with patched_run(Recorder()), no_sleep(m_openvpn), \
+        with patched_run(Recorder()), no_sleep(m_openvpn, m_session), \
                 patched_subprocess(m_openvpn, Recorder(), popen=popen):
             # Le compte 0 est puni, donc relégué ; on force le daemon dessus
             # pour observer la levée à la connexion.
-            d._openvpn_loop_body(0, 0)
+            d._vpn_loop_body(0, 0)
 
         self.assertTrue(d._tunnel_up or d.has_log("Tunnel VPN actif", "OK"),
                         d.log_dump())
@@ -1099,9 +1100,9 @@ class ReconnectLoopTest(unittest.TestCase):
             d.openvpn_process = p
             return p
 
-        with patched_run(Recorder()), no_sleep(m_openvpn), \
+        with patched_run(Recorder()), no_sleep(m_openvpn, m_session), \
                 patched_subprocess(m_openvpn, Recorder(), popen=popen):
-            d._openvpn_loop_body(0)
+            d._vpn_loop_body(0)
         argv = vus[0]
         self.assertEqual(argv[argv.index("--config") + 1],
                          "/run/katakomba/openvpn.conf",
@@ -1146,9 +1147,9 @@ class ReconnectLoopTest(unittest.TestCase):
             d.openvpn_process = p
             return p
 
-        with patched_run(Recorder()), no_sleep(m_openvpn), \
+        with patched_run(Recorder()), no_sleep(m_openvpn, m_session), \
                 patched_subprocess(m_openvpn, Recorder(), popen=popen):
-            d._openvpn_loop_body(0, 0)
+            d._vpn_loop_body(0, 0)
         self.assertEqual(len(n), 1, "a reconnecté malgré auto_reconnect=False")
 
     def test_auth_flag_remis_a_zero_entre_tentatives(self):
@@ -1167,8 +1168,8 @@ class LoopGuardTest(unittest.TestCase):
     def test_une_seule_boucle_a_la_fois(self):
         d = FakeDaemon(config={"providers": []})
         d._vpn_loop_active = True
-        d._openvpn_loop()
-        self.assertTrue(d.has_log("Boucle OpenVPN déjà active", "WARN"))
+        d._vpn_loop()
+        self.assertTrue(d.has_log("Boucle VPN déjà active", "WARN"))
 
     def test_drapeau_relache_meme_sur_exception(self):
         d = FakeDaemon(config={"providers": []})
@@ -1176,9 +1177,9 @@ class LoopGuardTest(unittest.TestCase):
         def boom(*a):
             raise RuntimeError("panne")
 
-        d._openvpn_loop_body = boom
+        d._vpn_loop_body = boom
         with self.assertRaises(RuntimeError):
-            d._openvpn_loop()
+            d._vpn_loop()
         self.assertFalse(d._vpn_loop_active, "drapeau resté armé après exception")
 
 
@@ -1197,7 +1198,7 @@ class LastCircuitMeasureTest(unittest.TestCase):
         return d
 
     def _run(self, d):
-        with no_sleep(m_openvpn):
+        with no_sleep(m_openvpn, m_session):
             d._circuit_quality_check()
         return d
 
@@ -1279,9 +1280,9 @@ class OpenVPNSansPrivilegeTest(unittest.TestCase):
             p = FakeProc(sortie)
             d.openvpn_process = p
             return p
-        with patched_run(Recorder()), no_sleep(m_openvpn), \
+        with patched_run(Recorder()), no_sleep(m_openvpn, m_session), \
                 patched_subprocess(m_openvpn, Recorder(), popen=popen):
-            d._openvpn_loop_body(0, 0)
+            d._vpn_loop_body(0, 0)
         return d
 
     def test_lance_sous_l_utilisateur_dedie_sans_toucher_au_reseau(self):
@@ -1332,18 +1333,18 @@ class OpenVPNSansPrivilegeTest(unittest.TestCase):
         del d._utilisateur_vpn
         lances = []
         import types
-        saved_pwd = m_openvpn.pwd
+        saved_pwd = m_session.pwd
 
         def absent(n):
             raise KeyError(n)
-        m_openvpn.pwd = types.SimpleNamespace(getpwnam=absent)
+        m_session.pwd = types.SimpleNamespace(getpwnam=absent)
         try:
-            with patched_run(Recorder()), no_sleep(m_openvpn), \
+            with patched_run(Recorder()), no_sleep(m_openvpn, m_session), \
                     patched_subprocess(m_openvpn, Recorder(),
                                        popen=lambda c, **k: lances.append(c)):
-                d._openvpn_loop_body(0, 0)
+                d._vpn_loop_body(0, 0)
         finally:
-            m_openvpn.pwd = saved_pwd
+            m_session.pwd = saved_pwd
         self.assertEqual(lances, [])
         self.assertTrue(d.has_log("katakomba-vpn absent", "ERROR"))
 

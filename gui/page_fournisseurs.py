@@ -1,6 +1,8 @@
 """
-Fournisseurs : ordre de priorité, fichier de configuration et comptes.
-Chaque modification est enregistrée aussitôt.
+Fournisseurs : ordre de priorité, et pour chacun ses deux transports :
+OpenVPN (fichier de configuration et comptes) et WireGuard (fichiers .conf,
+chacun avec sa clé, son adresse et son serveur).  Chaque modification est
+enregistrée aussitôt.
 """
 
 from gi.repository import Adw, Gtk
@@ -20,8 +22,9 @@ class PageFournisseurs(Gtk.Stack):
 
         vide = Adw.StatusPage(
             icon_name="network-server-symbolic", title=_("Aucun fournisseur"),
-            description=_("Ajoutez votre fournisseur VPN : il suffit du fichier "
-                          "de configuration téléchargé sur son site."))
+            description=_("Ajoutez votre fournisseur VPN : il suffit des fichiers "
+                          "de configuration téléchargés sur son site (WireGuard "
+                          ".conf ou OpenVPN .ovpn)."))
         b = Gtk.Button(label=_("Ajouter un fournisseur"), halign=Gtk.Align.CENTER)
         b.add_css_class("pill")
         b.add_css_class("suggested-action")
@@ -33,7 +36,8 @@ class PageFournisseurs(Gtk.Stack):
         self.groupe = Adw.PreferencesGroup(
             title=_("Fournisseurs"),
             description=_("Le premier est utilisé en priorité. En cas d'échec, "
-                          "Katakomba passe au compte suivant, puis au fournisseur "
+                          "Katakomba passe au compte suivant, puis à l'autre "
+                          "transport (WireGuard ou OpenVPN), puis au fournisseur "
                           "suivant."))
         ajouter = Gtk.Button(valign=Gtk.Align.CENTER)
         ajouter.set_child(Adw.ButtonContent(icon_name="list-add-symbolic",
@@ -64,15 +68,16 @@ class PageFournisseurs(Gtk.Stack):
     def _rangee(self, i, p):
         comptes = p.get("accounts", [])
         fichier = p.get("ovpn_file", "")
+        confs = p.get("wireguard", [])
         morceaux = [_("Prioritaire") if i == 0 else _("Priorité {n}").format(n=i + 1),
-                    ngettext("{n} compte", "{n} comptes", len(comptes)).format(n=len(comptes))]
-        if not fichier:
-            morceaux.append(_("aucun fichier de configuration"))
+                    modele.resume_comptes(p)]
+        if comptes and not fichier:
+            morceaux.append(_("aucun fichier OpenVPN"))
         r = Adw.ExpanderRow(title=p["name"], subtitle=" · ".join(morceaux))
         r.set_expanded(p["name"] in self._ouverts)
         r.connect("notify::expanded", self._depliage, p["name"])
         r.add_prefix(numero(i + 1))
-        if not fichier or not comptes:
+        if not confs and not (fichier and comptes):
             alerte_icone = Gtk.Image(icon_name="dialog-warning-symbolic",
                                      tooltip_text=_("Fichier ou compte manquant"))
             alerte_icone.add_css_class("warning")
@@ -84,7 +89,25 @@ class PageFournisseurs(Gtk.Stack):
             (_("Supprimer le fournisseur…"), lambda: self._supprimer(i), True, True),
         )))
 
-        f = Adw.ActionRow(title=_("Fichier de configuration"),
+        for j, entree in enumerate(confs):
+            titre, detail = modele.decrire_conf(entree)
+            c = Adw.ActionRow(title=titre, subtitle=_("WireGuard {n} · {detail}").format(
+                n=j + 1, detail=detail))
+            c.add_prefix(Gtk.Image(icon_name="network-vpn-symbolic"))
+            c.add_suffix(menu_actions((
+                (_("Essayer plus tôt"), lambda j=j: self._conf_deplacer(i, j, -1), j > 0, False),
+                (_("Essayer plus tard"), lambda j=j: self._conf_deplacer(i, j, 1),
+                 j < len(confs) - 1, False),
+                (_("Retirer ce fichier…"), lambda j=j: self._conf_supprimer(i, j), True, True),
+            )))
+            r.add_row(c)
+        ajout_wg = Adw.ActionRow(title=_("Ajouter des fichiers WireGuard (.conf)…"),
+                                 activatable=True)
+        ajout_wg.add_prefix(Gtk.Image(icon_name="list-add-symbolic"))
+        ajout_wg.connect("activated", lambda _r: self._choisir_confs(i))
+        r.add_row(ajout_wg)
+
+        f = Adw.ActionRow(title=_("Fichier de configuration OpenVPN"),
                           subtitle=fichier or _("Aucun — choisissez celui du fournisseur"))
         f.add_prefix(Gtk.Image(icon_name="text-x-generic-symbolic"))
         changer = Gtk.Button(label=_("Remplacer…") if fichier else _("Choisir…"),
@@ -105,7 +128,7 @@ class PageFournisseurs(Gtk.Stack):
             )))
             r.add_row(c)
 
-        ajout = Adw.ActionRow(title=_("Ajouter un compte"), activatable=True)
+        ajout = Adw.ActionRow(title=_("Ajouter un compte OpenVPN"), activatable=True)
         ajout.add_prefix(Gtk.Image(icon_name="list-add-symbolic"))
         ajout.connect("activated", lambda _r: self._compte_ajouter(i))
         r.add_row(ajout)
@@ -124,12 +147,65 @@ class PageFournisseurs(Gtk.Stack):
         nom = self.fournisseurs[i]["name"]
         confirmer(self.fen, _("Supprimer « {nom} » ?").format(nom=nom),
                   _("Le fournisseur et tous ses comptes seront retirés de "
-                    "Katakomba. Son fichier de configuration reste sur le disque."),
+                    "Katakomba. Ses fichiers de configuration restent sur le disque."),
                   _("Supprimer"), lambda: (self.fournisseurs.pop(i), self._modifie()))
 
     def _compte_deplacer(self, i, j, delta):
         modele.deplacer(self.fournisseurs[i].setdefault("accounts", []), j, delta)
         self._modifie()
+
+    def _conf_deplacer(self, i, j, delta):
+        modele.deplacer(self.fournisseurs[i].setdefault("wireguard", []), j, delta)
+        self._modifie()
+
+    def _conf_supprimer(self, i, j):
+        confs = self.fournisseurs[i].setdefault("wireguard", [])
+        nom = modele.decrire_conf(confs[j])[0]
+        confirmer(self.fen, _("Retirer ce fichier ?"),
+                  _("« {nom} » sera retiré de ce fournisseur ; il reste sur le "
+                    "disque.").format(nom=nom),
+                  _("Retirer"), lambda: (confs.pop(j), self._modifie()))
+
+    def _choisir_confs(self, i):
+        nom = self.fournisseurs[i]["name"]
+        choisir_fichiers(self.fen, _("Fichiers WireGuard de « {nom} »").format(nom=nom),
+                         _("Configuration WireGuard"), ["*.conf"],
+                         lambda chemins: self._importer_confs(i, chemins))
+
+    def _importer_confs(self, i, chemins):
+        def pret(resultat):
+            if isinstance(resultat, Exception):
+                alerte(self.fen, _("Lecture impossible"), str(resultat))
+                return
+            prets, erreurs = resultat
+            if erreurs:
+                alerte(self.fen, _("Ce fichier ne peut pas être utilisé"),
+                       "\n\n".join(erreurs[:12]))
+                return
+            if any(avert for _c, _r, avert in prets):
+                alerte(self.fen, _("Fichiers lus"), modele.resume_import(prets),
+                       reponses=(("annuler", _("Annuler")), ("ok", _("Enregistrer"))),
+                       defaut="ok", suggeree="ok",
+                       rappel=lambda r: r == "ok" and self._ajouter_confs(i, prets))
+            else:
+                self._ajouter_confs(i, prets)
+        en_fond(modele.preparer_import_wg, pret, chemins)
+
+    def _ajouter_confs(self, i, prets):
+        p = self.fournisseurs[i]
+        try:
+            n = modele.ajouter_confs_wg(self.fen.config, p["name"],
+                                        [c for c, _r, _a in prets])
+        except PermissionError:
+            alerte(self.fen, _("Écriture impossible"), modele.message_droits())
+            return
+        except OSError as e:
+            alerte(self.fen, _("Écriture impossible"), str(e))
+            return
+        self._ouverts.add(p["name"])
+        self._modifie()
+        self.fen.notifier(ngettext("{n} fichier WireGuard ajouté",
+                                   "{n} fichiers WireGuard ajoutés", n).format(n=n))
 
     def _compte_supprimer(self, i, j):
         comptes = self.fournisseurs[i].setdefault("accounts", [])

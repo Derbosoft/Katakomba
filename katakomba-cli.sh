@@ -262,7 +262,8 @@ PYEOF
             else
                 echo "  Tor        : inactif"
             fi
-            if pgrep -f -- "^openvpn .*katakomba(-vpn)?/auth" &>/dev/null; then
+            if pgrep -f -- "^openvpn .*katakomba(-vpn)?/auth" &>/dev/null \
+                    || pgrep -f -- "pont_wg\.py .*--ecoute 127\.0\.0\.1:51871" &>/dev/null; then
                 if ip link show tun-katakomba up 2>/dev/null | grep -q .; then
                     echo "  VPN        : actif  (tun-katakomba UP)"
                 else
@@ -319,7 +320,7 @@ OK, WARN, KO = "OK  ", "WARN", "KO  "
 ATTENTE, REPORTE = "....", "--  "
 NIVEAUX_JSON = {OK: "ok", WARN: "attention", KO: "erreur", ATTENTE: "attente",
                 REPORTE: "reporte"}
-# Une reconnexion voulue (nouveau circuit, relance d'OpenVPN) dure quelques
+# Une reconnexion voulue (nouveau circuit, relance du VPN) dure quelques
 # secondes.  Au-delà de ce délai, un tunnel toujours absent est une panne,
 # même si le daemon est encore en train d'essayer.
 RECONNEXION_MAX = 120
@@ -409,7 +410,12 @@ if st:
         note(ATTENTE, _("Tor"), _("démarrage en cours"))
     else:
         note(KO, _("Tor"), _("pas prêt"))
-    if st.get("tunnel_up"):
+    if st.get("tunnel_up") and st.get("transport") == "wireguard":
+        note(OK, _("Tunnel"), _("{iface} depuis {duree} ({fournisseur}, WireGuard, "
+                                "fichier {n})").format(
+            iface=st["tunnel_iface"], duree=duree(st["tunnel_uptime"]),
+            fournisseur=st["provider"], n=st["account_index"] + 1))
+    elif st.get("tunnel_up"):
         note(OK, _("Tunnel"), _("{iface} depuis {duree} ({fournisseur}, compte {n})").format(
             iface=st["tunnel_iface"], duree=duree(st["tunnel_uptime"]),
             fournisseur=st["provider"], n=st["account_index"] + 1))

@@ -295,6 +295,45 @@ class FenetreTest(unittest.TestCase):
         a._valider_fournisseur()
         self.assertIn("nom", a.info_fichier.get_label().lower())
 
+    def test_fournisseur_avec_les_deux_transports(self):
+        """Lignes WireGuard affichées sous un fournisseur OpenVPN, sans
+        exception, et retrait d'un .conf enregistré."""
+        cfg = self.fen.config
+        cfg["providers"][0]["wireguard"] = [{"conf": "providers/vpn-a/nl.conf"},
+                                            {"conf": "providers/vpn-a/ch.conf"}]
+        page = self.fen.pages["fournisseurs"]
+        page.recharger()
+        pomper()
+        self.assertEqual(len(page.liste.rangees), 2)
+        page._conf_deplacer(0, 0, 1)
+        self.assertEqual([c["conf"] for c in self.config_disque()["providers"][0]["wireguard"]],
+                         ["providers/vpn-a/ch.conf", "providers/vpn-a/nl.conf"])
+
+    def test_ordre_des_transports_enregistre(self):
+        page = self.fen.pages["reglages"]
+        self.assertEqual(page.transports.get_selected(), 0)
+        page.transports.set_selected(1)
+        self.assertEqual(self.config_disque()["transports"], ["openvpn", "wireguard"])
+        page.transports.set_selected(2)
+        self.assertEqual(self.config_disque()["transports"], ["wireguard"])
+
+    def test_assistant_wireguard_sans_identifiants(self):
+        import base64
+        from gui.assistant import Assistant
+        conf = pathlib.Path(self._tmp.name) / "nl-153.conf"
+        conf.write_text(f"[Interface]\nPrivateKey = {base64.b64encode(bytes(32)).decode()}\n"
+                        "Address = 10.2.0.2/32\nDNS = 10.2.0.1\n[Peer]\n"
+                        f"PublicKey = {base64.b64encode(bytes(range(32))).decode()}\n"
+                        "Endpoint = 185.107.56.211:51820\n")
+        a = Assistant(self.fen)
+        a._pret(a._lire([str(conf)]), [str(conf)])
+        self.assertEqual(a.genre, "wireguard")
+        self.assertIn("Proton (TLS)", a.info_fichier.get_label())
+        a._valider_fournisseur()
+        pomper()
+        self.assertFalse(hasattr(a, "ident"), "identifiants demandés pour un .conf")
+        self.assertEqual(a.vue.get_visible_page().get_title(), "Connexion")
+
 
 if __name__ == "__main__":
     unittest.main()

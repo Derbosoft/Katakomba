@@ -230,7 +230,7 @@ class InstallServiceUnitTest(unittest.TestCase):
         ligne = next(l for l in unite.splitlines() if l.startswith("ReadWritePaths="))
         self.assertEqual(ligne.split("=", 1)[1].split(),
                          ["$CONFIG_DIR", "$STATE_DIR", "/run", "-/etc/systemd/resolved.conf.d",
-                          "-/var/lib/misc"])
+                          "-/var/lib/misc", "-/etc/wireguard"])
 
     def test_tor_systeme_desactive(self):
         """Sinon conflit sur le port 9050."""

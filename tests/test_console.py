@@ -310,5 +310,97 @@ class AideTest(Console):
         self.assertEqual(self.lancer("nimporte")[0], 2)
 
 
+# ── WireGuard (v4.0.0) ───────────────────────────────────────────────────────
+
+import base64 as _b64                                          # noqa: E402
+
+CLE = _b64.b64encode(bytes(32)).decode()
+CONF = (f"[Interface]\nPrivateKey = {CLE}\n"
+        "Address = 10.2.0.2/32\nDNS = 10.2.0.1\n\n[Peer]\n"
+        f"PublicKey = {_b64.b64encode(bytes(range(32))).decode()}\n"
+        "AllowedIPs = 0.0.0.0/0\nEndpoint = 185.107.56.211:51820\n")
+
+
+class WireGuardConsoleTest(Console):
+
+    def setUp(self):
+        super().setUp()
+        self.conf = self.base / "nl-153.conf"
+        self.conf.write_text(CONF)
+
+    def ajouter_wg(self, nom="proton"):
+        return self.lancer("provider", "add", str(self.conf), "--name", nom)
+
+    def test_fournisseur_wireguard_sans_identifiants(self):
+        code, sortie, err = self.ajouter_wg()
+        self.assertEqual(code, 0, err)
+        p = self.config()["providers"][0]
+        self.assertEqual(p["wireguard"], [{"conf": "providers/proton/nl-153.conf"}])
+        self.assertEqual(p["accounts"], [])
+        self.assertIn("Proton (TLS) · 185.107.56.211:443", sortie, "résumé absent")
+        self.assertNotIn(CLE, sortie + err, "clé affichée")
+
+    def test_conf_refuse_avant_toute_ecriture(self):
+        self.conf.write_text(CONF.replace("185.107.56.211", "vpn.example"))
+        code, _, err = self.ajouter_wg()
+        self.assertEqual(code, 1)
+        self.assertIn("Endpoint", err)
+        self.assertFalse((modele.PROVIDERS_DIR / "proton").exists())
+
+    def test_types_meles_refuses(self):
+        code, _, err = self.lancer("provider", "add", str(self.conf), str(self.ovpn))
+        self.assertEqual(code, 1)
+        self.assertIn("Un seul type", err)
+
+    def test_openvpn_en_conf_reste_openvpn(self):
+        ovpn_conf = self.base / "ivpn.conf"
+        ovpn_conf.write_text(OVPN)
+        code, _, err = self.lancer("provider", "add", str(ovpn_conf), "--name", "ivpn",
+                                   "--stdin", entree="bob\ns3cret\n")
+        self.assertEqual(code, 0, err)
+        p = self.config()["providers"][0]
+        self.assertTrue(p["ovpn_file"])
+        self.assertNotIn("wireguard", p)
+
+    def test_wireguard_ajoute_a_un_fournisseur_openvpn(self):
+        self.ajouter()                                  # OpenVPN, « ivpn »
+        code, sortie, err = self.lancer("account", "add", "ivpn", str(self.conf))
+        self.assertEqual(code, 0, err)
+        self.assertIn("1 fichier WireGuard ajouté", sortie)
+        code, sortie, _ = self.lancer("account", "list", "ivpn")
+        self.assertIn("1. bob", sortie)
+        self.assertIn("wg1. nl-153.conf", sortie)
+        self.assertNotIn(CLE, sortie)
+        code, sortie, _ = self.lancer("provider", "list")
+        self.assertIn("1 compte OpenVPN · 1 fichier WireGuard", sortie)
+
+    def test_retrait_d_un_conf(self):
+        self.ajouter_wg()
+        second = self.base / "ch-12.conf"
+        second.write_text(CONF.replace("185.107.56.211", "185.1.2.3"))
+        self.lancer("account", "add", "proton", str(second))
+        self.assertEqual(self.lancer("account", "remove", "proton", "wg3")[0], 1)
+        code, _, err = self.lancer("account", "remove", "proton", "wg1")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.config()["providers"][0]["wireguard"],
+                         [{"conf": "providers/proton/ch-12.conf"}])
+
+    def test_reglage_des_transports(self):
+        code, sortie, err = self.lancer("set", "transports", "openvpn,wireguard")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.config()["transports"], ["openvpn", "wireguard"])
+        self.assertEqual(self.lancer("set", "transports", "ssh")[0], 1)
+        self.assertEqual(self.lancer("set", "transports", "wireguard,wireguard")[0], 1)
+        _, sortie, _ = self.lancer("set")
+        self.assertIn("openvpn,wireguard", sortie)
+
+    def test_sauvegarde_emporte_les_conf(self):
+        self.ajouter_wg()
+        zip_ = self.base / "s.zip"
+        self.assertEqual(self.lancer("backup", "export", str(zip_))[0], 0)
+        with zipfile.ZipFile(zip_) as zf:
+            self.assertIn("providers/proton/nl-153.conf", zf.namelist())
+
+
 if __name__ == "__main__":
     unittest.main()

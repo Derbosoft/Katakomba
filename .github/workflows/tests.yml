@@ -28,7 +28,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common xvfb
+            python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common xvfb \
+            python3-cryptography
 
       # unittest directement, sans run-tests.sh : son empreinte réseau
       # avant/après protège une machine réelle, mais sur un runner l'hôte
@@ -79,9 +80,11 @@ jobs:
         run: '"$RUNNER_TEMP/outils/bin/zizmor" --persona=auditor .github/'
 
   # Vrai noyau, dans un espace réseau neuf (tests_noyau/lancer.sh) : vraies
-  # routes, vraies règles iptables, vraies connexions, et le vrai binaire
-  # OpenVPN face au modèle de lecture du fuzzer.  En root : le passe-droit de
-  # Tor (--uid-owner) n'est vérifiable qu'ici.
+  # routes, vraies règles iptables, vraies connexions, le vrai binaire
+  # OpenVPN face au modèle de lecture du fuzzer, et un vrai tunnel WireGuard
+  # de bout en bout à travers le pont.  En root : le passe-droit de Tor
+  # (--uid-owner) et le pont sous un autre utilisateur ne sont vérifiables
+  # qu'ici.
   noyau:
     name: Vrai noyau
     runs-on: ubuntu-24.04
@@ -90,11 +93,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: OpenVPN
+      - name: OpenVPN et WireGuard
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openvpn
+          sudo apt-get install -y --no-install-recommends openvpn wireguard-tools \
+            python3-cryptography
           openvpn --version | head -1
+          wg --version
 
       - name: Vérifications
         run: sudo bash tests_noyau/lancer.sh -v

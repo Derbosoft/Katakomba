@@ -211,7 +211,7 @@ echo "[1/7] Installation des dépendances …"
 # et refuse sinon.  Sauter apt sur une machine incomplète produirait une
 # installation à moitié fonctionnelle, plus difficile à diagnostiquer qu'un
 # échec franc.
-DEPS_BIN=(tor openvpn python3 curl)
+DEPS_BIN=(tor openvpn wg python3 curl)
 # Interface graphique : GTK 4 et libadwaita 1.5 ou plus (Ubuntu 24.04+, Debian 13+).
 DEPS_GUI=(python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common)
 gui_disponible() {
@@ -243,9 +243,10 @@ if [ "${KATAKOMBA_SKIP_APT:-0}" = "1" ]; then
 else
     apt-get update -qq
     if [ "$AVEC_GUI" = 1 ]; then
-        apt-get install -y tor openvpn python3 curl "${DEPS_GUI[@]}"
+        apt-get install -y tor openvpn wireguard-tools python3 python3-cryptography \
+                           curl "${DEPS_GUI[@]}"
     else
-        apt-get install -y tor openvpn python3 curl
+        apt-get install -y tor openvpn wireguard-tools python3 python3-cryptography curl
     fi
 fi
 
@@ -333,6 +334,8 @@ fi
 
 # Répertoire d'état (root seul) : données Tor, routes /32 persistées.
 install -d -m 755 -o root -g root "$STATE_DIR"
+# Clé de l'interface WireGuard, le temps que wg la lise (voir l'unité).
+install -d -m 700 -o root -g root /etc/wireguard
 if [ -d "$CONFIG_DIR/tor_data" ] && [ ! -L "$CONFIG_DIR/tor_data" ] \
         && [ "$(stat -c %u "$CONFIG_DIR/tor_data")" = 0 ] \
         && absent "$STATE_DIR/tor_data"; then
@@ -381,6 +384,7 @@ echo "[3/7] Déploiement du code dans $INSTALL_DIR …"
 # n'importe quel programme lancé sous ce compte pouvait réécrire le daemon et
 # obtenir root au redémarrage suivant, sans mot de passe.
 FICHIERS_CODE=(constants.py main.py console.py validation.py adaptation.py i18n.py daemon gui
+               pont_wg.py ivpn.py
                assets polkit po repair_network.sh katakomba-cli.sh install.sh uninstall.sh
                template.ovpn LICENSE README.md README.fr.md)
 if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
@@ -534,9 +538,14 @@ chmod +x "$CLEANUP_SCRIPT"
 
 cat > "$SERVICE_FILE" << SERVICE_EOF
 [Unit]
-Description=Katakomba — Daemon (Tor + OpenVPN headless)
-After=network-online.target
-Wants=network-online.target
+Description=Katakomba — Daemon (Tor + WireGuard/OpenVPN headless)
+# Module wireguard chargé par systemd lui-même : le service, confiné
+# (ProtectKernelModules), ne le pourrait pas.
+After=network-online.target modprobe@wireguard.service
+Wants=network-online.target modprobe@wireguard.service
+# Katakomba UDP, le prototype WireGuard d'avant la v4.0.0, pose les mêmes
+# ports Tor et le même blocage hors tunnel : jamais les deux à la fois.
+Conflicts=katakomba-udp.service
 # Pas de plafond de redémarrage : le daemon doit toujours retenter
 # (sinon une série d'échecs au boot laisserait le service mort).
 StartLimitIntervalSec=0
@@ -568,23 +577,28 @@ RestartPreventExitStatus=78
 RuntimeDirectory=katakomba katakomba-vpn
 RuntimeDirectoryMode=0700
 # ── Durcissement (v3.11.0) ── chaque ligne retire ce dont ni le daemon, ni
-# Tor, ni OpenVPN, ni dnsmasq n'ont besoin.  Vérifier : systemd-analyze
-# security katakomba.
+# Tor, ni OpenVPN, ni le pont WireGuard, ni wg, ni dnsmasq n'ont besoin.
+# Vérifier : systemd-analyze security katakomba.
 #
 # Droits root limités au réseau et au changement d'utilisateur (Tor →
-# debian-tor, OpenVPN → katakomba-vpn, dnsmasq) : plus de chargement de
-# module, de montage, de ptrace, d'accès brut aux disques…  DAC_* et CHOWN :
-# DataDirectory de Tor et son cookie, propriété de debian-tor.  KILL : arrêt
-# de processus d'un autre utilisateur.  NET_BIND_SERVICE : DHCP du partage LAN.
+# debian-tor, OpenVPN et pont WireGuard → katakomba-vpn, dnsmasq) : plus de
+# chargement de module, de montage, de ptrace, d'accès brut aux disques…
+# DAC_* et CHOWN : DataDirectory de Tor et son cookie, propriété de
+# debian-tor.  KILL : arrêt de processus d'un autre utilisateur.
+# NET_BIND_SERVICE : DHCP du partage LAN.
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_KILL
 NoNewPrivileges=yes
 # Système de fichiers en lecture seule, sauf : réglages, état (données Tor),
-# /run (socket de statut, verrou xtables), drop-in DNS, baux de dnsmasq.
+# /run (socket de statut, verrou xtables), drop-in DNS, baux de dnsmasq,
+# /etc/wireguard (clé de l'interface WireGuard, le temps que wg la lise :
+# le profil AppArmor de wg, sous Ubuntu, ne lui laisse lire que ce
+# répertoire).  Facultatif (« - ») : sans lui, seul WireGuard manque.
 ProtectSystem=strict
-ReadWritePaths=$CONFIG_DIR $STATE_DIR /run -/etc/systemd/resolved.conf.d -/var/lib/misc
+ReadWritePaths=$CONFIG_DIR $STATE_DIR /run -/etc/systemd/resolved.conf.d -/var/lib/misc -/etc/wireguard
 ProtectHome=yes
 PrivateTmp=yes
-# Un seul périphérique : /dev/net/tun (interface du tunnel).
+# Un seul périphérique : /dev/net/tun (interface d'OpenVPN ; celle de
+# WireGuard vit dans le noyau).
 DevicePolicy=closed
 DeviceAllow=/dev/net/tun rw
 ProtectKernelModules=yes
@@ -706,7 +720,7 @@ echo ""
 echo "── Vérification ────────────────────────────────────────"
 all_ok=true
 
-for bin in tor openvpn python3 curl; do
+for bin in tor openvpn wg python3 curl; do
     if command -v "$bin" &>/dev/null; then
         echo "  OK  $bin"
     else

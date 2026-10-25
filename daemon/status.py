@@ -62,15 +62,19 @@ class StatusMixin:
                                 else int(time.time() - self._tunnel_down_at),
             "reconnect_reason": "" if self._tunnel_up else self._reconnect_reason,
             "provider":       prov_name,
+            # Transport de l'étape en cours (v4.0.0) : « wireguard » ou
+            # « openvpn » ; vide si le fournisseur n'en sert aucun.
+            "transport":      self._transport,
             "account_index":  self._current_account_idx,
-            # Comptes du fournisseur courant écartés temporairement après un
-            # refus d'authentification, sous la forme « numéro affiché →
-            # secondes restantes ».  Sans cette exposition, un compte relégué
-            # serait invisible et son absence inexplicable.
+            # Comptes de l'étape courante (fournisseur et transport) écartés
+            # temporairement après un refus d'authentification ou une
+            # connexion sans poignée de main, sous la forme « numéro affiché
+            # → secondes restantes ».  Sans cette exposition, un compte
+            # relégué serait invisible et son absence inexplicable.
             "accounts_cooldown": {
-                str(a + 1): int(fin - time.time())
-                for (p, a), fin in sorted(self._account_cooldown.items())
-                if p == self._current_provider_idx and fin > time.time()
+                str(cle[1] + 1): int(fin - time.time())
+                for cle, fin in sorted(self._account_cooldown.items(), key=str)
+                if cle == self._cle_compte(cle[1]) and fin > time.time()
             },
             "rx_kbs":         round(rx_kbs, 1),
             # Qualité du circuit mesurée à la connexion.  0 = pas de mesure

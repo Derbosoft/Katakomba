@@ -150,6 +150,8 @@ class SuiteIntegrityTest(unittest.TestCase):
         "dns":      "test_dns.py",
         "firewall": "test_firewall.py",
         "openvpn":  "test_openvpn.py",
+        "session":  "test_session.py",
+        "wireguard": "test_wireguard.py",
         "status":   "test_config_status.py",
         "watchdog": "test_watchdog.py",
     }

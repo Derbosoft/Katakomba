@@ -18,26 +18,29 @@
 
   <description>
     <p>
-      Katakomba routes all of your computer's traffic through OpenVPN, whose
-      connection itself travels through the Tor network. Your VPN provider sees
+      Katakomba routes all of your computer's traffic through WireGuard or
+      OpenVPN, whose connection itself travels through the Tor network. Your VPN provider sees
       a Tor exit node, never your real address; your Internet provider sees
       Tor, never your VPN or where you go.
     </p>
     <p>
-      A background service manages Tor, OpenVPN, DNS and reconnections, and a
-      setup wizard only needs the configuration file downloaded from your VPN
-      provider: it is adapted for Tor automatically.
+      A background service manages Tor, WireGuard or OpenVPN, DNS and
+      reconnections, and a setup wizard only needs the configuration files
+      downloaded from your VPN provider: they are adapted for Tor
+      automatically.
     </p>
     <ul>
       <li>Kill switch: nothing leaves outside the tunnel, even during reconnections</li>
-      <li>Automatic failover between accounts and providers, and recovery after sleep</li>
+      <li>WireGuard through Tor for Proton VPN, Mullvad and IVPN, with OpenVPN as fallback</li>
+      <li>Automatic failover between accounts, transports and providers, and recovery after sleep</li>
       <li>IPv6 blocking, the VPN's DNS applied on the tunnel, and split DNS for local domains</li>
       <li>Built-in diagnostics that check routing, DNS and the real exit address</li>
       <li>Desktop notifications when the connection drops and when it comes back</li>
       <li>Advanced settings: network exclusions, LAN sharing, Tor circuit options</li>
     </ul>
     <p>
-      Requires a VPN provider offering OpenVPN over TCP. Expect a few megabits
+      Requires a VPN provider offering OpenVPN over TCP, or WireGuard wrapped in
+      TCP (Proton VPN, Mullvad, IVPN). Expect a few megabits
       per second: fine for browsing, less so for HD video.
     </p>
   </description>
@@ -92,6 +95,19 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.0.0" date="2026-10-25">
+      <description>
+        <p>WireGuard through Tor, alongside OpenVPN. Providers are dropping OpenVPN: Katakomba now carries WireGuard inside Tor too, wrapped in TCP the way each provider expects.</p>
+        <ul>
+          <li>Proton VPN (Stealth, TLS), Mullvad (udp-over-tcp) and IVPN (V2Ray, VMess) WireGuard files, recognised automatically</li>
+          <li>A provider can offer both: WireGuard first and OpenVPN as fallback by default, or the order of your choice in the settings</li>
+          <li>The bridge between WireGuard and Tor runs without any privilege; the private key only passes through a 0600 file deleted at once</li>
+          <li>Kill switch, DNS, exclusions, LAN sharing, watchdog and diagnostics work the same with both transports</li>
+          <li>Existing configurations keep working unchanged</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.0.0</url>
+    </release>
     <release version="3.13.1" date="2026-10-24">
       <description>
         <p>Maintenance release with no change in behaviour: the packages now name their maintainer by a fixed pseudonym and an anonymous address.</p>

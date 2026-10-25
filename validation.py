@@ -1,24 +1,30 @@
 """
-Validation des fichiers fournis par le groupe katakomba : .ovpn et torrc.
+Validation des fichiers fournis par le groupe katakomba : .ovpn, .conf
+WireGuard et torrc.
 
-Le daemon tourne en root et passe ces fichiers à OpenVPN et à Tor, eux aussi
-en root.  Or le groupe katakomba peut les écrire (c'est ce qui permet au GUI de
-tourner sans privilège).  Sans contrôle, écrire un fichier de configuration
-suffirait à faire exécuter du code en root :
+Le daemon tourne en root et passe ces fichiers à OpenVPN, à wg et à Tor, eux
+aussi en root.  Or le groupe katakomba peut les écrire (c'est ce qui permet
+au GUI de tourner sans privilège).  Sans contrôle, écrire un fichier de
+configuration suffirait à faire exécuter du code en root :
 
   .ovpn  « plugin /x.so » charge une bibliothèque — vérifié sur OpenVPN
          2.7.0, même avec --script-security 1 : le constructeur de la
          bibliothèque s'exécute avant toute connexion.
+  .conf  wg-quick exécute PostUp/PreDown ; le daemon n'emploie pas wg-quick
+         et réécrit lui-même ce qu'il remet à wg (conf_wg_noyau).
   torrc  « ClientTransportPlugin x exec /chemin » lance un programme.
 
-On procède donc par LISTE BLANCHE : une directive absente de la liste fait
-refuser le fichier entier.  Une liste noire serait à refaire à chaque version
-d'OpenVPN ou de Tor (la 2.7 a ajouté dns-updown, qui exécute un script).
+On procède donc par LISTE BLANCHE : pour un .ovpn ou un torrc, une directive
+absente de la liste fait refuser le fichier entier (une liste noire serait à
+refaire à chaque version d'OpenVPN ou de Tor : la 2.7 a ajouté dns-updown,
+qui exécute un script) ; pour un .conf, seules les valeurs connues et
+contrôlées sont reprises.
 
 Les messages produits sont sûrs à journaliser : ils ne recopient jamais le
 contenu d'une ligne, seulement un nom pris dans un vocabulaire fixe.  Sans
 cette précaution, un fichier pointant sur /etc/shadow ferait recopier ses
-lignes dans le journal, lisible par le groupe adm.
+lignes dans le journal, lisible par le groupe adm — et une clé privée
+WireGuard mal formée y finirait.
 """
 
 import ipaddress
@@ -402,7 +408,7 @@ def composant_sur(c: str) -> bool:
         and not any(x in c for x in ("/", "\\", "\0"))
 
 
-def chemin_ovpn_sur(chemin) -> bool:
+def chemin_fournisseur_sur(chemin) -> bool:
     """« providers/<fournisseur>/<fichier> », relatif, sans détour.
 
     Tout autre chemin ferait lire au daemon, en root, un fichier arbitraire
@@ -569,3 +575,185 @@ def analyser_push(options, texte_ovpn: str = "") -> dict:
         if net not in r["routes"]:
             r["routes"].append(net)
     return r
+
+
+# ── WireGuard ─────────────────────────────────────────────────────────────────
+#
+# Le daemon lit, en root, des .conf que le groupe peut écrire.  Il n'en passe
+# rien tel quel au système : chaque valeur est contrôlée, puis le fichier
+# remis à wg est réécrit par le daemon (conf_wg_noyau).  Les clés inconnues
+# sont ignorées — elles n'ont aucun effet, rien ne les relit — et les scripts
+# de wg-quick (PostUp…) aussi : le daemon n'exécute jamais rien d'un .conf.
+#
+# Les messages ne recopient jamais une valeur : une clé privée mal formée
+# finirait sinon dans le journal.
+
+WG_CONF_MAX = 65536
+WG_SCRIPTS = frozenset("preup postup predown postdown".split())
+WG_EMBALLAGES = ("proton", "ivpn", "mullvad")
+# Fichiers de Mullvad, reconnus sans commentaire « Katakomba-Emballage » :
+# DNS de la passerelle, ou adresse IPv6 du réseau interne de Mullvad.
+MULLVAD_DNS = ipaddress.ip_address("10.64.0.1")
+MULLVAD_IPV6 = ipaddress.ip_network("fc00:bbbb:bbbb:bb01::/64")
+WG_MTU_MIN, WG_MTU_MAX = 1280, 1420
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_KATAKOMBA = re.compile(r"#\s*katakomba-([a-z]+)\s*=\s*(\S*)\s*$", re.IGNORECASE)
+
+
+def cle_wg_valide(valeur: str) -> bool:
+    """Clé WireGuard : 32 octets en base64."""
+    import base64
+    import binascii
+    try:
+        return len(base64.b64decode(valeur, validate=True)) == 32
+    except (binascii.Error, ValueError):
+        return False
+
+
+def _ip_port(valeur: str):
+    """« 1.2.3.4:443 » ou « [2001:db8::1]:443 » → (ip, port), ou None.
+    Une adresse IP, jamais un nom : rien n'est résolu hors de Tor."""
+    hote, sep, port = valeur.rpartition(":")
+    if not sep or not port.isdigit() or not 0 < int(port) < 65536:
+        return None
+    try:
+        return str(ipaddress.ip_address(hote.strip("[]"))), int(port)
+    except ValueError:
+        return None
+
+
+def analyser_wg(texte: str):
+    """Lit un .conf WireGuard.  Renvoie (réglages, refus, avertissements) ;
+    réglages vaut None si le fichier est refusé.
+
+    Réglages : cle_privee, cle_publique, cle_partagee (ou None), adresse
+    (IPv4), dns (liste), mtu (ou None), endpoint (ip, port), emballage,
+    serveur et cible (« ip:port »), uuid."""
+    refus, avert = [], []
+    if len(texte) > WG_CONF_MAX:
+        return None, [f"fichier trop volumineux (plus de {WG_CONF_MAX} octets)"], []
+    section, pairs, vu = None, 0, {}
+    commentaires = {}
+    for n, ligne in enumerate(texte.replace("\r", "").split("\n"), 1):
+        brute = ligne.strip()
+        m = _KATAKOMBA.match(brute)
+        if m:
+            commentaires[m.group(1).lower()] = m.group(2)
+            continue
+        brute = brute.split("#", 1)[0].strip()
+        if not brute:
+            continue
+        if brute.startswith("[") and brute.endswith("]"):
+            section = brute[1:-1].strip().lower()
+            if section == "peer":
+                pairs += 1
+            elif section != "interface":
+                refus.append(f"ligne {n} : section inconnue")
+            continue
+        nom, sep, valeur = brute.partition("=")
+        nom, valeur = nom.strip().lower(), valeur.strip()
+        if not sep or section not in ("interface", "peer"):
+            refus.append(f"ligne {n} : ligne illisible")
+            continue
+        if nom in WG_SCRIPTS:
+            avert.append(f"ligne {n} : script de wg-quick ignoré (jamais exécuté)")
+            continue
+        vu[(section, nom)] = (n, valeur)
+    if pairs != 1:
+        refus.append("il faut exactement un pair ([Peer])"
+                     if pairs else "aucun pair ([Peer])")
+
+    def champ(section, nom, requis=True):
+        if (section, nom) in vu:
+            return vu[(section, nom)][1]
+        if requis:
+            refus.append(f"{nom} absent de [{section.capitalize()}]")
+        return None
+
+    r = {}
+    for cle, (section, nom, requis) in {
+            "cle_privee": ("interface", "privatekey", True),
+            "cle_publique": ("peer", "publickey", True),
+            "cle_partagee": ("peer", "presharedkey", False)}.items():
+        valeur = champ(section, nom, requis)
+        if valeur is not None and not cle_wg_valide(valeur):
+            refus.append(f"{nom} mal formée (32 octets en base64 attendus)")
+        r[cle] = valeur
+
+    r["adresse"], mullvad = None, False
+    for morceau in (champ("interface", "address") or "").split(","):
+        try:
+            iface = ipaddress.ip_interface(morceau.strip())
+        except ValueError:
+            refus.append("Address illisible")
+            break
+        if iface.version == 4 and r["adresse"] is None:
+            r["adresse"] = str(iface.ip)
+        mullvad |= iface.ip in MULLVAD_IPV6
+    if r["adresse"] is None and ("interface", "address") in vu and not refus:
+        refus.append("Address : aucune adresse IPv4")
+
+    r["dns"] = []
+    for morceau in (champ("interface", "dns", False) or "").split(","):
+        morceau = morceau.strip()
+        if not morceau:
+            continue
+        try:
+            ip = ipaddress.ip_address(morceau)
+        except ValueError:
+            avert.append("DNS : nom de domaine de recherche ignoré")
+            continue
+        if ip.version == 4:
+            r["dns"].append(str(ip))
+        mullvad |= ip == MULLVAD_DNS
+
+    r["mtu"] = None
+    mtu = champ("interface", "mtu", False)
+    if mtu is not None:
+        if mtu.isdigit() and WG_MTU_MIN <= int(mtu) <= WG_MTU_MAX:
+            r["mtu"] = int(mtu)
+        else:
+            avert.append(f"MTU ignoré (entre {WG_MTU_MIN} et {WG_MTU_MAX} attendu)")
+
+    endpoint = champ("peer", "endpoint")
+    r["endpoint"] = _ip_port(endpoint) if endpoint is not None else None
+    if endpoint is not None and r["endpoint"] is None:
+        refus.append("Endpoint : adresse IP et port attendus (pas de nom de domaine)")
+
+    r["emballage"] = commentaires.get(
+        "emballage", "mullvad" if mullvad else "proton").lower()
+    if r["emballage"] not in WG_EMBALLAGES:
+        refus.append("Katakomba-Emballage inconnu "
+                     f"({', '.join(WG_EMBALLAGES)} attendu)")
+    for nom in ("serveur", "cible"):
+        r[nom] = None
+        if nom in commentaires:
+            ip_port = _ip_port(commentaires[nom])
+            if ip_port is None:
+                refus.append(f"Katakomba-{nom.capitalize()} : adresse IP et port attendus")
+            else:
+                ip, port = ip_port
+                r[nom] = f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
+    # Proton (Stealth) et Mullvad (udp-over-tcp) : TCP 443 sur l'IP du serveur.
+    if r["serveur"] is None and r["endpoint"] and r["emballage"] != "ivpn":
+        ip = r["endpoint"][0]
+        r["serveur"] = f"[{ip}]:443" if ":" in ip else f"{ip}:443"
+    r["uuid"] = commentaires.get("uuid", "").lower() or None
+    if r["emballage"] == "ivpn":
+        if not (r["serveur"] and r["cible"]):
+            refus.append("emballage ivpn : Katakomba-Serveur et Katakomba-Cible requis")
+        if not (r["uuid"] and _UUID.fullmatch(r["uuid"])):
+            refus.append("emballage ivpn : Katakomba-UUID absent ou mal formé")
+    return (None if refus else r), refus, avert
+
+
+def conf_wg_noyau(reglages: dict, pont: str) -> str:
+    """Fichier remis à « wg setconf » : réécrit d'après les réglages
+    contrôlés, le pair joint par le pont local."""
+    lignes = ["[Interface]", f"PrivateKey = {reglages['cle_privee']}", "",
+              "[Peer]", f"PublicKey = {reglages['cle_publique']}"]
+    if reglages.get("cle_partagee"):
+        lignes.append(f"PresharedKey = {reglages['cle_partagee']}")
+    lignes += ["AllowedIPs = 0.0.0.0/0", f"Endpoint = {pont}",
+               "PersistentKeepalive = 25", ""]
+    return "\n".join(lignes)

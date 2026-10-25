@@ -5,14 +5,16 @@ Priority: optional
 Architecture: all
 Maintainer: @MAINTAINER@
 Installed-Size: @TAILLE@
-Depends: python3 (>= 3.9), tor, openvpn (>= 2.5), curl, iproute2, iptables, procps, systemd-resolved | systemd (<< 252)
+Depends: python3 (>= 3.9), tor, openvpn (>= 2.5), wireguard-tools, python3-cryptography, curl, iproute2, iptables, procps, systemd-resolved | systemd (<< 252)
 Suggests: dnsmasq
 Conflicts: tor-vpn-manager, katakomba
 Replaces: tor-vpn-manager, katakomba
 Description: VPN encapsulé dans Tor, sans interface graphique (serveurs)
- Katakomba fait passer tout le trafic réseau de la machine par OpenVPN,
- dont la connexion transite elle-même par Tor : le fournisseur VPN voit un
- nœud de sortie Tor, jamais votre adresse réelle.
+ Katakomba fait passer tout le trafic réseau de la machine par WireGuard
+ ou OpenVPN, dont la connexion transite elle-même par Tor : le fournisseur
+ VPN voit un nœud de sortie Tor, jamais votre adresse réelle. WireGuard
+ passe dans Tor emballé dans du TCP, à la façon du fournisseur (Proton VPN,
+ Mullvad, IVPN).
  .
  Version sans interface graphique, pour un serveur ou une machine sans
  écran : configuration en ligne de commande (katakomba help). Les

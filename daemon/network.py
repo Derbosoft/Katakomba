@@ -1,7 +1,9 @@
 """
 Réseau : gateway, SOCKS, routes Tor, routes exclues, et montage du tunnel
 (adresse et routes), que le daemon pose lui-même depuis la v3.9.0 :
-OpenVPN tourne sans aucun droit et ne touche plus au réseau.
+OpenVPN tourne sans aucun droit et ne touche plus au réseau.  Le transport
+WireGuard (v4.0.0) passe par le même montage : son pont tourne lui aussi
+sans droit.
 """
 
 import ipaddress

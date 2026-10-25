@@ -5,16 +5,18 @@ Priority: optional
 Architecture: all
 Maintainer: @MAINTAINER@
 Installed-Size: @TAILLE@
-Depends: python3 (>= 3.9), python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gir1.2-adw-1 (>= 1.5), librsvg2-common, tor, openvpn (>= 2.5), curl, iproute2, iptables, procps, systemd-resolved | systemd (<< 252), pkexec | policykit-1
+Depends: python3 (>= 3.9), python3-gi, python3-gi-cairo, gir1.2-gtk-4.0, gir1.2-adw-1 (>= 1.5), librsvg2-common, tor, openvpn (>= 2.5), wireguard-tools, python3-cryptography, curl, iproute2, iptables, procps, systemd-resolved | systemd (<< 252), pkexec | policykit-1
 Suggests: dnsmasq
 Conflicts: tor-vpn-manager, katakomba-headless
 Replaces: tor-vpn-manager, katakomba-headless
 Description: VPN encapsulé dans Tor, avec assistant graphique
- Katakomba fait passer tout le trafic réseau de la machine par OpenVPN,
- dont la connexion transite elle-même par Tor : le fournisseur VPN voit un
- nœud de sortie Tor, jamais votre adresse réelle.
+ Katakomba fait passer tout le trafic réseau de la machine par WireGuard
+ ou OpenVPN, dont la connexion transite elle-même par Tor : le fournisseur
+ VPN voit un nœud de sortie Tor, jamais votre adresse réelle. WireGuard
+ passe dans Tor emballé dans du TCP, à la façon du fournisseur (Proton VPN,
+ Mullvad, IVPN).
  .
- Un service systemd gère Tor, OpenVPN, le DNS, le blocage IPv6 et la
- reconnexion automatique. L'interface graphique propose un assistant : il
- suffit du fichier de configuration téléchargé chez le fournisseur VPN, qui
- est adapté automatiquement.
+ Un service systemd gère Tor, WireGuard ou OpenVPN, le DNS, le blocage
+ IPv6 et la reconnexion automatique. L'interface graphique propose un assistant : il
+ suffit des fichiers de configuration téléchargés chez le fournisseur VPN,
+ adaptés automatiquement.

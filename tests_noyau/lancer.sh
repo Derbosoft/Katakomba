@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Vérifications sur un vrai noyau : vraies routes, vraies règles iptables,
-# vraies connexions, vrai binaire OpenVPN — dans un espace réseau neuf, jamais
-# celui de la machine.  En root (CI) : « unshare -n ».  Sans root : espace
-# utilisateur en plus (« unshare -rn »), si le noyau le permet.
+# vraies connexions, vrai binaire OpenVPN, vrai WireGuard — dans un espace
+# réseau neuf, jamais celui de la machine.  En root (CI) : « unshare -nm ».
+# Sans root : espace utilisateur en plus (« unshare -rnm »), si le noyau le
+# permet.  L'espace de montage propre laisse un test poser un /etc/wireguard
+# temporaire.
 #
 #   bash tests_noyau/lancer.sh            # tout
 #   bash tests_noyau/lancer.sh -v         # détail
@@ -14,9 +16,9 @@ if ! command -v unshare >/dev/null; then
     exit 1
 fi
 if [ "$(id -u)" = 0 ]; then
-    ISOLER=(unshare -n)
+    ISOLER=(unshare -nm)
 else
-    ISOLER=(unshare -rn)
+    ISOLER=(unshare -rnm)
 fi
 # L'espace réseau d'où l'on part : les tests refusent de tourner dedans.
 KATAKOMBA_NS_HOTE=$(readlink /proc/self/ns/net) \

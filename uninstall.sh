@@ -43,7 +43,8 @@ rm -f /etc/systemd/system/katakomba.service \
       /lib/systemd/system-sleep/katakomba-sleep \
       /usr/local/lib/katakomba-cleanup.sh \
       /etc/systemd/resolved.conf.d/katakomba-split.conf \
-      /etc/xdg/autostart/katakomba.desktop
+      /etc/xdg/autostart/katakomba.desktop \
+      /etc/wireguard/katakomba-wg.conf
 rm -rf /usr/lib/katakomba /run/katakomba
 systemctl daemon-reload 2>/dev/null || true
 systemctl reload-or-restart systemd-resolved 2>/dev/null || true

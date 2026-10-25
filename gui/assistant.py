@@ -2,8 +2,10 @@
 Assistant de configuration : du fichier du fournisseur au tunnel actif, en
 trois étapes, sans connaître le vocabulaire (torrc, CIDR, split DNS…).
 
-  1. Fournisseur   nom + fichier(s) téléchargé(s) — adaptés automatiquement
-  2. Identifiants  identifiant et mot de passe OpenVPN
+  1. Fournisseur   nom + fichier(s) téléchargé(s) : .conf WireGuard, ou
+                   .ovpn/.zip OpenVPN adaptés automatiquement
+  2. Identifiants  identifiant et mot de passe OpenVPN — sautée pour
+                   WireGuard : chaque .conf contient sa clé
   3. Connexion     enregistrement, démarrage du service, suivi en direct
 
 Ouvert d'office au premier lancement (aucun fournisseur), et à la demande.
@@ -55,7 +57,8 @@ class Assistant(Adw.Dialog):
         super().__init__(title=_("Assistant de configuration"),
                          content_width=560, content_height=600)
         self.fen = fen
-        self.resultat = None
+        self.resultat = None        # OpenVPN : adaptation ; WireGuard : .conf prêts
+        self.genre = ""             # « wireguard » ou « openvpn »
         self.chemins = ()
         self._debut = 0.0
         self._termine = False
@@ -69,9 +72,9 @@ class Assistant(Adw.Dialog):
         boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         _intro(boite, _("Votre fournisseur VPN"),
                _("Téléchargez sur le site de votre fournisseur sa configuration "
-                 "OpenVPN (un fichier .ovpn, ou une archive .zip), de préférence "
-                 "en TCP. Gardez seulement les serveurs voulus : Katakomba adapte "
-                 "le reste automatiquement."))
+                 "WireGuard (un fichier .conf par serveur : Proton, Mullvad, IVPN) "
+                 "ou OpenVPN (un fichier .ovpn, ou une archive .zip, de préférence "
+                 "en TCP). Katakomba adapte le reste automatiquement."))
         liste = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         liste.add_css_class("boxed-list")
         self.fichier = Adw.ActionRow(title=_("Fichier de configuration"),
@@ -79,8 +82,8 @@ class Assistant(Adw.Dialog):
         self.fichier.add_prefix(Gtk.Image(icon_name="text-x-generic-symbolic"))
         choisir = Gtk.Button(label=_("Choisir…"), valign=Gtk.Align.CENTER)
         choisir.connect("clicked", lambda _b: choisir_fichiers(
-            self.fen, _("Fichiers de votre fournisseur"), _("Configuration OpenVPN"),
-            ["*.ovpn", "*.conf", "*.zip"], self._choisi))
+            self.fen, _("Fichiers de votre fournisseur"), _("Configuration VPN"),
+            ["*.conf", "*.ovpn", "*.zip"], self._choisi))
         self.fichier.add_suffix(choisir)
         self.fichier.set_activatable_widget(choisir)
         liste.append(self.fichier)
@@ -95,12 +98,22 @@ class Assistant(Adw.Dialog):
 
     def _choisi(self, chemins):
         self.fichier.set_subtitle(_("Lecture…"))
-        en_fond(modele.preparer_import, lambda r: self._pret(r, chemins), chemins)
+        en_fond(self._lire, lambda r: self._pret(r, chemins), chemins)
+
+    @staticmethod
+    def _lire(chemins):
+        genre = modele.genre_fichiers(chemins)
+        if not genre:
+            return "", (None, [_("Un seul type à la fois : des fichiers .conf "
+                                 "(WireGuard) ou un .ovpn (OpenVPN).")])
+        if genre == "wireguard":
+            return genre, modele.preparer_import_wg(chemins)
+        return genre, modele.preparer_import(chemins)
 
     def _pret(self, r, chemins):
         if isinstance(r, Exception):
-            r = (None, [str(r)])
-        res, erreurs = r
+            r = ("", (None, [str(r)]))
+        genre, (res, erreurs) = r
         self.info_fichier.set_visible(True)
         for c in ("etat-ok", "etat-erreur", "warning"):
             self.info_fichier.remove_css_class(c)
@@ -111,10 +124,15 @@ class Assistant(Adw.Dialog):
                                         + "\n".join(f"• {e}" for e in erreurs[:6]))
             self.info_fichier.add_css_class("etat-erreur")
             return
-        self.resultat, self.chemins = res, tuple(chemins)
+        self.resultat, self.chemins, self.genre = res, tuple(chemins), genre
         self.fichier.set_subtitle(", ".join(GLib.path_get_basename(c) for c in chemins))
         if not self.nom.get_text().strip():
             self.nom.set_text(modele.nom_depuis_fichier(chemins[0]))
+        if genre == "wireguard":
+            avert = any(a for _c, _r, a in res)
+            self.info_fichier.set_label("✓ " + modele.resume_import(res))
+            self.info_fichier.add_css_class("warning" if avert else "etat-ok")
+            return
         texte = "✓ " + ngettext("Fichier prêt : {n} serveur.", "Fichier prêt : {n} serveurs.",
                                 res.serveurs).format(n=res.serveurs)
         if res.modifications:
@@ -138,7 +156,8 @@ class Assistant(Adw.Dialog):
             self.info_fichier.set_label(erreur)
             self.info_fichier.add_css_class("etat-erreur")
             return
-        self.vue.push(self._etape_identifiants())
+        self.vue.push(self._etape_connexion() if self.genre == "wireguard"
+                      else self._etape_identifiants())
 
     # ── 2. Identifiants ──────────────────────────────────────────────────────
 
@@ -173,11 +192,16 @@ class Assistant(Adw.Dialog):
 
     def _etape_connexion(self):
         boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
-        _intro(boite, _("Connexion"),
-               _("Fournisseur « {fournisseur} », identifiant « {identifiant} ». "
-                 "Katakomba enregistre la configuration puis se connecte.").format(
-                   fournisseur=self.nom.get_text().strip(),
-                   identifiant=self.ident.get_text().strip()))
+        if self.genre == "wireguard":
+            texte = _("Fournisseur « {fournisseur} », WireGuard. Katakomba "
+                      "enregistre la configuration puis se connecte.").format(
+                          fournisseur=self.nom.get_text().strip())
+        else:
+            texte = _("Fournisseur « {fournisseur} », identifiant « {identifiant} ». "
+                      "Katakomba enregistre la configuration puis se connecte.").format(
+                          fournisseur=self.nom.get_text().strip(),
+                          identifiant=self.ident.get_text().strip())
+        _intro(boite, _("Connexion"), texte)
         liste = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         liste.add_css_class("boxed-list")
         self.auto = Adw.SwitchRow(title=_("Se connecter au démarrage de l'ordinateur"),
@@ -203,9 +227,13 @@ class Assistant(Adw.Dialog):
             return
         nom = self.nom.get_text().strip()
         try:
-            modele.ajouter_fournisseur_adapte(
-                self.fen.config, nom, self.resultat, self.chemins,
-                self.ident.get_text().strip(), self.secret.get_text())
+            if self.genre == "wireguard":
+                modele.ajouter_confs_wg(self.fen.config, nom,
+                                        [c for c, _r, _a in self.resultat])
+            else:
+                modele.ajouter_fournisseur_adapte(
+                    self.fen.config, nom, self.resultat, self.chemins,
+                    self.ident.get_text().strip(), self.secret.get_text())
         except PermissionError:
             self._montrer("erreur", modele.message_droits())
             return
@@ -218,7 +246,11 @@ class Assistant(Adw.Dialog):
         self.action.set_sensitive(False)
         self._montrer("attente", _("Démarrage du service…"))
         self._fournisseur = nom
-        self._compte = len(self.fen.config["providers"][-1]["accounts"]) - 1
+        p = self.fen.config["providers"][-1]
+        # WireGuard : l'échec n'est sûr que lorsque tous les .conf sont
+        # écartés, la boucle passant de l'un à l'autre.
+        self._nb_confs = len(p.get("wireguard", [])) if self.genre == "wireguard" else 0
+        self._compte = len(p.get("accounts", [])) - 1
         auto = self.auto.get_active()
 
         def demarrer():
@@ -256,7 +288,7 @@ class Assistant(Adw.Dialog):
             return
         service, st = r
         niveau, message, fini = modele.etat_connexion(service, st, self._fournisseur,
-                                                      self._compte)
+                                                      self._compte, self._nb_confs)
         self._montrer(niveau, message)
         self.fen.rafraichir_etat(0)
         ecoule = time.time() - self._debut

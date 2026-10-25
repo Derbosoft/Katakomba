@@ -13,7 +13,7 @@ from i18n import N_, _
 # Titres et explications traduits à la construction de la page ; les noms
 # d'options du torrc (LongLivedPorts…) ne se traduisent pas.
 DRAPEAUX_CIRCUIT = (
-    ("long_lived", N_("Relais stables pour OpenVPN"), "LongLivedPorts 1194,443", ""),
+    ("long_lived", N_("Relais stables pour le tunnel"), "LongLivedPorts 1194,443", ""),
     ("learn_timeout", N_("Délai de construction fixe"), "LearnCircuitBuildTimeout 0",
      N_("plus prévisible")),
 )

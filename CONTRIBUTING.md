@@ -35,7 +35,7 @@ English, Spanish, German, Italian and Portuguese were translated from French **w
 
 ## VPN providers
 
-Katakomba is tested with iVPN and ProtonVPN. If it works (or fails) with another provider over TCP, an issue saying so is useful.
+Katakomba is tested with IVPN and Proton VPN (OpenVPN and WireGuard); Mullvad's WireGuard wrapping is implemented but not yet tested with an account. If it works (or fails) with another provider, an issue saying so is useful.
 
 ---
 
@@ -46,4 +46,4 @@ Les contributions sont bienvenues : bugs, correctifs, traductions, essais avec d
 - **Bug** : ouvrez une [issue](https://github.com/Derbosoft/Katakomba/issues/new/choose) avec la sortie de `katakomba doctor` et `katakomba logs 100`, sans identifiants ni IP réelles. Pour une faille de sécurité, voir [SECURITY.md](SECURITY.md).
 - **Code** : la langue source est le français (commentaires, journal, chaînes `_()`). Chaque changement s'accompagne de tests ; la suite n'exécute aucune commande système (`bash run-tests.sh`).
 - **Traductions** : relectures bienvenues dans `po/<langue>.po`.
-- **Fournisseurs** : testé avec iVPN et ProtonVPN ; signalez ce qui marche ou non ailleurs.
+- **Fournisseurs** : testé avec IVPN et Proton VPN (OpenVPN et WireGuard) ; l'emballage WireGuard de Mullvad est écrit mais pas encore essayé avec un compte. Signalez ce qui marche ou non ailleurs.

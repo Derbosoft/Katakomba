@@ -218,11 +218,19 @@ class CleanupStaleRulesTest(unittest.TestCase):
 
     def test_dnsmasq_cible_par_pid_file(self):
         _, r = self._run()
-        pkills = r.matching("pkill")
+        pkills = r.matching("pkill", "dnsmasq")
         self.assertTrue(pkills, "dnsmasq du partage non arrêté")
         for c in pkills:
             self.assertIn("dnsmasq.pid", c,
                           "pkill trop large : tuerait les dnsmasq de libvirt")
+
+    def test_pont_wireguard_cible_par_son_port(self):
+        """Pont orphelin d'une session précédente : il garderait son port.
+        Reconnu à sa ligne de commande, jamais « pkill python3 »."""
+        _, r = self._run()
+        self.assertTrue(r.ran("pkill -f", "pont_wg", "51871"), r.dump())
+        for c in r.matching("pkill"):
+            self.assertTrue("dnsmasq.pid" in c or "pont_wg" in c, c)
 
     def test_interface_tunnel_supprimee(self):
         _, r = self._run()
