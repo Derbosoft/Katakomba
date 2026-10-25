@@ -34,6 +34,7 @@ from .core import (
     _run, _read_regular, _write_private, PONT_ECOUTE, PONT_PATTERN, SCRIPT_DIR,
     WG_CONF_RUN, WG_MTU_DEFAUT,
 )
+from .gestion_wg import SERVEURS_GERES, service_gere
 from validation import analyser_wg, chemin_fournisseur_sur, conf_wg_noyau
 
 # Poignée de main : délai pour la première (circuit Tor neuf, puis TLS ou
@@ -71,6 +72,12 @@ class WireGuardMixin:
         if not providers or self._current_provider_idx >= len(providers):
             return None
         p = providers[self._current_provider_idx]
+        if service_gere(p):
+            # WireGuard géré : pas de fichier ; le serveur et la session sont
+            # préparés par la boucle, Tor prêt (GestionWgMixin).
+            if self._current_account_idx >= SERVEURS_GERES:
+                return None
+            return "", p.get("name", "?"), self._current_account_idx
         confs = p.get("wireguard", [])
         if not confs or self._current_account_idx >= len(confs):
             return None
@@ -212,15 +219,19 @@ class WireGuardMixin:
         self._tunnel_monte()
         return True
 
-    def _session_wireguard(self, chemin: str, uid: int, gid: int) -> str:
-        """Une connexion, du .conf à la chute du tunnel.  Renvoie :
+    def _session_wireguard(self, chemin: str, uid: int, gid: int,
+                           reglages=None) -> str:
+        """Une connexion, du .conf à la chute du tunnel.  `reglages` : déjà
+        lus et contrôlés (WireGuard géré) ; `chemin` n'est alors qu'un nom
+        pour le journal.  Renvoie :
           « arret »     arrêt demandé
           « refus »     .conf refusé
           « absent »    WireGuard manque à la machine (module noyau, wg)
           « interface » interface WireGuard impossible à créer
           « echec »     aucune poignée de main (serveur, circuit, clé révoquée)
           « coupure »   tunnel monté, puis perdu"""
-        reglages = self._preparer_wg(chemin)
+        if reglages is None:
+            reglages = self._preparer_wg(chemin)
         if reglages is None:
             return "refus"
         self._vpn_dns_ips = list(reglages["dns"])

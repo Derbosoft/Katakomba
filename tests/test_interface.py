@@ -333,6 +333,24 @@ class FenetreTest(unittest.TestCase):
         page.recharger()
         pomper()
 
+    def test_wireguard_gere(self):
+        cfg = self.fen.config
+        p = cfg["providers"][0]
+        p["name"] = "ivpn"
+        page = self.fen.pages["fournisseurs"]
+        rangees = page._rangees_wg_gere(0, p)
+        self.assertEqual(len(rangees), 1, "réglages affichés avant l'activation")
+        rangees[0].set_active(True)
+        self.assertEqual(self.config_disque()["providers"][0]["wg_auto"]["service"], "ivpn")
+        interrupteur, pays, reserves = page._rangees_wg_gere(0, cfg["providers"][0])
+        page._wg_gere_pays(0, "nl ch")
+        self.assertEqual(self.config_disque()["providers"][0]["wg_auto"]["countries"],
+                         ["NL", "CH"])
+        reserves.set_active(True)
+        self.assertTrue(self.config_disque()["providers"][0]["wg_auto"]["reserved_accounts"])
+        page.recharger()
+        pomper()
+
     def test_assistant_wireguard_sans_identifiants(self):
         import base64
         from gui.assistant import Assistant

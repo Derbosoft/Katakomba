@@ -95,6 +95,19 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.2.0" date="2026-10-25">
+      <description>
+        <p>Managed WireGuard for IVPN: Katakomba registers its own WireGuard key on your IVPN account, through Tor, with no file to create.</p>
+        <ul>
+          <li>Built for fleets sharing accounts: one device slot per PC, kept across reboots, accounts drawn at random</li>
+          <li>Weekly key renewal on the same session, without taking another slot</li>
+          <li>A session closed at IVPN is noticed and replaced automatically; the slot is given back on uninstall</li>
+          <li>Optional reset of a full account, for accounts reserved for Katakomba</li>
+          <li>API exchanges run without any privilege; the account number is never stored in clear</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.2.0</url>
+    </release>
     <release version="4.1.0" date="2026-10-25">
       <description>
         <p>Transport order per provider.</p>

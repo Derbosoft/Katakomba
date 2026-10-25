@@ -416,6 +416,36 @@ class WireGuardConsoleTest(Console):
         self.assertEqual(code, 0, err)
         self.assertIn("qu'un transport", sortie)
 
+    def test_wireguard_gere(self):
+        self.ajouter()                                  # « ivpn », un compte
+        code, sortie, err = self.lancer("provider", "wg-auto", "ivpn", "on")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.config()["providers"][0]["wg_auto"]["service"], "ivpn")
+        code, sortie, err = self.lancer("provider", "wg-auto", "ivpn", "countries", "nl,ch")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.config()["providers"][0]["wg_auto"]["countries"], ["NL", "CH"])
+        self.assertEqual(self.lancer("provider", "wg-auto", "ivpn", "countries", "NLD")[0], 1)
+        code, sortie, _ = self.lancer("provider", "wg-auto", "ivpn", "reserved", "on")
+        self.assertIn("remis à zéro", sortie)
+        self.assertTrue(self.config()["providers"][0]["wg_auto"]["reserved_accounts"])
+        _, sortie, _ = self.lancer("provider", "list")
+        self.assertIn("WireGuard géré", sortie)
+        self.lancer("provider", "wg-auto", "ivpn", "countries", "all")
+        self.assertEqual(self.config()["providers"][0]["wg_auto"]["countries"], [])
+        self.assertEqual(self.lancer("provider", "wg-auto", "ivpn", "off")[0], 0)
+        self.assertNotIn("wg_auto", self.config()["providers"][0])
+
+    def test_wireguard_gere_refuse(self):
+        self.ajouter("proton")
+        code, _, err = self.lancer("provider", "wg-auto", "proton", "on")
+        self.assertEqual(code, 1)
+        self.assertIn("ne ressemble pas à IVPN", err)
+        code, _, err = self.lancer("provider", "wg-auto", "proton", "reserved", "on")
+        self.assertIn("Activez d'abord", err)
+        self.ajouter_wg("ivpn-wg")                     # sans compte
+        code, _, err = self.lancer("provider", "wg-auto", "ivpn-wg", "on")
+        self.assertIn("numéros de compte", err)
+
     def test_sauvegarde_emporte_les_conf(self):
         self.ajouter_wg()
         zip_ = self.base / "s.zip"

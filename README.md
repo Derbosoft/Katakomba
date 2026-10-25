@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.1.0
+# Katakomba — v4.2.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.1.0-blue)
+![Version](https://img.shields.io/badge/Version-4.2.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -95,7 +95,7 @@ The GUI and the daemon are **fully decoupled**: the GUI only writes config files
 | tor | — | SOCKS5 proxy and Tor network |
 | openvpn | 2.4+ | Encrypted tunnel to VPN provider (OpenVPN transport) |
 | wireguard-tools + `wireguard` kernel module | — | WireGuard transport (module in every Linux kernel ≥ 5.6) |
-| python3-cryptography | — | VMess wrapping of the WireGuard bridge (IVPN only) |
+| python3-cryptography | — | VMess wrapping of the WireGuard bridge and managed WireGuard keys (IVPN only) |
 | dnsmasq | — | **Optional** — DHCP server, only for LAN sharing |
 | curl | — | Throughput measurement and connectivity tests |
 | systemd + systemd-resolved | — | Service management and DNS |
@@ -277,6 +277,7 @@ Run as root, or as a member of the `katakomba` group (no `sudo` needed, like the
 | `provider add <file.ovpn\|.zip\|.conf…> [--name NAME] [--stdin]` | Adds a provider, at the lowest priority: OpenVPN (`.ovpn`, `.zip`) or WireGuard (`.conf`) |
 | `provider remove <name>` | Removes it (its files stay on disk) |
 | `provider priority <name> <rank>` | Moves it in the failover order |
+| `provider wg-auto <name> on\|off` | Managed WireGuard (IVPN): key registered by Katakomba; `countries NL,CH\|all`, `reserved on\|off` |
 | `provider transports <name> <order\|default>` | Transport order for this provider only (`openvpn,wireguard`…), or `default` to follow the general setting |
 | `account list\|add\|remove <provider> …` | Accounts of a provider: `add` asks for the OpenVPN credentials, or adds the `.conf` files given as arguments; `remove <provider> wg2` removes a WireGuard file |
 | `exclude list\|add\|remove <address\|network\|domain>` | Exclusions from the tunnel and local domains, same checks as the interface |
@@ -322,11 +323,11 @@ The wrapping is picked from the `.conf` file, with nothing to set:
 |---|---|---|---|---|
 | **Proton VPN** | "Stealth" mode: TLS, TunSafe frames | TCP 443, same IP as the server | downloaded from account.protonvpn.com (free plan included) | default |
 | **Mullvad** | udp-over-tcp: each packet preceded by its length | TCP 443, same IP as the server | configuration generator on mullvad.net | its DNS (10.64.0.1) or its internal IPv6 address |
-| **IVPN** | V2Ray: unencrypted VMess, disguised as HTTP | TCP 80, the server's V2Ray address | created by `ivpn.py` (see below) | its `# Katakomba-…` comments |
+| **IVPN** | V2Ray: unencrypted VMess, disguised as HTTP | TCP 80, the server's V2Ray address | none: **managed WireGuard** (see below), or created by `ivpn.py` | its `# Katakomba-…` comments |
 
 The formats were taken from the providers' published source code (ProtonVPN/wireguard-go, mullvad/udp-over-tcp, ivpn/desktop-app) and from V2Ray (v2fly/v2ray-core). Proton and IVPN were tested for real through Tor; Mullvad's udp-over-tcp ports (80, 443, 5001) accept connections from Tor exits. An explicit setting is still possible at the top of the file: `# Katakomba-Emballage = mullvad`, `# Katakomba-Serveur = IP:80`.
 
-**IVPN** does not hand out WireGuard files: its app generates a key and registers it on the account. `ivpn.py` does the same, **through Tor** (API certificate verified), and never forces a session:
+**IVPN** does not hand out WireGuard files: its app generates a key and registers it on the account. Katakomba does the same, **through Tor** (API certificate verified): this is **managed WireGuard**, described below. To create a file by hand, `ivpn.py` is still there; it never forces a session:
 
 ```bash
 python3 /opt/katakomba/ivpn.py --socks 127.0.0.1:9050 --compte-katakomba 1 --pays NL --sortie ivpn-nl.conf
@@ -335,6 +336,36 @@ python3 /opt/katakomba/ivpn.py --socks 127.0.0.1:9050 --compte-katakomba 1 --pay
 ```
 
 Each file uses one device slot on the IVPN account.
+
+### Managed WireGuard (IVPN, v4.2.0)
+
+For an IVPN provider that already has its account numbers (IVPN's OpenVPN usernames), Katakomba registers its WireGuard key **itself**: no file to create, or to copy from one PC to another. Built for a **fleet of PCs sharing accounts**:
+
+| Situation | What Katakomba does |
+|---|---|
+| First start | A new key, registered through Tor on an account **drawn at random** (a fleet spreads itself out): one device slot for this PC. Account full: the next one. |
+| Reboot, reconnection | **No API call**: same session, same key, same slot. |
+| Server not answering | **Another server** (three, in different cities), never another account: the key works everywhere. |
+| After a week | Key **renewed on the same session** (no extra slot), spread at random over a day. |
+| Session closed at IVPN (account reset, website) | Noticed after a failed connection: registers again, automatically. |
+| Every account full | Says so and falls back to OpenVPN, or, if the accounts are **reserved for Katakomba**, resets one of them (its other devices are logged out; Katakomba PCs register again on their own). |
+| API unreachable, captcha | OpenVPN takes over; the API is only called again after 15 min (1 h for a captcha). |
+| Cloned disk image | The session is tied to `/etc/machine-id`: the clone opens its own, without closing the original's. |
+| Uninstall | The session is closed: the slot goes back to the account. |
+
+Interface: Providers page, under the IVPN provider, "WireGuard managed by Katakomba", then the server countries and "Accounts reserved for Katakomba". Console:
+
+```bash
+katakomba provider wg-auto ivpn on                   # turn on
+katakomba provider wg-auto ivpn countries NL,CH,SE   # server countries (all: every country)
+katakomba provider wg-auto ivpn reserved on          # allow a reset as a last resort
+```
+
+- **Reserved accounts**: only turn this on if the accounts are used solely by Katakomba PCs. A phone logged in with the same account would be logged out by a reset. IVPN does not let an app see an account's other devices: this is the only way to win back the slots of PCs that vanished without being uninstalled.
+- **Two-factor authentication** must be off on these accounts, otherwise no session can open without you (the log says so).
+- **Slots**: 2 devices per account on the Standard plan, 7 on Pro. Keep a margin: a PC thrown away without uninstalling keeps its slot until the next reset.
+- **Privilege separation**: API exchanges go through `ivpn.py`, run **without any privilege** (it parses what the network sends); the account number reaches it on standard input, never as an argument, and it never sees the private key. The session (token, private key) lives in `/var/lib/katakomba/ivpn-session.json`, mode 0600, root; the account number is only stored as a hash. The generated `.conf` goes through the same validation as an imported file.
+- `katakomba doctor` shows which account holds the session and the key's date. The provider's `.conf` files, if any, are ignored while management is on.
 
 ### Adding WireGuard files
 
@@ -425,6 +456,7 @@ katakomba/
 │   ├── session.py       SessionMixin — VPN loop: providers, transports, accounts, failover, circuit
 │   ├── openvpn.py       OpenVPNMixin — OpenVPN transport
 │   ├── wireguard.py     WireGuardMixin — WireGuard transport: interface, keys, bridge, handshakes
+│   ├── gestion_wg.py    GestionWgMixin — managed WireGuard: this PC's IVPN session, key, servers
 │   └── watchdog.py      WatchdogMixin — connectivity monitoring, full restart
 │
 ├── gui/                 Graphical interface (GTK 4 + libadwaita)
@@ -1311,7 +1343,8 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
       "wireguard": [
         { "conf": "providers/ProtonVPN/nl-free-153.conf" }
       ],
-      "transports": ["openvpn", "wireguard"]
+      "transports": ["openvpn", "wireguard"],
+      "wg_auto": { "service": "ivpn", "countries": ["NL", "CH"], "reserved_accounts": false }
     }
   ],
   "auto_reconnect": true,
@@ -1340,6 +1373,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 | `providers[].accounts[].u` | string | Base64-encoded username |
 | `providers[].accounts[].p` | string | Base64-encoded password |
 | `providers[].wireguard[].conf` | string | WireGuard file, relative to the install directory (v4.0.0) |
+| `providers[].wg_auto` | object | Optional: managed WireGuard (IVPN); `countries`: server countries (empty: all); `reserved_accounts`: resetting a full account is allowed (v4.2.0) |
 | `providers[].transports` | list | Optional: this provider's own order, same values as `transports`, which it overrides for that provider (v4.1.0) |
 | `transports` | list | Transports tried for each provider, in order: `["wireguard", "openvpn"]` (default), the reverse, or just one (v4.0.0) |
 | `excluded_ips` | list | CIDRs/IPs routed via local gateway |
@@ -1355,7 +1389,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 
 ## Tests
 
-The project is covered by a suite of **996 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **1042 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything

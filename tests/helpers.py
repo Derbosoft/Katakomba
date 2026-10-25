@@ -29,6 +29,7 @@ from daemon import Daemon                     # noqa: E402
 import daemon.core      as m_core             # noqa: E402
 import daemon.dns       as m_dns              # noqa: E402
 import daemon.firewall  as m_firewall         # noqa: E402
+import daemon.gestion_wg as m_gestion_wg      # noqa: E402
 import daemon.network   as m_network          # noqa: E402
 import daemon.openvpn   as m_openvpn          # noqa: E402
 import daemon.session   as m_session          # noqa: E402
@@ -36,8 +37,8 @@ import daemon.tor       as m_tor              # noqa: E402
 import daemon.watchdog  as m_watchdog         # noqa: E402
 import daemon.wireguard as m_wireguard        # noqa: E402
 
-RUN_MODULES = (m_core, m_dns, m_firewall, m_network, m_openvpn, m_session, m_tor,
-               m_watchdog, m_wireguard)
+RUN_MODULES = (m_core, m_dns, m_firewall, m_gestion_wg, m_network, m_openvpn,
+               m_session, m_tor, m_watchdog, m_wireguard)
 
 # ── Bac à sable des fichiers du daemon ───────────────────────────────────────
 # Sur une machine déployée, /run/katakomba et /var/lib/katakomba
@@ -60,6 +61,10 @@ _REDIRECTIONS = {
     "LAN_DNSMASQ_PID":    _RUN / "dnsmasq.pid",
     "TOR_ROUTES_FILE":    _STATE / "tor-routes.txt",
     "REPRISES_FILE":      _STATE / "reprises.json",
+    # WireGuard géré : session et serveurs d'IVPN, identité de la machine.
+    "SESSION_FILE":       _STATE / "ivpn-session.json",
+    "SERVEURS_FILE":      _STATE / "ivpn-serveurs.json",
+    "MACHINE_ID":         _BAC_A_SABLE / "machine-id",
     "TOR_DATA_DIR":       _STATE / "tor_data",
     "TOR_COOKIE":         _STATE / "tor_data" / "control_auth_cookie",
     "LEGACY_TOR_DATA":    _BAC_A_SABLE / "etc" / "tor_data",

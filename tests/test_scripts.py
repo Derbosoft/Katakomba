@@ -594,6 +594,13 @@ class PaquetDebTest(unittest.TestCase):
         for f in ("install.sh", "uninstall.sh"):
             self.assertIn(f, livres)
 
+    def test_session_ivpn_rendue_avant_l_arret(self):
+        """WireGuard géré : la place d'appareil est rendue au compte pendant
+        que Tor (lancé par le service) tourne encore."""
+        self.assertIn("ivpn.py\" liberer", UNINSTALL)
+        self.assertLess(UNINSTALL.index("ivpn.py\" liberer"),
+                        UNINSTALL.index("systemctl disable --now katakomba"))
+
     def test_postinst_reutilise_install_sh(self):
         post = (PAQ / "postinst").read_text()
         self.assertIn("KATAKOMBA_PAQUET=1 bash /opt/katakomba/install.sh", post)

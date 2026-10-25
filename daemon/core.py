@@ -263,6 +263,16 @@ class DaemonCore:
         # aucun d'utilisable.
         self._transport            = ""
         self._current_account_idx  = 0
+        # WireGuard géré (GestionWgMixin) : session de ce PC (en mémoire,
+        # pour le statut), serveurs de l'étape, dernier code de l'API, pause
+        # des appels après un échec, clé reposée une fois par série d'échecs,
+        # ménage fait au démarrage.
+        self._ivpn_etat            = None
+        self._ivpn_hotes           = []
+        self._ivpn_code            = 0
+        self._wg_gere_pause        = 0.0
+        self._ivpn_resynchro       = False
+        self._ivpn_menage_fait     = False
         # Ordre de passage des comptes de l'étape courante : indices de
         # `accounts` (OpenVPN) ou de `wireguard`, tirés au hasard si
         # config["random_account"].  On garde un

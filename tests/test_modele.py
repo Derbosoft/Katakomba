@@ -1024,6 +1024,69 @@ class TransportsReglageTest(unittest.TestCase):
         self.assertEqual(DEFAULT_CONFIG["transports"], ["wireguard", "openvpn"])
 
 
+class WireGuardGereTest(unittest.TestCase):
+    """v4.2.0 : clé WireGuard enregistrée par Katakomba (IVPN)."""
+
+    def test_reglage(self):
+        p = {"name": "ivpn", "accounts": [{"u": "x"}]}
+        modele.regler_wg_gere(p, reserves=True)
+        self.assertNotIn("wg_auto", p, "réglé sans avoir été activé")
+        modele.regler_wg_gere(p, actif=True)
+        self.assertEqual(p["wg_auto"], {"service": "ivpn", "countries": [],
+                                        "reserved_accounts": False})
+        modele.regler_wg_gere(p, pays=["NL"], reserves=True)
+        self.assertEqual(p["wg_auto"]["countries"], ["NL"])
+        self.assertTrue(p["wg_auto"]["reserved_accounts"])
+        self.assertTrue(modele.wg_gere_valide(p["wg_auto"]))
+        modele.regler_wg_gere(p, actif=False)
+        self.assertNotIn("wg_auto", p)
+
+    def test_pays(self):
+        self.assertEqual(modele.lire_pays(" nl, CH;se nl"), (["NL", "CH", "SE"], ""))
+        self.assertEqual(modele.lire_pays(""), ([], ""))
+        for faux in ("NLD", "N1", "fr-be"):
+            self.assertIsNone(modele.lire_pays(faux)[0], faux)
+
+    def test_reconnaitre_ivpn(self):
+        self.assertTrue(modele.est_ivpn({"name": "IVPN Pro"}))
+        self.assertFalse(modele.est_ivpn({"name": "proton"}))
+        with tempfile.TemporaryDirectory() as d:
+            sauve = modele.SCRIPT_DIR
+            modele.SCRIPT_DIR = pathlib.Path(d)
+            try:
+                (pathlib.Path(d) / "providers" / "vpn").mkdir(parents=True)
+                (pathlib.Path(d) / "providers" / "vpn" / "a.ovpn").write_text(
+                    "client\nremote nl.gw.ivpn.net 443\n")
+                self.assertTrue(modele.est_ivpn({"name": "vpn",
+                                                 "ovpn_file": "providers/vpn/a.ovpn"}))
+                self.assertFalse(modele.est_ivpn({"name": "vpn", "ovpn_file": "/etc/passwd"}))
+            finally:
+                modele.SCRIPT_DIR = sauve
+
+    def test_deux_transports_avec_la_gestion(self):
+        p = {"ovpn_file": "a.ovpn", "accounts": [{"u": "x"}],
+             "wg_auto": {"service": "ivpn"}}
+        self.assertTrue(modele.deux_transports(p))
+        self.assertIn("WireGuard géré", modele.resume_comptes(p))
+
+    def test_sauvegarde_piegee(self):
+        for faux in ({"service": "mullvad"}, {"service": "ivpn", "countries": "NL"},
+                     {"service": "ivpn", "countries": ["nl; rm"]},
+                     {"service": "ivpn", "reserved_accounts": "oui"}, "ivpn"):
+            config = {"providers": [{"name": "x", "wg_auto": faux}]}
+            ecartes = modele.assainir_reglages(config)
+            self.assertNotIn("wg_auto", config["providers"][0], faux)
+            self.assertTrue(any("WireGuard géré" in e for e in ecartes))
+
+    def test_trajet(self):
+        st = {"tunnel_up": True, "tor_ready": True, "provider": "ivpn",
+              "transport": "wireguard", "account_index": 0,
+              "wg_managed": {"service": "ivpn", "provider": "ivpn", "account": 4,
+                             "key_since": 0}}
+        vpn = next(e for e in modele.trajet("active", st) if e["cle"] == "vpn")
+        self.assertEqual(vpn["detail"], "WireGuard géré · compte 4")
+
+
 class WireGuardEtatTest(unittest.TestCase):
 
     def test_assistant_attend_que_tous_les_conf_soient_ecartes(self):
@@ -1054,6 +1117,27 @@ class WireGuardEtatTest(unittest.TestCase):
         ]
         self.assertEqual([e[3] for e in modele.evenements(lignes)],
                          ["Bascule vers OpenVPN", "Fichier WireGuard 3 : aucune réponse du serveur"])
+
+    def test_evenements_du_wireguard_gere(self):
+        """Les messages réels de daemon/gestion_wg.py et de la boucle."""
+        messages = [
+            ("OK   ", "IVPN : session ouverte sur le compte 2 — une place d'appareil, "
+                      "gardée par ce PC jusqu'à sa désinstallation."),
+            ("WARN ", "serveur 1 (ivpn) sans poignée de main — mis en quarantaine 15 min."),
+            ("WARN ", "IVPN : session fermée (compte remis à zéro par un autre PC, ou "
+                      "depuis le site) — nouvel enregistrement."),
+            ("OK   ", "IVPN : clé WireGuard renouvelée (même session, même place d'appareil)."),
+            ("ERROR", "IVPN : tous les comptes utilisables sont pleins. Ajoutez un compte."),
+        ]
+        lignes = [f"2026-10-25T20:00:0{i}+02:00 h katakomba[1]: [2026-10-25 20:00:0{i}] "
+                  f"[{niveau}] {m}" for i, (niveau, m) in enumerate(messages)]
+        for ligne in lignes:
+            self.assertTrue(re.search(modele._FILTRE_EVENEMENTS, ligne), ligne)
+        self.assertEqual([e[3] for e in modele.evenements(lignes)], [
+            "IVPN : tous les comptes sont pleins", "Clé WireGuard renouvelée",
+            "Session IVPN fermée : nouvel enregistrement",
+            "Serveur WireGuard 1 : aucune réponse", "Session IVPN ouverte (compte 2)"])
+        self.assertIn("aucune poignée de main, serveur suivant", modele.RAISONS)
 
 
 if __name__ == "__main__":

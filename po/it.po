@@ -74,7 +74,7 @@ msgstr "Credenziali"
 msgid "Connexion"
 msgstr "Connessione"
 
-#: gui/assistant.py:247 gui/modele.py:1209
+#: gui/assistant.py:247 gui/modele.py:1278
 msgid "Démarrage du service…"
 msgstr "Avvio del servizio…"
 
@@ -94,7 +94,7 @@ msgstr "File di configurazione"
 msgid "Aucun fichier choisi"
 msgstr "Nessun file scelto"
 
-#: gui/assistant.py:83 gui/page_fournisseurs.py:117
+#: gui/assistant.py:83 gui/page_fournisseurs.py:124
 msgid "Choisir…"
 msgstr "Scegli…"
 
@@ -110,11 +110,11 @@ msgstr "Avanti"
 msgid "Aucun fichier utilisable"
 msgstr "Nessun file utilizzabile"
 
-#: gui/assistant.py:172 gui/page_fournisseurs.py:245 console.py:106
+#: gui/assistant.py:172 gui/page_fournisseurs.py:297 console.py:106
 msgid "Identifiant"
 msgstr "Nome utente"
 
-#: gui/assistant.py:173 gui/page_fournisseurs.py:246 console.py:109
+#: gui/assistant.py:173 gui/page_fournisseurs.py:298 console.py:109
 msgid "Mot de passe"
 msgstr "Password"
 
@@ -190,7 +190,7 @@ msgstr "Impossibile avviare il servizio ({cause}). Riprova dalla schermata Conne
 msgid "Enregistrement impossible : {erreur}"
 msgstr "Impossibile salvare: {erreur}"
 
-#: gui/fenetre.py:27 gui/page_fournisseurs.py:38
+#: gui/fenetre.py:27 gui/page_fournisseurs.py:39
 msgid "Fournisseurs"
 msgstr "Provider"
 
@@ -294,47 +294,51 @@ msgstr "Errore sconosciuto."
 msgid "Votre compte ne peut pas modifier la configuration de Katakomba. Fermez puis rouvrez votre session ; si le problème persiste : sudo katakomba autoriser $USER"
 msgstr "Il tuo account non può modificare la configurazione di Katakomba. Esci dalla sessione e rientra; se il problema persiste: sudo katakomba autoriser $USER"
 
-#: gui/modele.py:1033
+#: gui/modele.py:1098
 msgid "démarrage du service"
 msgstr "avvio del servizio"
 
-#: gui/modele.py:1033
+#: gui/modele.py:1098
 msgid "redémarrage complet de Tor et du VPN"
 msgstr "riavvio completo di Tor e della VPN"
 
-#: gui/modele.py:1034
+#: gui/modele.py:1099
 msgid "perte de connectivité, relance du VPN"
 msgstr "connettività persa, riavvio della VPN"
 
-#: gui/modele.py:1035
+#: gui/modele.py:1100
 msgid "circuit Tor trop lent, nouveau tirage"
 msgstr "circuito Tor troppo lento, se ne sceglie un altro"
 
-#: gui/modele.py:1035
+#: gui/modele.py:1100
 msgid "connexion VPN interrompue"
 msgstr "connessione VPN interrotta"
 
-#: gui/modele.py:1036
+#: gui/modele.py:1101
 msgid "identifiants refusés, compte suivant"
 msgstr "credenziali rifiutate, account successivo"
 
-#: gui/modele.py:1037
+#: gui/modele.py:1102
 msgid "aucune poignée de main, nouvel essai"
 msgstr "nessun handshake, nuovo tentativo"
 
-#: gui/modele.py:1038
+#: gui/modele.py:1103
 msgid "aucune poignée de main, .conf suivant"
 msgstr "nessun handshake, .conf successivo"
 
-#: gui/modele.py:1038
+#: gui/modele.py:1104
+msgid "aucune poignée de main, serveur suivant"
+msgstr "nessun handshake, server successivo"
+
+#: gui/modele.py:1104
 msgid "fichier .conf refusé"
 msgstr "file .conf rifiutato"
 
-#: gui/modele.py:1039
+#: gui/modele.py:1105
 msgid "interface tunnel impossible à créer"
 msgstr "impossibile creare l'interfaccia del tunnel"
 
-#: gui/modele.py:1039
+#: gui/modele.py:1105
 msgid "tunnel impossible à monter"
 msgstr "impossibile attivare il tunnel"
 
@@ -354,221 +358,245 @@ msgstr "Solo WireGuard"
 msgid "OpenVPN seulement"
 msgstr "Solo OpenVPN"
 
-#: gui/modele.py:302
+#: gui/modele.py:361
 msgid "Donnez un nom au fournisseur (par exemple celui de votre VPN)."
 msgstr "Dai un nome al provider (ad esempio quello della tua VPN)."
 
-#: gui/modele.py:304 gui/modele.py:159
+#: gui/modele.py:363 gui/modele.py:159
 msgid "Le nom ne peut contenir ni « / » ni « \\ »."
 msgstr "Il nome non può contenere né «/» né «\\»."
 
-#: gui/modele.py:339
+#: gui/modele.py:398
 msgid "Les lignes retirées restent dans le fichier, en commentaire."
 msgstr "Le righe rimosse restano nel file come commenti."
 
-#: gui/modele.py:513
+#: gui/modele.py:574
 msgid "aucun compte"
 msgstr "nessun account"
 
-#: gui/modele.py:1085
+#: gui/modele.py:1151
 msgid "Connexion au VPN…"
 msgstr "Connessione alla VPN…"
 
-#: gui/modele.py:1086
+#: gui/modele.py:1152
 msgid "À travers Tor, en général en moins de 30 secondes."
 msgstr "Attraverso Tor, di solito in meno di 30 secondi."
 
-#: gui/modele.py:1169
+#: gui/modele.py:1238
 msgid "Depuis le démarrage"
 msgstr "Dall'avvio"
 
-#: gui/modele.py:1180
+#: gui/modele.py:1249
 msgid "Mesuré à la connexion"
 msgstr "Misurato alla connessione"
 
-#: gui/modele.py:1212
+#: gui/modele.py:1281
 msgid "Connecté : votre trafic passe par Tor, puis par le VPN."
 msgstr "Connesso: il tuo traffico passa da Tor e poi dalla VPN."
 
-#: gui/modele.py:1232
+#: gui/modele.py:1301
 msgid "Connexion au VPN à travers Tor…"
 msgstr "Connessione alla VPN attraverso Tor…"
 
-#: gui/modele.py:1255
+#: gui/modele.py:1324
 msgid "Service démarré"
 msgstr "Servizio avviato"
 
-#: gui/modele.py:1256
+#: gui/modele.py:1325
 msgid "Service arrêté"
 msgstr "Servizio arrestato"
 
-#: gui/modele.py:1257 gui/modele.py:1071
+#: gui/modele.py:1326 gui/modele.py:1137
 msgid "Connecté"
 msgstr "Connesso"
 
-#: gui/modele.py:1259
+#: gui/modele.py:1328
 msgid "Circuit mesuré : {debit}"
 msgstr "Circuito misurato: {debit}"
 
-#: gui/modele.py:1261
+#: gui/modele.py:1330
 msgid "Circuit trop lent ({debit}) : nouveau tirage"
 msgstr "Circuito troppo lento ({debit}): se ne sceglie un altro"
 
-#: gui/modele.py:1263
+#: gui/modele.py:1332
 msgid "Circuit lent conservé ({debit})"
 msgstr "Circuito lento mantenuto ({debit})"
 
-#: gui/modele.py:1265
+#: gui/modele.py:1334
 msgid "Connexion perdue : relance du VPN"
 msgstr "Connessione persa: riavvio della VPN"
 
-#: gui/modele.py:1267
+#: gui/modele.py:1336
 msgid "Connexion perdue : redémarrage complet"
 msgstr "Connessione persa: riavvio completo"
 
-#: gui/modele.py:1269
+#: gui/modele.py:1338
 msgid "Compte {n} refusé par le fournisseur"
 msgstr "Account {n} rifiutato dal provider"
 
-#: gui/modele.py:1271
+#: gui/modele.py:1340
 msgid "Fichier WireGuard {n} : aucune réponse du serveur"
 msgstr "File WireGuard {n}: nessuna risposta dal server"
 
-#: gui/modele.py:1272
+#: gui/modele.py:1342
+msgid "Serveur WireGuard {n} : aucune réponse"
+msgstr "Server WireGuard {n}: nessuna risposta"
+
+#: gui/modele.py:1344
+msgid "Session IVPN ouverte (compte {n})"
+msgstr "Sessione IVPN aperta (account {n})"
+
+#: gui/modele.py:1345
+msgid "Clé WireGuard renouvelée"
+msgstr "Chiave WireGuard rinnovata"
+
+#: gui/modele.py:1347
+msgid "Session IVPN fermée : nouvel enregistrement"
+msgstr "Sessione IVPN chiusa: nuova registrazione"
+
+#: gui/modele.py:1348
+msgid "IVPN : tous les comptes sont pleins"
+msgstr "IVPN: tutti gli account sono pieni"
+
+#: gui/modele.py:1349
 msgid "Bascule vers le fournisseur suivant"
 msgstr "Passaggio al provider successivo"
 
-#: gui/modele.py:1274
+#: gui/modele.py:1351
 msgid "Bascule vers {vers}"
 msgstr "Passaggio a {vers}"
 
-#: gui/modele.py:276
+#: gui/modele.py:335
 msgid "Transports : wireguard, openvpn, ou les deux dans l'ordre voulu."
 msgstr "Trasporti: wireguard, openvpn o entrambi nell'ordine voluto."
 
-#: gui/modele.py:330
+#: gui/modele.py:389
 msgid "Modifications apportées :"
 msgstr "Modifiche apportate:"
 
-#: gui/modele.py:491
+#: gui/modele.py:550
 msgid "Entrée illisible"
 msgstr "Voce illeggibile"
 
-#: gui/modele.py:491
+#: gui/modele.py:550
 msgid "aucun fichier WireGuard"
 msgstr "nessun file WireGuard"
 
-#: gui/modele.py:494
+#: gui/modele.py:553
 msgid "chemin refusé"
 msgstr "percorso rifiutato"
 
-#: gui/modele.py:797
+#: gui/modele.py:570
+msgid "WireGuard géré"
+msgstr "WireGuard gestito"
+
+#: gui/modele.py:858
 msgid "Transports : valeur illisible, remplacée par « wireguard, openvpn »"
 msgstr "Trasporti: valore illeggibile, sostituito da «wireguard, openvpn»"
 
-#: gui/modele.py:1054 gui/modele.py:1133 gui/page_fournisseurs.py:25
+#: gui/modele.py:1120 gui/modele.py:1202 gui/page_fournisseurs.py:26
 msgid "Aucun fournisseur"
 msgstr "Nessun provider"
 
-#: gui/modele.py:1055
+#: gui/modele.py:1121
 msgid "Ajoutez votre fournisseur VPN pour commencer : l'assistant vous guide."
 msgstr "Aggiungi il tuo provider VPN per iniziare: la procedura guidata ti accompagna."
 
-#: gui/modele.py:1059
+#: gui/modele.py:1125
 msgid "Arrêté sur une erreur"
 msgstr "Arrestato per un errore"
 
-#: gui/modele.py:1060
+#: gui/modele.py:1126
 msgid "Le détail est dans le journal. Vous pouvez relancer la connexion."
 msgstr "I dettagli sono nel registro. Puoi riavviare la connessione."
 
-#: gui/modele.py:1064
+#: gui/modele.py:1130
 msgid "Démarrage…"
 msgstr "Avvio…"
 
-#: gui/modele.py:1065
+#: gui/modele.py:1131
 msgid "Le service démarre."
 msgstr "Il servizio si sta avviando."
 
-#: gui/modele.py:1067
+#: gui/modele.py:1133
 msgid "Déconnecté"
 msgstr "Disconnesso"
 
-#: gui/modele.py:1068
+#: gui/modele.py:1134
 msgid "Votre trafic ne passe pas par Katakomba."
 msgstr "Il tuo traffico non passa da Katakomba."
 
-#: gui/modele.py:1072
+#: gui/modele.py:1138
 msgid "Tout le trafic de cet ordinateur passe par le VPN, à travers Tor."
 msgstr "Tutto il traffico di questo computer passa dalla VPN, attraverso Tor."
 
-#: gui/modele.py:1077 gui/modele.py:1128
+#: gui/modele.py:1143 gui/modele.py:1197
 msgid "Reconnexion…"
 msgstr "Riconnessione…"
 
-#: gui/modele.py:1083
+#: gui/modele.py:1149
 msgid "Connexion au réseau Tor…"
 msgstr "Connessione alla rete Tor…"
 
-#: gui/modele.py:1084
+#: gui/modele.py:1150
 msgid "1 à 3 minutes la première fois."
 msgstr "Da 1 a 3 minuti la prima volta."
 
-#: gui/modele.py:1101
+#: gui/modele.py:1167
 msgid "Trafic redirigé"
 msgstr "Traffico reindirizzato"
 
-#: gui/modele.py:1103
+#: gui/modele.py:1169
 msgid "Trafic direct"
 msgstr "Traffico diretto"
 
-#: gui/modele.py:1140
+#: gui/modele.py:1209
 msgid "Via le VPN"
 msgstr "Tramite la VPN"
 
-#: gui/modele.py:1147
+#: gui/modele.py:1216
 msgid "Cet ordinateur"
 msgstr "Questo computer"
 
-#: gui/modele.py:1149
+#: gui/modele.py:1218
 msgid "Réseau Tor"
 msgstr "Rete Tor"
 
-#: gui/modele.py:1155
+#: gui/modele.py:1224
 msgid "Internet"
 msgstr "Internet"
 
-#: gui/modele.py:1174
+#: gui/modele.py:1243
 msgid "relance légère"
 msgid_plural "relances légères"
 msgstr[0] "riavvio leggero"
 msgstr[1] "riavvii leggeri"
 
-#: gui/modele.py:1182
+#: gui/modele.py:1251
 msgid "Selon les réglages"
 msgstr "Secondo le impostazioni"
 
-#: gui/modele.py:1188
+#: gui/modele.py:1257
 msgid "Connecté depuis"
 msgstr "Connesso da"
 
-#: gui/modele.py:1191
+#: gui/modele.py:1260
 msgid "Circuit Tor"
 msgstr "Circuito Tor"
 
-#: gui/modele.py:1193
+#: gui/modele.py:1262
 msgid "Reprises"
 msgstr "Ripristini"
 
-#: gui/modele.py:1195 katakomba-cli.sh:618 katakomba-cli.sh:620 katakomba-cli.sh:622
+#: gui/modele.py:1264 katakomba-cli.sh:626 katakomba-cli.sh:628 katakomba-cli.sh:630
 msgid "IPv6"
 msgstr "IPv6"
 
-#: gui/modele.py:1206
+#: gui/modele.py:1275
 msgid "Le service s'est arrêté sur une erreur. Le détail est visible dans la page Journal."
 msgstr "Il servizio si è arrestato per un errore. I dettagli sono nella pagina Registro."
 
-#: gui/modele.py:1230
+#: gui/modele.py:1299
 msgid "Connexion au réseau Tor… (1 à 3 minutes la première fois)"
 msgstr "Connessione alla rete Tor… (da 1 a 3 minuti la prima volta)"
 
@@ -584,91 +612,91 @@ msgstr "{valeur} KB/s"
 msgid "{n} s"
 msgstr "{n} s"
 
-#: gui/modele.py:273
+#: gui/modele.py:332
 msgid "Qualité du circuit : débit minimum entier ≥ 0, essais entre 1 et 10."
 msgstr "Qualità del circuito: velocità minima intera ≥ 0, tentativi tra 1 e 10."
 
-#: gui/modele.py:306
+#: gui/modele.py:365
 msgid "Un fournisseur « {nom} » existe déjà."
 msgstr "Esiste già un provider «{nom}»."
 
-#: gui/modele.py:327
+#: gui/modele.py:386
 msgid "{n} serveur retenu."
 msgid_plural "{n} serveurs retenus."
 msgstr[0] "{n} server mantenuto."
 msgstr[1] "{n} server mantenuti."
 
-#: gui/modele.py:438
+#: gui/modele.py:497
 msgid "{n} fichier prêt :"
 msgid_plural "{n} fichiers prêts :"
 msgstr[0] "{n} file pronto:"
 msgstr[1] "{n} file pronti:"
 
-#: gui/modele.py:498
+#: gui/modele.py:557
 msgid "fichier introuvable ou illisible"
 msgstr "file mancante o illeggibile"
 
-#: gui/modele.py:753 console.py:463
+#: gui/modele.py:814 console.py:516
 msgid "Ce fichier n'est pas une sauvegarde Katakomba."
 msgstr "Questo file non è un backup di Katakomba."
 
-#: gui/modele.py:756
+#: gui/modele.py:817
 msgid "config.json ne contient pas un objet JSON"
 msgstr "config.json non contiene un oggetto JSON"
 
-#: gui/modele.py:1020
+#: gui/modele.py:1085
 msgid "Veille sur la connexion et prévient en cas de coupure"
 msgstr "Sorveglia la connessione e avvisa se cade"
 
-#: gui/modele.py:1109
+#: gui/modele.py:1175
 msgid "Circuit établi"
 msgstr "Circuito stabilito"
 
-#: gui/modele.py:1142
+#: gui/modele.py:1211
 msgid "En attente du tunnel"
 msgstr "In attesa del tunnel"
 
-#: gui/modele.py:1144
+#: gui/modele.py:1213
 msgid "Sans Katakomba"
 msgstr "Senza Katakomba"
 
-#: gui/modele.py:1153
+#: gui/modele.py:1222
 msgid "VPN"
 msgstr "VPN"
 
-#: gui/modele.py:1184
+#: gui/modele.py:1253
 msgid "Bloqué"
 msgstr "Bloccato"
 
-#: gui/modele.py:1184
+#: gui/modele.py:1253
 msgid "Pas de fuite IPv6"
 msgstr "Nessuna fuga IPv6"
 
-#: gui/modele.py:1186
+#: gui/modele.py:1255
 msgid "Autorisé"
 msgstr "Consentito"
 
-#: gui/modele.py:1186
+#: gui/modele.py:1255
 msgid "Peut contourner le tunnel"
 msgstr "Può aggirare il tunnel"
 
-#: gui/modele.py:1190
+#: gui/modele.py:1259
 msgid "Tunnel actif"
 msgstr "Tunnel attivo"
 
-#: gui/modele.py:1190
+#: gui/modele.py:1259
 msgid "Pas de tunnel"
 msgstr "Nessun tunnel"
 
-#: gui/modele.py:1216
+#: gui/modele.py:1285
 msgid "Mesure du débit en cours…"
 msgstr "Misurazione della velocità…"
 
-#: gui/modele.py:1221
+#: gui/modele.py:1290
 msgid "Le serveur n'a pas répondu (aucune poignée de main WireGuard) : clé révoquée, serveur arrêté ou mode TCP non proposé. Essayez un autre fichier .conf."
 msgstr "Il server non ha risposto (nessun handshake WireGuard): chiave revocata, server spento o modalità TCP non offerta. Prova un altro file .conf."
 
-#: gui/modele.py:1225
+#: gui/modele.py:1294
 msgid "Le fournisseur a refusé l'identifiant ou le mot de passe. Vérifiez-les : ce sont les identifiants OpenVPN, souvent différents de ceux de votre compte sur le site du fournisseur."
 msgstr "Il provider ha rifiutato il nome utente o la password. Controllali: sono le credenziali OpenVPN, spesso diverse da quelle del tuo account sul sito del provider."
 
@@ -676,61 +704,55 @@ msgstr "Il provider ha rifiutato il nome utente o la password. Controllali: sono
 msgid "{n} min"
 msgstr "{n} min"
 
-#: gui/modele.py:151 gui/modele.py:768 gui/modele.py:772
+#: gui/modele.py:151 gui/modele.py:829 gui/modele.py:833
 msgid "{fichier} : trop volumineux"
 msgstr "{fichier}: troppo grande"
 
-#: gui/modele.py:262 gui/modele.py:794 gui/page_exclusions.py:82
+#: gui/modele.py:321 gui/modele.py:855 gui/page_exclusions.py:82
 msgid "Serveur DNS local : {erreur}"
 msgstr "Server DNS locale: {erreur}"
 
-#: gui/modele.py:279
+#: gui/modele.py:338
 msgid "Partage LAN : {erreur}"
 msgstr "Condivisione LAN: {erreur}"
 
-#: gui/modele.py:508
+#: gui/modele.py:567
 msgid "{n} compte OpenVPN"
 msgid_plural "{n} comptes OpenVPN"
 msgstr[0] "{n} account OpenVPN"
 msgstr[1] "{n} account OpenVPN"
 
-#: gui/modele.py:511
-msgid "{n} fichier WireGuard"
-msgid_plural "{n} fichiers WireGuard"
-msgstr[0] "{n} file WireGuard"
-msgstr[1] "{n} file WireGuard"
-
-#: gui/modele.py:810
+#: gui/modele.py:875
 msgid "Partage LAN : interface « {nom} » refusée"
 msgstr "Condivisione LAN: interfaccia «{nom}» rifiutata"
 
-#: gui/modele.py:1078
+#: gui/modele.py:1144
 msgid "{raison} — depuis {duree}."
 msgstr "{raison} — da {duree}."
 
-#: gui/modele.py:1113 gui/modele.py:1129 gui/page_connexion.py:545
+#: gui/modele.py:1179 gui/modele.py:1198 gui/page_connexion.py:545
 msgid "Connexion…"
 msgstr "Connessione…"
 
-#: gui/modele.py:1115 gui/modele.py:1135
+#: gui/modele.py:1181 gui/modele.py:1204
 msgid "Arrêté"
 msgstr "Arrestato"
 
-#: gui/modele.py:1117 gui/modele.py:1137
+#: gui/modele.py:1183 gui/modele.py:1206
 msgid "Inactif"
 msgstr "Inattivo"
 
-#: gui/modele.py:1131
+#: gui/modele.py:1200
 msgid "En attente de Tor"
 msgstr "In attesa di Tor"
 
-#: gui/modele.py:1171
+#: gui/modele.py:1240
 msgid "dont {n} redémarrage complet"
 msgid_plural "dont {n} redémarrages complets"
 msgstr[0] "di cui {n} riavvio completo"
 msgstr[1] "di cui {n} riavvii completi"
 
-#: gui/modele.py:1176
+#: gui/modele.py:1245
 msgid "{debit} · il y a {duree}"
 msgstr "{debit} · {duree} fa"
 
@@ -758,69 +780,87 @@ msgstr "{adresse} non appartiene a {reseau}."
 msgid "« {valeur} » n'est pas une adresse IP."
 msgstr "«{valeur}» non è un indirizzo IP."
 
-#: gui/modele.py:334
+#: gui/modele.py:301
+msgid "« {code} » n'est pas un code pays à deux lettres (ex. NL, CH)."
+msgstr "«{code}» non è un codice paese di due lettere (es. NL, CH)."
+
+#: gui/modele.py:393
 msgid "… et {n} autre, détaillée en tête du fichier."
 msgid_plural "… et {n} autres, détaillées en tête du fichier."
 msgstr[0] "… e {n} altra, descritta in testa al file."
 msgstr[1] "… e {n} altre, descritte in testa al file."
 
-#: gui/modele.py:414
+#: gui/modele.py:473
 msgid "{fichier} : un fichier WireGuard .conf est attendu"
 msgstr "{fichier}: è atteso un file .conf di WireGuard"
 
-#: gui/modele.py:425 gui/modele.py:841 gui/modele.py:876 gui/modele.py:420 gui/modele.py:848
+#: gui/modele.py:484 gui/modele.py:906 gui/modele.py:941 gui/modele.py:479 gui/modele.py:913
 msgid "{fichier} : {raison}"
 msgstr "{fichier}: {raison}"
 
-#: gui/modele.py:805
+#: gui/modele.py:572
+msgid "{n} fichier WireGuard"
+msgid_plural "{n} fichiers WireGuard"
+msgstr[0] "{n} file WireGuard"
+msgstr[1] "{n} file WireGuard"
+
+#: gui/modele.py:864
+msgid "{fournisseur} : réglage du WireGuard géré illisible, retiré"
+msgstr "{fournisseur}: impostazione di WireGuard gestito illeggibile, rimossa"
+
+#: gui/modele.py:870
 msgid "{fournisseur} : ordre des transports illisible, réglage général utilisé"
 msgstr "{fournisseur}: ordine dei trasporti illeggibile, usata l'impostazione generale"
 
-#: gui/modele.py:826
+#: gui/modele.py:891
 msgid "{fichier} : chemin refusé"
 msgstr "{fichier}: percorso rifiutato"
 
-#: gui/modele.py:856
+#: gui/modele.py:921
 msgid "{fournisseur} : chemin .ovpn refusé (hors de providers/)"
 msgstr "{fournisseur}: percorso .ovpn rifiutato (fuori da providers/)"
 
-#: gui/modele.py:864
+#: gui/modele.py:929
 msgid "{fournisseur} : fichier(s) WireGuard au chemin refusé (hors de providers/)"
 msgstr "{fournisseur}: file WireGuard con percorso rifiutato (fuori da providers/)"
 
-#: gui/modele.py:1107
+#: gui/modele.py:1173
 msgid "{n} relais d'entrée"
 msgid_plural "{n} relais d'entrée"
 msgstr[0] "{n} relay di ingresso"
 msgstr[1] "{n} relay di ingresso"
 
-#: gui/modele.py:1122
-msgid "WireGuard · fichier {n}"
-msgstr "WireGuard · file {n}"
+#: gui/modele.py:1189
+msgid "WireGuard géré · compte {n}"
+msgstr "WireGuard gestito · account {n}"
 
-#: gui/modele.py:1339 gui/page_diagnostic.py:107
+#: gui/modele.py:1417 gui/page_diagnostic.py:107
 msgid "Diagnostic impossible : {erreur}"
 msgstr "Diagnostica impossibile: {erreur}"
 
-#: gui/modele.py:843
+#: gui/modele.py:908
 msgid "trop volumineux"
 msgstr "troppo grande"
 
-#: gui/modele.py:1124
-msgid "OpenVPN · compte {n}"
-msgstr "OpenVPN · account {n}"
+#: gui/modele.py:1191
+msgid "WireGuard · fichier {n}"
+msgstr "WireGuard · file {n}"
 
-#: gui/modele.py:1126
-msgid "Compte {n}"
-msgstr "Account {n}"
-
-#: gui/modele.py:1214
+#: gui/modele.py:1283
 msgid "Débit mesuré : {debit}."
 msgstr "Velocità misurata: {debit}."
 
-#: gui/modele.py:1112
+#: gui/modele.py:1178
 msgid "Démarrage : {n} %"
 msgstr "Avvio: {n}%"
+
+#: gui/modele.py:1193
+msgid "OpenVPN · compte {n}"
+msgstr "OpenVPN · account {n}"
+
+#: gui/modele.py:1195
+msgid "Compte {n}"
+msgstr "Account {n}"
 
 #: gui/outils.py:72
 msgid "Tous les fichiers"
@@ -834,7 +874,7 @@ msgstr "OK"
 msgid "Plus d'actions"
 msgstr "Altre azioni"
 
-#: gui/outils.py:55 gui/page_fournisseurs.py:263 gui/page_fournisseurs.py:212 gui/page_fournisseurs.py:285
+#: gui/outils.py:55 gui/page_fournisseurs.py:315 gui/page_fournisseurs.py:264 gui/page_fournisseurs.py:337
 msgid "Annuler"
 msgstr "Annulla"
 
@@ -946,7 +986,7 @@ msgstr[1] "Protetto, {n} punti da tenere d'occhio"
 msgid "Serveur DNS local enregistré"
 msgstr "Server DNS locale salvato"
 
-#: gui/page_exclusions.py:20 console.py:348
+#: gui/page_exclusions.py:20 console.py:401
 msgid "Serveur DNS local"
 msgstr "Server DNS locale"
 
@@ -982,197 +1022,221 @@ msgstr "Raggiunti direttamente tramite il gateway locale: stampante, NAS, altri 
 msgid "Ajouter une adresse ou un réseau (ex. 192.168.1.0/24)"
 msgstr "Aggiungi un indirizzo o una rete (es. 192.168.1.0/24)"
 
-#: gui/page_exclusions.py:68 gui/page_fournisseurs.py:192
+#: gui/page_exclusions.py:68 gui/page_fournisseurs.py:244
 msgid "Retirer"
 msgstr "Rimuovi"
 
-#: gui/page_fournisseurs.py:174
+#: gui/page_fournisseurs.py:226
 msgid "Le fournisseur et tous ses comptes seront retirés de Katakomba. Ses fichiers de configuration restent sur le disque."
 msgstr "Il provider e tutti i suoi account saranno rimossi da Katakomba. I suoi file di configurazione restano sul disco."
 
-#: gui/page_fournisseurs.py:176 gui/page_fournisseurs.py:240
+#: gui/page_fournisseurs.py:228 gui/page_fournisseurs.py:292
 msgid "Supprimer"
 msgstr "Elimina"
 
-#: gui/page_fournisseurs.py:189
+#: gui/page_fournisseurs.py:241
 msgid "Retirer ce fichier ?"
 msgstr "Rimuovere questo file?"
 
-#: gui/page_fournisseurs.py:197
+#: gui/page_fournisseurs.py:249
 msgid "Configuration WireGuard"
 msgstr "Configurazione WireGuard"
 
-#: gui/page_fournisseurs.py:238
+#: gui/page_fournisseurs.py:290
 msgid "Supprimer ce compte ?"
 msgstr "Eliminare questo account?"
 
-#: gui/page_fournisseurs.py:260
+#: gui/page_fournisseurs.py:312
 msgid "Ajouter un compte"
 msgstr "Aggiungi un account"
 
-#: gui/page_fournisseurs.py:261
+#: gui/page_fournisseurs.py:313
 msgid "Les identifiants OpenVPN de ce fournisseur, souvent différents de ceux de votre compte sur son site."
 msgstr "Le credenziali OpenVPN di questo provider, spesso diverse da quelle del tuo account sul suo sito."
 
-#: gui/page_fournisseurs.py:269
+#: gui/page_fournisseurs.py:321
 msgid "Configuration OpenVPN"
 msgstr "Configurazione OpenVPN"
 
-#: gui/page_fournisseurs.py:26
+#: gui/page_fournisseurs.py:27
 msgid "Ajoutez votre fournisseur VPN : il suffit des fichiers de configuration téléchargés sur son site (WireGuard .conf ou OpenVPN .ovpn)."
 msgstr "Aggiungi il tuo provider VPN: bastano i file di configurazione scaricati dal suo sito (WireGuard .conf o OpenVPN .ovpn)."
 
-#: gui/page_fournisseurs.py:29
+#: gui/page_fournisseurs.py:30
 msgid "Ajouter un fournisseur"
 msgstr "Aggiungi un provider"
 
-#: gui/page_fournisseurs.py:39
+#: gui/page_fournisseurs.py:40
 msgid "Le premier est utilisé en priorité. En cas d'échec, Katakomba passe au compte suivant, puis à l'autre transport (WireGuard ou OpenVPN), puis au fournisseur suivant."
 msgstr "Il primo viene usato con priorità. In caso di errore, Katakomba passa all'account successivo, poi all'altro trasporto (WireGuard o OpenVPN), poi al provider successivo."
 
-#: gui/page_fournisseurs.py:73
+#: gui/page_fournisseurs.py:74
 msgid "Prioritaire"
 msgstr "Prioritario"
 
-#: gui/page_fournisseurs.py:76
+#: gui/page_fournisseurs.py:77
 msgid "aucun fichier OpenVPN"
 msgstr "nessun file OpenVPN"
 
-#: gui/page_fournisseurs.py:108
-msgid "Ajouter des fichiers WireGuard (.conf)…"
-msgstr "Aggiungi file WireGuard (.conf)…"
-
-#: gui/page_fournisseurs.py:114
+#: gui/page_fournisseurs.py:121
 msgid "Fichier de configuration OpenVPN"
 msgstr "File di configurazione OpenVPN"
 
-#: gui/page_fournisseurs.py:135
+#: gui/page_fournisseurs.py:142
 msgid "Ajouter un compte OpenVPN"
 msgstr "Aggiungi un account OpenVPN"
 
-#: gui/page_fournisseurs.py:145 gui/page_reglages.py:35
+#: gui/page_fournisseurs.py:152 gui/page_reglages.py:35
 msgid "Transport"
 msgstr "Trasporto"
 
-#: gui/page_fournisseurs.py:146
+#: gui/page_fournisseurs.py:153
 msgid "Pour ce fournisseur seulement."
 msgstr "Solo per questo provider."
 
-#: gui/page_fournisseurs.py:258
+#: gui/page_fournisseurs.py:168
+msgid "WireGuard géré par Katakomba"
+msgstr "WireGuard gestito da Katakomba"
+
+#: gui/page_fournisseurs.py:169
+msgid "Katakomba enregistre lui-même une clé WireGuard sur l'un de ces comptes, par Tor : aucun fichier à créer. Une place d'appareil par PC, rendue à la désinstallation."
+msgstr "Katakomba registra da sé una chiave WireGuard su uno di questi account, tramite Tor: nessun file da creare. Un posto dispositivo per PC, liberato alla disinstallazione."
+
+#: gui/page_fournisseurs.py:180
+msgid "Pays des serveurs (ex. NL, CH ; vide : tous)"
+msgstr "Paesi dei server (es. NL, CH; vuoto: tutti)"
+
+#: gui/page_fournisseurs.py:185
+msgid "Comptes réservés à Katakomba"
+msgstr "Account riservati a Katakomba"
+
+#: gui/page_fournisseurs.py:186
+msgid "Si tous les comptes sont pleins, Katakomba peut en remettre un à zéro : ses autres appareils (téléphone, autre ordinateur) sont déconnectés. À activer seulement si ces comptes ne servent qu'à des PC Katakomba."
+msgstr "Se tutti gli account sono pieni, Katakomba può azzerarne uno: i suoi altri dispositivi (telefono, altro computer) vengono disconnessi. Attivare solo se questi account servono esclusivamente a PC Katakomba."
+
+#: gui/page_fournisseurs.py:204
+msgid "Pays des serveurs"
+msgstr "Paesi dei server"
+
+#: gui/page_fournisseurs.py:310
 msgid "Compte ajouté"
 msgstr "Account aggiunto"
 
-#: gui/page_fournisseurs.py:45 gui/page_fournisseurs.py:263
+#: gui/page_fournisseurs.py:46 gui/page_fournisseurs.py:315
 msgid "Ajouter"
 msgstr "Aggiungi"
 
-#: gui/page_fournisseurs.py:83
+#: gui/page_fournisseurs.py:84
 msgid "Fichier ou compte manquant"
 msgstr "File o account mancante"
 
 #: gui/page_fournisseurs.py:115
+msgid "Ajouter des fichiers WireGuard (.conf)…"
+msgstr "Aggiungi file WireGuard (.conf)…"
+
+#: gui/page_fournisseurs.py:122
 msgid "Aucun — choisissez celui du fournisseur"
 msgstr "Nessuno — scegli quello del provider"
 
-#: gui/page_fournisseurs.py:117
+#: gui/page_fournisseurs.py:124
 msgid "Remplacer…"
 msgstr "Sostituisci…"
 
-#: gui/page_fournisseurs.py:173
+#: gui/page_fournisseurs.py:225
 msgid "Supprimer « {nom} » ?"
 msgstr "Eliminare «{nom}»?"
 
-#: gui/page_fournisseurs.py:190
+#: gui/page_fournisseurs.py:242
 msgid "« {nom} » sera retiré de ce fournisseur ; il reste sur le disque."
 msgstr "«{nom}» sarà rimosso da questo provider; resta sul disco."
 
-#: gui/page_fournisseurs.py:196
+#: gui/page_fournisseurs.py:248
 msgid "Fichiers WireGuard de « {nom} »"
 msgstr "File WireGuard di «{nom}»"
 
-#: gui/page_fournisseurs.py:203 gui/page_fournisseurs.py:275
+#: gui/page_fournisseurs.py:255 gui/page_fournisseurs.py:327
 msgid "Lecture impossible"
 msgstr "Impossibile leggere"
 
-#: gui/page_fournisseurs.py:207 gui/page_fournisseurs.py:279
+#: gui/page_fournisseurs.py:259 gui/page_fournisseurs.py:331
 msgid "Ce fichier ne peut pas être utilisé"
 msgstr "Questo file non può essere usato"
 
-#: gui/page_fournisseurs.py:211
+#: gui/page_fournisseurs.py:263
 msgid "Fichiers lus"
 msgstr "File letti"
 
-#: gui/page_fournisseurs.py:225 gui/page_fournisseurs.py:228 gui/page_fournisseurs.py:297
+#: gui/page_fournisseurs.py:277 gui/page_fournisseurs.py:280 gui/page_fournisseurs.py:349
 msgid "Écriture impossible"
 msgstr "Impossibile scrivere"
 
-#: gui/page_fournisseurs.py:232
+#: gui/page_fournisseurs.py:284
 msgid "{n} fichier WireGuard ajouté"
 msgid_plural "{n} fichiers WireGuard ajoutés"
 msgstr[0] "{n} file WireGuard aggiunto"
 msgstr[1] "{n} file WireGuard aggiunti"
 
-#: gui/page_fournisseurs.py:239 console.py:316
+#: gui/page_fournisseurs.py:291 console.py:369
 msgid "Le compte « {nom} » sera retiré de ce fournisseur."
 msgstr "L'account «{nom}» sarà rimosso da questo provider."
 
-#: gui/page_fournisseurs.py:268
+#: gui/page_fournisseurs.py:320
 msgid "Fichiers du fournisseur « {nom} »"
 msgstr "File del provider «{nom}»"
 
-#: gui/page_fournisseurs.py:283
+#: gui/page_fournisseurs.py:335
 msgid "Adaptation du fichier"
 msgstr "Adattamento del file"
 
-#: gui/page_fournisseurs.py:301
+#: gui/page_fournisseurs.py:353
 msgid "Configuration de « {nom} » enregistrée"
 msgstr "Configurazione di «{nom}» salvata"
 
-#: gui/page_fournisseurs.py:73
+#: gui/page_fournisseurs.py:74
 msgid "Priorité {n}"
 msgstr "Priorità {n}"
 
-#: gui/page_fournisseurs.py:88
+#: gui/page_fournisseurs.py:89
 msgid "Monter en priorité"
 msgstr "Sposta in alto"
 
-#: gui/page_fournisseurs.py:89
+#: gui/page_fournisseurs.py:90
 msgid "Descendre en priorité"
 msgstr "Sposta in basso"
 
-#: gui/page_fournisseurs.py:90
+#: gui/page_fournisseurs.py:91
 msgid "Supprimer le fournisseur…"
 msgstr "Elimina il provider…"
 
-#: gui/page_fournisseurs.py:98
+#: gui/page_fournisseurs.py:104
 msgid "WireGuard {n} · {detail}"
 msgstr "WireGuard {n} · {detail}"
 
-#: gui/page_fournisseurs.py:102 gui/page_fournisseurs.py:128
+#: gui/page_fournisseurs.py:108 gui/page_fournisseurs.py:135
 msgid "Essayer plus tôt"
 msgstr "Prova prima"
 
-#: gui/page_fournisseurs.py:103 gui/page_fournisseurs.py:129
+#: gui/page_fournisseurs.py:109 gui/page_fournisseurs.py:136
 msgid "Essayer plus tard"
 msgstr "Prova dopo"
 
-#: gui/page_fournisseurs.py:105
+#: gui/page_fournisseurs.py:111
 msgid "Retirer ce fichier…"
 msgstr "Rimuovi questo file…"
 
-#: gui/page_fournisseurs.py:125
+#: gui/page_fournisseurs.py:132
 msgid "Compte {n} · mot de passe enregistré"
 msgstr "Account {n} · password salvata"
 
-#: gui/page_fournisseurs.py:131
+#: gui/page_fournisseurs.py:138
 msgid "Supprimer le compte…"
 msgstr "Elimina l'account…"
 
-#: gui/page_fournisseurs.py:147
+#: gui/page_fournisseurs.py:154
 msgid "Comme le réglage général"
 msgstr "Come l'impostazione generale"
 
-#: gui/page_fournisseurs.py:212 gui/page_fournisseurs.py:285
+#: gui/page_fournisseurs.py:264 gui/page_fournisseurs.py:337
 msgid "Enregistrer"
 msgstr "Salva"
 
@@ -1760,15 +1824,19 @@ msgstr "Installa: {commande}"
 msgid "Interface indisponible ({erreur})."
 msgstr "Interfaccia non disponibile ({erreur})."
 
-#: console.py:403
+#: console.py:243
+msgid "katakomba provider wg-auto <nom> on|off | countries <NL,CH|all> | reserved on|off"
+msgstr "katakomba provider wg-auto <nome> on|off | countries <NL,CH|all> | reserved on|off"
+
+#: console.py:456
 msgid "katakomba set <réglage> <valeur>"
 msgstr "katakomba set <impostazione> <valore>"
 
-#: console.py:515
+#: console.py:571
 msgid "Usage : katakomba <commande>"
 msgstr "Uso: katakomba <comando>"
 
-#: console.py:520
+#: console.py:576
 msgid "Équivalents français : fournisseur, compte, exclusion, reglage, sauvegarde ; ajouter, retirer, liste, priorite, exporter, restaurer ; confirmer."
 msgstr "Equivalenti francesi: fournisseur, compte, exclusion, reglage, sauvegarde; ajouter, retirer, liste, priorite, exporter, restaurer; confirmer."
 
@@ -1808,43 +1876,43 @@ msgstr "katakomba provider priority <nome> <posizione>"
 msgid "katakomba provider transports <nom> <ordre|default>"
 msgstr "katakomba provider transports <nome> <ordine|default>"
 
-#: console.py:252
+#: console.py:305
 msgid "katakomba account list <fournisseur>"
 msgstr "katakomba account list <provider>"
 
-#: console.py:279
+#: console.py:332
 msgid "katakomba account add <fournisseur> [--stdin]"
 msgstr "katakomba account add <provider> [--stdin]"
 
-#: console.py:290
+#: console.py:343
 msgid "katakomba account remove <fournisseur> <numéro|wgN>"
 msgstr "katakomba account remove <provider> <numero|wgN>"
 
-#: console.py:384
+#: console.py:437
 msgid "Valeur attendue : wireguard,openvpn (défaut), openvpn,wireguard, wireguard ou openvpn."
 msgstr "Valore atteso: wireguard,openvpn (predefinito), openvpn,wireguard, wireguard o openvpn."
 
-#: console.py:433
+#: console.py:486
 msgid "Attention : pendant une reconnexion, le trafic peut sortir à découvert."
 msgstr "Attenzione: durante una riconnessione, il traffico può uscire senza protezione."
 
-#: console.py:454
+#: console.py:507
 msgid "Elle contient vos identifiants : gardez-la en lieu sûr."
 msgstr "Contiene le tue credenziali: conservalo in un luogo sicuro."
 
-#: console.py:481
+#: console.py:534
 msgid "Service (sudo) :"
 msgstr "Servizio (sudo):"
 
-#: console.py:489
+#: console.py:542
 msgid "Configuration (sudo, ou membre du groupe katakomba) :"
 msgstr "Configurazione (sudo, o membro del gruppo katakomba):"
 
-#: console.py:503
+#: console.py:559
 msgid "Surveillance :"
 msgstr "Monitoraggio:"
 
-#: console.py:508
+#: console.py:564
 msgid "Installation (sudo) :"
 msgstr "Installazione (sudo):"
 
@@ -1868,45 +1936,57 @@ msgstr "Nessun provider. Aggiungine uno: katakomba provider add <file.ovpn|file.
 msgid "Un seul type à la fois : des fichiers .conf (WireGuard) ou un .ovpn (OpenVPN). Ajoutez l'autre ensuite avec « katakomba account add »."
 msgstr "Un solo tipo alla volta: file .conf (WireGuard) o un .ovpn (OpenVPN). Aggiungi l'altro dopo con «katakomba account add»."
 
-#: console.py:233 console.py:320 console.py:472 console.py:374
+#: console.py:238 console.py:373 console.py:525 console.py:427
 msgid "Action inconnue : {action}"
 msgstr "Azione sconosciuta: {action}"
 
-#: console.py:335
+#: console.py:262
+msgid "Au prochain démarrage du tunnel, Katakomba ouvre une session sur l'un des comptes, par Tor."
+msgstr "Al prossimo avvio del tunnel, Katakomba apre una sessione su uno degli account, tramite Tor."
+
+#: console.py:275
+msgid "Pays des serveurs : tous"
+msgstr "Paesi dei server: tutti"
+
+#: console.py:283
+msgid "Si tous les comptes sont pleins, l'un d'eux sera remis à zéro : ses autres appareils seront déconnectés."
+msgstr "Se tutti gli account sono pieni, uno di essi verrà azzerato: i suoi altri dispositivi verranno disconnessi."
+
+#: console.py:286 console.py:136 console.py:246 console.py:162 console.py:324 console.py:604
+msgid "Usage : {usage}"
+msgstr "Uso: {usage}"
+
+#: console.py:388
 msgid "Valeur vide."
 msgstr "Valore vuoto."
 
-#: console.py:343
+#: console.py:396
 msgid "Réseaux exclus du tunnel"
 msgstr "Reti escluse dal tunnel"
 
-#: console.py:344
+#: console.py:397
 msgid "Domaines résolus localement"
 msgstr "Domini risolti localmente"
 
-#: console.py:352
+#: console.py:405
 msgid "katakomba exclude {action} <adresse|réseau|domaine>"
 msgstr "katakomba exclude {action} <indirizzo|rete|dominio>"
 
-#: console.py:363
+#: console.py:416
 msgid "Attention : ce trafic sort hors du tunnel, avec votre adresse réelle."
 msgstr "Attenzione: questo traffico esce fuori dal tunnel, con il tuo indirizzo reale."
 
-#: console.py:366
+#: console.py:419
 msgid "Les domaines exclus sont résolus par le serveur DNS local : réglez-le avec « katakomba set local-dns <adresse> »."
 msgstr "I domini esclusi sono risolti dal server DNS locale: impostalo con «katakomba set local-dns <indirizzo>»."
 
-#: console.py:412
+#: console.py:465
 msgid "Valeur attendue : on ou off."
 msgstr "Valore atteso: on o off."
 
-#: console.py:441
+#: console.py:494
 msgid "katakomba backup {action} <fichier.zip>"
 msgstr "katakomba backup {action} <file.zip>"
-
-#: console.py:136 console.py:162 console.py:271 console.py:548
-msgid "Usage : {usage}"
-msgstr "Uso: {usage}"
 
 #: console.py:188 console.py:176
 msgid "Fournisseur « {nom} » ajouté (priorité {rang})."
@@ -1924,121 +2004,145 @@ msgstr "«{nom}» passa alla priorità {rang}."
 msgid "Ce fournisseur ne sert pour l'instant qu'un transport : l'ordre ne vaudra qu'une fois l'autre ajouté, et un transport qu'il ne sert pas le fait sauter."
 msgstr "Questo provider serve per ora un solo trasporto: l'ordine varrà solo dopo aver aggiunto l'altro, e un trasporto che non serve lo fa saltare."
 
-#: console.py:284
+#: console.py:259
+msgid "WireGuard géré : {etat} pour « {nom} »."
+msgstr "WireGuard gestito: {etat} per «{nom}»."
+
+#: console.py:266
+msgid "Activez d'abord le WireGuard géré : katakomba provider wg-auto {nom} on"
+msgstr "Attiva prima WireGuard gestito: katakomba provider wg-auto {nom} on"
+
+#: console.py:280
+msgid "Comptes réservés à Katakomba : {etat}"
+msgstr "Account riservati a Katakomba: {etat}"
+
+#: console.py:337
 msgid "Compte « {nom} » ajouté à {fournisseur}."
 msgstr "Account «{nom}» aggiunto a {fournisseur}."
 
-#: console.py:361
+#: console.py:414
 msgid "« {valeur} » exclu du tunnel."
 msgstr "«{valeur}» escluso dal tunnel."
 
-#: console.py:406
+#: console.py:459
 msgid "Réglage inconnu : {nom}. Réglages : {liste}"
 msgstr "Impostazione sconosciuta: {nom}. Impostazioni: {liste}"
 
-#: console.py:453
+#: console.py:506
 msgid "Sauvegarde écrite : {fichier}"
 msgstr "Backup scritto: {fichier}"
 
-#: console.py:468
+#: console.py:521
 msgid "Sauvegarde restaurée : {n} fournisseur."
 msgid_plural "Sauvegarde restaurée : {n} fournisseurs."
 msgstr[0] "Backup ripristinato: {n} provider."
 msgstr[1] "Backup ripristinato: {n} provider."
 
-#: console.py:482
+#: console.py:535
 msgid "start [--essai [MIN]]"
 msgstr "start [--trial [MIN]]"
 
-#: console.py:483
+#: console.py:536
 msgid "Démarrer ; à l'essai : arrêt automatique sans « katakomba confirm » (5 min par défaut)"
 msgstr "Avviare; in prova: arresto automatico senza «katakomba confirm» (5 min predefiniti)"
 
-#: console.py:485
+#: console.py:538
 msgid "Garder le service démarré à l'essai"
 msgstr "Mantieni il servizio avviato in prova"
 
-#: console.py:486
+#: console.py:539
 msgid "Arrêter, redémarrer"
 msgstr "Arrestare, riavviare"
 
-#: console.py:487
+#: console.py:540
 msgid "Démarrage automatique au boot"
 msgstr "Avvio automatico all'accensione"
 
-#: console.py:490
+#: console.py:543
 msgid "provider list | add <fichier.ovpn|.zip|.conf…> [--name NOM] [--stdin]"
 msgstr "provider list | add <file.ovpn|.zip|.conf…> [--name NOME] [--stdin]"
 
-#: console.py:491
+#: console.py:544
 msgid "provider remove <nom> | priority <nom> <rang>"
 msgstr "provider remove <nome> | priority <nome> <posizione>"
 
-#: console.py:492
+#: console.py:545
 msgid "provider transports <nom> <ordre|default>"
 msgstr "provider transports <nome> <ordine|default>"
 
-#: console.py:493
+#: console.py:546
 msgid "Ordre propre au fournisseur (ex. openvpn,wireguard)"
 msgstr "Ordine proprio del provider (es. openvpn,wireguard)"
 
-#: console.py:494
+#: console.py:547
+msgid "provider wg-auto <nom> on|off"
+msgstr "provider wg-auto <nome> on|off"
+
+#: console.py:548
+msgid "WireGuard géré : clé enregistrée par Katakomba (IVPN)"
+msgstr "WireGuard gestito: chiave registrata da Katakomba (IVPN)"
+
+#: console.py:549
+msgid "provider wg-auto <nom> countries <NL,CH|all> | reserved on|off"
+msgstr "provider wg-auto <nome> countries <NL,CH|all> | reserved on|off"
+
+#: console.py:550
 msgid "account list <fournisseur> | add <fournisseur> [--stdin]"
 msgstr "account list <provider> | add <provider> [--stdin]"
 
-#: console.py:495
+#: console.py:551
 msgid "account add <fournisseur> <fichier.conf>…"
 msgstr "account add <provider> <file.conf>…"
 
-#: console.py:496
+#: console.py:552
 msgid "Fichiers WireGuard (Proton, Mullvad, IVPN)"
 msgstr "File WireGuard (Proton, Mullvad, IVPN)"
 
-#: console.py:497
+#: console.py:553
 msgid "account remove <fournisseur> <numéro|wgN>"
 msgstr "account remove <provider> <numero|wgN>"
 
-#: console.py:498
+#: console.py:554
 msgid "exclude list | add <adresse|réseau|domaine> | remove <…>"
 msgstr "exclude list | add <indirizzo|rete|dominio> | remove <…>"
 
-#: console.py:499
+#: console.py:555
 msgid "set [<réglage> <valeur>]"
 msgstr "set [<impostazione> <valore>]"
 
-#: console.py:499
+#: console.py:555
 msgid "sans argument : réglages actuels"
 msgstr "senza argomenti: impostazioni attuali"
 
-#: console.py:500
+#: console.py:556
 msgid "backup export | restore <fichier.zip>"
 msgstr "backup export | restore <file.zip>"
 
-#: console.py:501
+#: console.py:557
 msgid "Interface graphique (paquet katakomba)"
 msgstr "Interfaccia grafica (pacchetto katakomba)"
 
-#: console.py:504
+#: console.py:560
 msgid "État complet"
 msgstr "Stato completo"
 
-#: console.py:505
+#: console.py:561
 msgid "Diagnostic : routage, DNS, fuites"
 msgstr "Diagnosi: instradamento, DNS, perdite"
 
-#: console.py:509
+#: console.py:565
 msgid "autoriser <utilisateur>"
 msgstr "autoriser <utente>"
 
-#: console.py:509
+#: console.py:565
 msgid "Donner accès à la configuration à un compte"
 msgstr "Dai a un account l'accesso alla configurazione"
 
-#: console.py:510
+#: console.py:566
 msgid "autoriser <utilisateur> --statut"
 msgstr "autoriser <utente> --statut"
 
-#: console.py:511
+#: console.py:567
 msgid "Lecture seule de l'état (supervision), sans accès à la configuration"
 msgstr "Sola lettura dello stato (monitoraggio), senza accesso alla configurazione"
 
@@ -2054,29 +2158,41 @@ msgstr "Posizione tra 1 e {n}."
 msgid "« {nom} » suit le réglage général ({ordre})."
 msgstr "«{nom}» segue l'impostazione generale ({ordre})."
 
+#: console.py:252
+msgid "Ajoutez d'abord les numéros de compte IVPN : katakomba account add {nom}"
+msgstr "Aggiungi prima i numeri di account IVPN: katakomba account add {nom}"
+
+#: console.py:255
+msgid "« {nom} » ne ressemble pas à IVPN (nom, serveurs du fichier OpenVPN) : seul IVPN peut être géré pour l'instant."
+msgstr "«{nom}» non sembra IVPN (nome, server del file OpenVPN): per ora solo IVPN può essere gestito."
+
 #: console.py:274
+msgid "Pays des serveurs : {pays}"
+msgstr "Paesi dei server: {pays}"
+
+#: console.py:327
 msgid "{n} fichier WireGuard ajouté à {fournisseur}."
 msgid_plural "{n} fichiers WireGuard ajoutés à {fournisseur}."
 msgstr[0] "{n} file WireGuard aggiunto a {fournisseur}."
 msgstr[1] "{n} file WireGuard aggiunti a {fournisseur}."
 
-#: console.py:303
+#: console.py:356
 msgid "Le fichier « {nom} » sera retiré de ce fournisseur ; il reste sur le disque."
 msgstr "Il file «{nom}» sarà rimosso da questo provider; resta sul disco."
 
-#: console.py:313
+#: console.py:366
 msgid "Numéro de compte entre 1 et {n} (katakomba account list {fournisseur})."
 msgstr "Numero dell'account tra 1 e {n} (katakomba account list {fournisseur})."
 
-#: console.py:358
+#: console.py:411
 msgid "« {valeur} » est déjà exclu."
 msgstr "«{valeur}» è già escluso."
 
-#: console.py:372
+#: console.py:425
 msgid "« {valeur} » retiré."
 msgstr "«{valeur}» rimosso."
 
-#: console.py:445
+#: console.py:498
 msgid "{fichier} existe déjà."
 msgstr "{fichier} esiste già."
 
@@ -2084,19 +2200,19 @@ msgstr "{fichier} esiste già."
 msgid "Option inconnue : {option}"
 msgstr "Opzione sconosciuta: {option}"
 
-#: console.py:272
+#: console.py:325
 msgid "katakomba account add <fournisseur> <fichier.conf>…"
 msgstr "katakomba account add <provider> <file.conf>…"
 
-#: console.py:299
+#: console.py:352
 msgid "Fichier WireGuard entre wg1 et wg{n} (katakomba account list {fournisseur})."
 msgstr "File WireGuard tra wg1 e wg{n} (katakomba account list {fournisseur})."
 
-#: console.py:370
+#: console.py:423
 msgid "« {valeur} » n'est pas dans la liste."
 msgstr "«{valeur}» non è nell'elenco."
 
-#: console.py:425
+#: console.py:478
 msgid "Nombre entier attendu."
 msgstr "Atteso un numero intero."
 
@@ -2104,7 +2220,7 @@ msgstr "Atteso un numero intero."
 msgid "{option} attend une valeur."
 msgstr "{option} richiede un valore."
 
-#: console.py:549
+#: console.py:605
 msgid "katakomba backup export|restore <fichier.zip>"
 msgstr "katakomba backup export|restore <file.zip>"
 
@@ -2468,63 +2584,63 @@ msgstr "non verificabile — riservato ai gruppi katakomba e katakomba-statut (o
 msgid "Version du daemon"
 msgstr "Versione del daemon"
 
-#: katakomba-cli.sh:458 katakomba-cli.sh:460 katakomba-cli.sh:463
+#: katakomba-cli.sh:466 katakomba-cli.sh:468 katakomba-cli.sh:471
 msgid "Route par défaut"
 msgstr "Percorso predefinito"
 
-#: katakomba-cli.sh:458
+#: katakomba-cli.sh:466
 msgid "absente"
 msgstr "assente"
 
-#: katakomba-cli.sh:499 katakomba-cli.sh:501
+#: katakomba-cli.sh:507 katakomba-cli.sh:509
 msgid "Redirection du trafic"
 msgstr "Reindirizzamento del traffico"
 
-#: katakomba-cli.sh:511 katakomba-cli.sh:515
+#: katakomba-cli.sh:519 katakomba-cli.sh:523
 msgid "Réseaux locaux"
 msgstr "Reti locali"
 
-#: katakomba-cli.sh:564
+#: katakomba-cli.sh:572
 msgid "serveur"
 msgstr "server"
 
-#: katakomba-cli.sh:566
+#: katakomba-cli.sh:574
 msgid "domaine ~."
 msgstr "dominio ~."
 
-#: katakomba-cli.sh:570 katakomba-cli.sh:572 katakomba-cli.sh:576 katakomba-cli.sh:580
+#: katakomba-cli.sh:578 katakomba-cli.sh:580 katakomba-cli.sh:584 katakomba-cli.sh:588
 msgid "DNS du tunnel"
 msgstr "DNS del tunnel"
 
-#: katakomba-cli.sh:583
+#: katakomba-cli.sh:591
 msgid "DNS split"
 msgstr "DNS split"
 
-#: katakomba-cli.sh:583
+#: katakomba-cli.sh:591
 msgid "drop-in en place"
 msgstr "drop-in presente"
 
-#: katakomba-cli.sh:604 katakomba-cli.sh:606 katakomba-cli.sh:611
+#: katakomba-cli.sh:612 katakomba-cli.sh:614 katakomba-cli.sh:619
 msgid "Chemin des requêtes DNS"
 msgstr "Percorso delle richieste DNS"
 
-#: katakomba-cli.sh:625 katakomba-cli.sh:628 katakomba-cli.sh:632
+#: katakomba-cli.sh:633 katakomba-cli.sh:636 katakomba-cli.sh:640
 msgid "Blocage hors tunnel"
 msgstr "Blocco fuori dal tunnel"
 
-#: katakomba-cli.sh:626
+#: katakomba-cli.sh:634
 msgid "actif — seuls le tunnel, Tor et le réseau local sortent"
 msgstr "attivo — escono solo il tunnel, Tor e la rete locale"
 
-#: katakomba-cli.sh:648
+#: katakomba-cli.sh:656
 msgid "Exclusions vers Internet"
 msgstr "Esclusioni verso Internet"
 
-#: katakomba-cli.sh:660 katakomba-cli.sh:668 katakomba-cli.sh:672
+#: katakomba-cli.sh:668 katakomba-cli.sh:676 katakomba-cli.sh:680
 msgid "Sortie Internet"
 msgstr "Uscita verso Internet"
 
-#: katakomba-cli.sh:683
+#: katakomba-cli.sh:691
 msgid "C'est normal et passager : relancez le diagnostic dans 30 s."
 msgstr "È normale e passeggero: ripeti la diagnostica tra 30 s."
 
@@ -2536,67 +2652,67 @@ msgstr "Il servizio è arrestato: nessun altro controllo ha senso."
 msgid "bootstrap terminé"
 msgstr "bootstrap completato"
 
-#: katakomba-cli.sh:414 katakomba-cli.sh:419 katakomba-cli.sh:423 katakomba-cli.sh:428
+#: katakomba-cli.sh:416 katakomba-cli.sh:422 katakomba-cli.sh:427 katakomba-cli.sh:431 katakomba-cli.sh:436
 msgid "Tunnel"
 msgstr "Tunnel"
 
-#: katakomba-cli.sh:432 katakomba-cli.sh:437
+#: katakomba-cli.sh:440 katakomba-cli.sh:445
 msgid "Qualité du circuit"
 msgstr "Qualità del circuito"
 
-#: katakomba-cli.sh:446
+#: katakomba-cli.sh:454
 msgid "Comptes en quarantaine"
 msgstr "Account in quarantena"
 
-#: katakomba-cli.sh:448
+#: katakomba-cli.sh:456
 msgid "Comptes"
 msgstr "Account"
 
-#: katakomba-cli.sh:448
+#: katakomba-cli.sh:456
 msgid "aucun écarté"
 msgstr "nessuno escluso"
 
-#: katakomba-cli.sh:474 katakomba-cli.sh:490 katakomba-cli.sh:494 katakomba-cli.sh:480 katakomba-cli.sh:482
+#: katakomba-cli.sh:482 katakomba-cli.sh:498 katakomba-cli.sh:502 katakomba-cli.sh:488 katakomba-cli.sh:490
 msgid "Protection des guards Tor"
 msgstr "Protezione delle guard Tor"
 
-#: katakomba-cli.sh:495
+#: katakomba-cli.sh:503
 msgid "aucune route /32 — Tor risque de joindre ses relais par le tunnel"
 msgstr "nessun percorso /32 — Tor rischia di raggiungere i suoi relay attraverso il tunnel"
 
-#: katakomba-cli.sh:533 katakomba-cli.sh:538
+#: katakomba-cli.sh:541 katakomba-cli.sh:546
 msgid "systemd-networkd"
 msgstr "systemd-networkd"
 
-#: katakomba-cli.sh:538
+#: katakomba-cli.sh:546
 msgid "ne retire pas les routes du tunnel"
 msgstr "non rimuove i percorsi del tunnel"
 
-#: katakomba-cli.sh:607
+#: katakomba-cli.sh:615
 msgid "trop rapide pour passer par Tor — vérifiez une éventuelle fuite"
 msgstr "troppo veloce per passare da Tor — verifica un'eventuale fuga"
 
-#: katakomba-cli.sh:618
+#: katakomba-cli.sh:626
 msgid "bloqué"
 msgstr "bloccato"
 
-#: katakomba-cli.sh:629
+#: katakomba-cli.sh:637
 msgid "activé dans les réglages mais inactif — cause dans le journal (katakomba logs)"
 msgstr "attivato nelle impostazioni ma inattivo — causa nel registro (katakomba logs)"
 
-#: katakomba-cli.sh:639 katakomba-cli.sh:642
+#: katakomba-cli.sh:647 katakomba-cli.sh:650
 msgid "Connexions entrantes"
 msgstr "Connessioni in entrata"
 
-#: katakomba-cli.sh:640
+#: katakomba-cli.sh:648
 msgid "réponses par la carte réseau — SSH et services restent joignables"
 msgstr "risposte tramite la scheda di rete — SSH e i servizi restano raggiungibili"
 
-#: katakomba-cli.sh:643
+#: katakomba-cli.sh:651
 msgid "réponses envoyées dans le tunnel — une session SSH distante serait coupée (cause dans le journal)"
 msgstr "risposte inviate nel tunnel — una sessione SSH remota verrebbe interrotta (causa nel registro)"
 
-#: katakomba-cli.sh:693
+#: katakomba-cli.sh:701
 msgid "Piste : sudo katakomba restart (3 s de coupure), puis relancez ce diagnostic."
 msgstr "Suggerimento: sudo katakomba restart (3 s di interruzione), poi ripeti questa diagnostica."
 
@@ -2608,49 +2724,49 @@ msgstr "in avvio"
 msgid "pas prêt"
 msgstr "non pronto"
 
-#: katakomba-cli.sh:437
+#: katakomba-cli.sh:445
 msgid "aucune mesure pour ce tunnel"
 msgstr "nessuna misurazione per questo tunnel"
 
-#: katakomba-cli.sh:446
+#: katakomba-cli.sh:454
 msgid " — essayés en dernier"
 msgstr " — provati per ultimi"
 
-#: katakomba-cli.sh:483
+#: katakomba-cli.sh:491
 msgid "aucun relais protégé dans la table de routage — Tor risque de joindre ses relais par le tunnel"
 msgstr "nessun relay protetto nella tabella di instradamento — Tor rischia di raggiungere i suoi relay attraverso il tunnel"
 
-#: katakomba-cli.sh:502
+#: katakomba-cli.sh:510
 msgid "{n}/2 routes def1 présentes"
 msgstr "{n}/2 percorsi def1 presenti"
 
-#: katakomba-cli.sh:512
+#: katakomba-cli.sh:520
 msgid "détourné(s) par une route via : {reseaux} — casse l'accès aux machines du segment"
 msgstr "deviata/e da un percorso via: {reseaux} — interrompe l'accesso ai computer del segmento"
 
-#: katakomba-cli.sh:516
+#: katakomba-cli.sh:524
 msgid "{n} réseau en accès direct"
 msgid_plural "{n} réseaux en accès direct"
 msgstr[0] "{n} rete ad accesso diretto"
 msgstr[1] "{n} reti ad accesso diretto"
 
-#: katakomba-cli.sh:620
+#: katakomba-cli.sh:628
 msgid "bloqué hors tunnel"
 msgstr "bloccato fuori dal tunnel"
 
-#: katakomba-cli.sh:622
+#: katakomba-cli.sh:630
 msgid "non bloqué (option désactivée dans les paramètres)"
 msgstr "non bloccato (opzione disattivata nelle impostazioni)"
 
-#: katakomba-cli.sh:633
+#: katakomba-cli.sh:641
 msgid "désactivé — pendant une reconnexion, le trafic peut sortir à découvert"
 msgstr "disattivato — durante una riconnessione, il traffico può uscire senza protezione"
 
-#: katakomba-cli.sh:649
+#: katakomba-cli.sh:657
 msgid "{reseaux} — ce trafic sort hors du tunnel, avec votre adresse réelle"
 msgstr "{reseaux} — questo traffico esce fuori dal tunnel, con il tuo indirizzo reale"
 
-#: katakomba-cli.sh:681
+#: katakomba-cli.sh:689
 msgid "Reconnexion en cours ({raison}) : les contrôles du tunnel sont reportés."
 msgstr "Riconnessione in corso ({raison}): i controlli del tunnel sono rimandati."
 
@@ -2658,69 +2774,69 @@ msgstr "Riconnessione in corso ({raison}): i controlli del tunnel sono rimandati
 msgid "injoignable ({erreur})"
 msgstr "irraggiungibile ({erreur})"
 
-#: katakomba-cli.sh:414
-msgid "{iface} depuis {duree} ({fournisseur}, WireGuard, fichier {n})"
-msgstr "{iface} da {duree} ({fournisseur}, WireGuard, file {n})"
+#: katakomba-cli.sh:416
+msgid "{iface} depuis {duree} ({fournisseur}, WireGuard géré, compte {n}, clé du {date})"
+msgstr "{iface} da {duree} ({fournisseur}, WireGuard gestito, account {n}, chiave del {date})"
 
-#: katakomba-cli.sh:435
+#: katakomba-cli.sh:443
 msgid " — mesure ancienne, le circuit a pu se dégrader"
 msgstr " — misurazione vecchia, il circuito potrebbe essere peggiorato"
 
-#: katakomba-cli.sh:461
+#: katakomba-cli.sh:469
 msgid "pointe sur {tun} — boucle de routage probable"
 msgstr "punta a {tun} — probabile ciclo di instradamento"
 
-#: katakomba-cli.sh:464
+#: katakomba-cli.sh:472
 msgid "{route} (hors tunnel)"
 msgstr "{route} (fuori dal tunnel)"
 
-#: katakomba-cli.sh:475
+#: katakomba-cli.sh:483
 msgid "{n}/{total} relais routé hors tunnel"
 msgid_plural "{n}/{total} relais routés hors tunnel"
 msgstr[0] "{n}/{total} relay instradato fuori dal tunnel"
 msgstr[1] "{n}/{total} relay instradati fuori dal tunnel"
 
-#: katakomba-cli.sh:491
+#: katakomba-cli.sh:499
 msgid "{n} route /32 hors tunnel"
 msgid_plural "{n} routes /32 hors tunnel"
 msgstr[0] "{n} percorso /32 fuori dal tunnel"
 msgstr[1] "{n} percorsi /32 fuori dal tunnel"
 
-#: katakomba-cli.sh:534
+#: katakomba-cli.sh:542
 msgid "{reglages} actif : à chaque redémarrage de networkd, le tunnel est coupé jusqu'à 30 s — « =no » dans networkd.conf l'évite (README)"
 msgstr "{reglages} attivo: a ogni riavvio di networkd il tunnel si interrompe fino a 30 s — «=no» in networkd.conf lo evita (README)"
 
-#: katakomba-cli.sh:573
+#: katakomba-cli.sh:581
 msgid "incomplet ({manquants}) — risque de requêtes hors tunnel"
 msgstr "incompleto ({manquants}) — rischio di richieste fuori dal tunnel"
 
-#: katakomba-cli.sh:609
+#: katakomba-cli.sh:617
 msgid " (résolveur local via {uplink} : {ms} ms)"
 msgstr " (resolver locale tramite {uplink}: {ms} ms)"
 
-#: katakomba-cli.sh:670
+#: katakomba-cli.sh:678
 msgid " — adresse privée, sortie anormale"
 msgstr " — indirizzo privato, uscita anomala"
 
-#: katakomba-cli.sh:672
+#: katakomba-cli.sh:680
 msgid "aucune réponse via {tun}"
 msgstr "nessuna risposta tramite {tun}"
 
-#: katakomba-cli.sh:685
+#: katakomba-cli.sh:693
 msgid "{n} autre problème bloquant ci-dessus, à revoir ensuite."
 msgid_plural "{n} autres problèmes bloquants ci-dessus, à revoir ensuite."
 msgstr[0] "{n} altro problema bloccante sopra, da rivedere dopo."
 msgstr[1] "{n} altri problemi bloccanti sopra, da rivedere dopo."
 
-#: katakomba-cli.sh:700
+#: katakomba-cli.sh:708
 msgid "Aucun problème vu, mais l'état du daemon (Tor, tunnel, blocage hors tunnel) n'est pas lisible par ce compte."
 msgstr "Nessun problema rilevato, ma questo account non può leggere lo stato del daemon (Tor, tunnel, blocco fuori dal tunnel)."
 
-#: katakomba-cli.sh:702
+#: katakomba-cli.sh:710
 msgid "Supervision : sudo katakomba autoriser <compte> --statut (lecture seule), ou lancez avec sudo."
 msgstr "Monitoraggio: sudo katakomba autoriser <account> --statut (sola lettura), oppure esegui con sudo."
 
-#: katakomba-cli.sh:705
+#: katakomba-cli.sh:713
 msgid "Tout est conforme."
 msgstr "Tutto in regola."
 
@@ -2728,56 +2844,60 @@ msgstr "Tutto in regola."
 msgid "Diagnostic Katakomba"
 msgstr "Diagnostica di Katakomba"
 
-#: katakomba-cli.sh:419
-msgid "{iface} depuis {duree} ({fournisseur}, compte {n})"
-msgstr "{iface} da {duree} ({fournisseur}, account {n})"
+#: katakomba-cli.sh:422
+msgid "{iface} depuis {duree} ({fournisseur}, WireGuard, fichier {n})"
+msgstr "{iface} da {duree} ({fournisseur}, WireGuard, file {n})"
 
-#: katakomba-cli.sh:433
+#: katakomba-cli.sh:441
 msgid "{kbs} Ko/s (~{mbps} Mb/s), mesuré il y a {age}"
 msgstr "{kbs} KB/s (~{mbps} Mb/s), misurato {age} fa"
 
-#: katakomba-cli.sh:444
+#: katakomba-cli.sh:452
 msgid "compte {n} ({min} min)"
 msgstr "account {n} ({min} min)"
 
-#: katakomba-cli.sh:577
+#: katakomba-cli.sh:585
 msgid "{serveurs} · ~. — default-route non vérifiable (format resolvectl inconnu)"
 msgstr "{serveurs} · ~. — default-route non verificabile (formato resolvectl sconosciuto)"
 
-#: katakomba-cli.sh:669
+#: katakomba-cli.sh:677
 msgid "IP publique {ip}"
 msgstr "IP pubblico {ip}"
 
-#: katakomba-cli.sh:691
+#: katakomba-cli.sh:699
 msgid "{n} avertissement."
 msgid_plural "{n} avertissements."
 msgstr[0] "{n} avviso."
 msgstr[1] "{n} avvisi."
 
-#: katakomba-cli.sh:696
+#: katakomba-cli.sh:704
 msgid "Aucun problème bloquant, {n} avertissement à surveiller."
 msgid_plural "Aucun problème bloquant, {n} avertissements à surveiller."
 msgstr[0] "Nessun problema bloccante, {n} avviso da tenere d'occhio."
 msgstr[1] "Nessun problema bloccante, {n} avvisi da tenere d'occhio."
 
-#: katakomba-cli.sh:423
-msgid "reconnexion en cours depuis {s} s ({raison})"
-msgstr "riconnessione in corso da {s} s ({raison})"
-
-#: katakomba-cli.sh:426
-msgid " depuis {m} min {s:02d} s"
-msgstr " da {m} min {s:02d} s"
-
 #: katakomba-cli.sh:427
-msgid " — dernière cause : {raison}"
-msgstr " — ultima causa: {raison}"
+msgid "{iface} depuis {duree} ({fournisseur}, compte {n})"
+msgstr "{iface} da {duree} ({fournisseur}, account {n})"
 
-#: katakomba-cli.sh:428
-msgid "fermé{depuis}{cause}"
-msgstr "chiuso{depuis}{cause}"
-
-#: katakomba-cli.sh:689
+#: katakomba-cli.sh:697
 msgid "{n} problème bloquant"
 msgid_plural "{n} problèmes bloquants"
 msgstr[0] "{n} problema bloccante"
 msgstr[1] "{n} problemi bloccanti"
+
+#: katakomba-cli.sh:431
+msgid "reconnexion en cours depuis {s} s ({raison})"
+msgstr "riconnessione in corso da {s} s ({raison})"
+
+#: katakomba-cli.sh:434
+msgid " depuis {m} min {s:02d} s"
+msgstr " da {m} min {s:02d} s"
+
+#: katakomba-cli.sh:435
+msgid " — dernière cause : {raison}"
+msgstr " — ultima causa: {raison}"
+
+#: katakomba-cli.sh:436
+msgid "fermé{depuis}{cause}"
+msgstr "chiuso{depuis}{cause}"

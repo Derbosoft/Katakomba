@@ -1,8 +1,9 @@
 """
 Fournisseurs : ordre de priorité, et pour chacun ses deux transports :
 OpenVPN (fichier de configuration et comptes) et WireGuard (fichiers .conf,
-chacun avec sa clé, son adresse et son serveur), avec, s'il le faut, un
-ordre des transports propre au fournisseur.  Chaque modification est
+chacun avec sa clé, son adresse et son serveur, ou WireGuard géré par
+Katakomba chez IVPN), avec, s'il le faut, un ordre des transports propre au
+fournisseur.  Chaque modification est
 enregistrée aussitôt.
 """
 
@@ -93,7 +94,12 @@ class PageFournisseurs(Gtk.Stack):
         if modele.deux_transports(p) or "transports" in p:
             r.add_row(self._rangee_transports(i, p))
 
-        for j, entree in enumerate(confs):
+        gere = modele.wg_gere(p)
+        if comptes and modele.est_ivpn(p):
+            for rangee in self._rangees_wg_gere(i, p):
+                r.add_row(rangee)
+        # WireGuard géré : le daemon ignore les .conf, inutile de les proposer.
+        for j, entree in enumerate([] if gere else confs):
             titre, detail = modele.decrire_conf(entree)
             c = Adw.ActionRow(title=titre, subtitle=_("WireGuard {n} · {detail}").format(
                 n=j + 1, detail=detail))
@@ -105,11 +111,12 @@ class PageFournisseurs(Gtk.Stack):
                 (_("Retirer ce fichier…"), lambda j=j: self._conf_supprimer(i, j), True, True),
             )))
             r.add_row(c)
-        ajout_wg = Adw.ActionRow(title=_("Ajouter des fichiers WireGuard (.conf)…"),
-                                 activatable=True)
-        ajout_wg.add_prefix(Gtk.Image(icon_name="list-add-symbolic"))
-        ajout_wg.connect("activated", lambda _r: self._choisir_confs(i))
-        r.add_row(ajout_wg)
+        if not gere:
+            ajout_wg = Adw.ActionRow(title=_("Ajouter des fichiers WireGuard (.conf)…"),
+                                     activatable=True)
+            ajout_wg.add_prefix(Gtk.Image(icon_name="list-add-symbolic"))
+            ajout_wg.connect("activated", lambda _r: self._choisir_confs(i))
+            r.add_row(ajout_wg)
 
         f = Adw.ActionRow(title=_("Fichier de configuration OpenVPN"),
                           subtitle=fichier or _("Aucun — choisissez celui du fournisseur"))
@@ -152,6 +159,51 @@ class PageFournisseurs(Gtk.Stack):
                            if ordre in modele.ORDRES_TRANSPORTS else 0)
         choix.connect("notify::selected", self._transports_change, i)
         return choix
+
+    def _rangees_wg_gere(self, i, p):
+        """IVPN : clé WireGuard enregistrée par Katakomba sur l'un des
+        comptes, par Tor, sans fichier .conf (daemon/gestion_wg.py)."""
+        gere = modele.wg_gere(p)
+        interrupteur = Adw.SwitchRow(
+            title=_("WireGuard géré par Katakomba"),
+            subtitle=_("Katakomba enregistre lui-même une clé WireGuard sur l'un "
+                       "de ces comptes, par Tor : aucun fichier à créer. Une place "
+                       "d'appareil par PC, rendue à la désinstallation."))
+        interrupteur.add_prefix(Gtk.Image(icon_name="network-vpn-symbolic"))
+        interrupteur.set_active(gere)
+        interrupteur.connect("notify::active", lambda s, _p: self._wg_gere(
+            i, actif=s.get_active()))
+        rangees = [interrupteur]
+        if not gere:
+            return rangees
+        g = p["wg_auto"]
+        pays = Adw.EntryRow(title=_("Pays des serveurs (ex. NL, CH ; vide : tous)"),
+                            show_apply_button=True)
+        pays.set_text(", ".join(g.get("countries", [])))
+        pays.connect("apply", lambda e: self._wg_gere_pays(i, e.get_text()))
+        reserves = Adw.SwitchRow(
+            title=_("Comptes réservés à Katakomba"),
+            subtitle=_("Si tous les comptes sont pleins, Katakomba peut en remettre "
+                       "un à zéro : ses autres appareils (téléphone, autre "
+                       "ordinateur) sont déconnectés. À activer seulement si ces "
+                       "comptes ne servent qu'à des PC Katakomba."))
+        reserves.set_active(bool(g.get("reserved_accounts")))
+        reserves.connect("notify::active", lambda s, _p: self._wg_gere(
+            i, reserves=s.get_active()))
+        return rangees + [pays, reserves]
+
+    def _wg_gere(self, i, **reglage):
+        p = self.fournisseurs[i]
+        modele.regler_wg_gere(p, **reglage)
+        self._ouverts.add(p["name"])
+        self._modifie()
+
+    def _wg_gere_pays(self, i, texte):
+        pays, erreur = modele.lire_pays(texte)
+        if erreur:
+            alerte(self.fen, _("Pays des serveurs"), erreur)
+            return
+        self._wg_gere(i, pays=pays)
 
     def _transports_change(self, choix, _p, i):
         n = choix.get_selected()

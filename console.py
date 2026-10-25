@@ -230,7 +230,60 @@ def fournisseur(action: str, args: list):
                         "transport qu'il ne sert pas le fait sauter."))
         _enregistrer(config)
         return
+
+    if action == "wg-auto":
+        _wg_auto(config, args)
+        _enregistrer(config)
+        return
     raise Erreur(_("Action inconnue : {action}").format(action=action))
+
+
+def _wg_auto(config: dict, args: list):
+    """WireGuard géré (IVPN) : on|off, countries <codes|all>, reserved on|off."""
+    usage = _("katakomba provider wg-auto <nom> on|off | countries <NL,CH|all> | "
+              "reserved on|off")
+    if len(args) not in (2, 3):
+        raise Erreur(_("Usage : {usage}").format(usage=usage))
+    p = _fournisseur(config, args[0])
+    quoi = args[1].lower()
+    if len(args) == 2 and quoi in OUI + NON:
+        actif = quoi in OUI
+        if actif and not p.get("accounts"):
+            raise Erreur(_("Ajoutez d'abord les numéros de compte IVPN : katakomba "
+                           "account add {nom}").format(nom=p["name"]))
+        if actif and not modele.est_ivpn(p):
+            raise Erreur(_("« {nom} » ne ressemble pas à IVPN (nom, serveurs du "
+                           "fichier OpenVPN) : seul IVPN peut être géré pour "
+                           "l'instant.").format(nom=p["name"]))
+        modele.regler_wg_gere(p, actif=actif)
+        print(_("WireGuard géré : {etat} pour « {nom} ».").format(
+            etat="on" if actif else "off", nom=p["name"]))
+        if actif:
+            print(_("Au prochain démarrage du tunnel, Katakomba ouvre une session "
+                    "sur l'un des comptes, par Tor."))
+        return
+    if not modele.wg_gere(p):
+        raise Erreur(_("Activez d'abord le WireGuard géré : katakomba provider "
+                       "wg-auto {nom} on").format(nom=p["name"]))
+    if quoi == "countries" and len(args) == 3:
+        brut = "" if args[2].lower() in ("all", "tous") else args[2]
+        pays, erreur = modele.lire_pays(brut)
+        if erreur:
+            raise Erreur(erreur)
+        modele.regler_wg_gere(p, pays=pays)
+        print(_("Pays des serveurs : {pays}").format(pays=", ".join(pays)) if pays
+              else _("Pays des serveurs : tous"))
+        return
+    if quoi == "reserved" and len(args) == 3 and args[2].lower() in OUI + NON:
+        reserves = args[2].lower() in OUI
+        modele.regler_wg_gere(p, reserves=reserves)
+        print(_("Comptes réservés à Katakomba : {etat}").format(
+            etat="on" if reserves else "off"))
+        if reserves:
+            print(_("Si tous les comptes sont pleins, l'un d'eux sera remis à "
+                    "zéro : ses autres appareils seront déconnectés."))
+        return
+    raise Erreur(_("Usage : {usage}").format(usage=usage))
 
 
 def _ajouter_confs(config: dict, nom: str, fichiers: list) -> int:
@@ -491,6 +544,9 @@ def aide():
             (_("provider remove <nom> | priority <nom> <rang>"), ""),
             (_("provider transports <nom> <ordre|default>"),
              _("Ordre propre au fournisseur (ex. openvpn,wireguard)")),
+            (_("provider wg-auto <nom> on|off"),
+             _("WireGuard géré : clé enregistrée par Katakomba (IVPN)")),
+            (_("provider wg-auto <nom> countries <NL,CH|all> | reserved on|off"), ""),
             (_("account list <fournisseur> | add <fournisseur> [--stdin]"), ""),
             (_("account add <fournisseur> <fichier.conf>…"),
              _("Fichiers WireGuard (Proton, Mullvad, IVPN)")),

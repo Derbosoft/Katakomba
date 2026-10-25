@@ -27,6 +27,13 @@ fi
 
 INSTALL_DIR="/opt/katakomba"
 
+# WireGuard géré : la session IVPN de ce PC occupe une place d'appareil sur
+# le compte.  On la rend tant que Tor, lancé par le service, tourne encore.
+if [ -f /var/lib/katakomba/ivpn-session.json ] && [ -f "$INSTALL_DIR/ivpn.py" ]; then
+    echo "Fermeture de la session IVPN de ce PC …"
+    timeout 120 python3 -I "$INSTALL_DIR/ivpn.py" liberer || true
+fi
+
 echo "Arrêt du service …"
 systemctl disable --now katakomba 2>/dev/null || true
 

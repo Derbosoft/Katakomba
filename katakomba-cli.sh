@@ -300,7 +300,7 @@ PYEOF
         # --json : mêmes résultats pour l'interface graphique.  Textes dans la
         # langue de l'utilisateur (KATAKOMBA_LANGUE, sinon celle du système).
         python3 - "$DAEMON_DIR" "${@:2}" << 'PYEOF'
-import json, os, socket, subprocess, sys, time
+import datetime, json, os, socket, subprocess, sys, time
 
 DAEMON_DIR = sys.argv[1] if len(sys.argv) > 1 else ""
 JSON = "--json" in sys.argv[2:]
@@ -410,7 +410,15 @@ if st:
         note(ATTENTE, _("Tor"), _("démarrage en cours"))
     else:
         note(KO, _("Tor"), _("pas prêt"))
-    if st.get("tunnel_up") and st.get("transport") == "wireguard":
+    gere = st.get("wg_managed") or {}
+    if (st.get("tunnel_up") and st.get("transport") == "wireguard"
+            and gere.get("provider") == st.get("provider")):
+        note(OK, _("Tunnel"), _("{iface} depuis {duree} ({fournisseur}, WireGuard géré, "
+                                "compte {n}, clé du {date})").format(
+            iface=st["tunnel_iface"], duree=duree(st["tunnel_uptime"]),
+            fournisseur=st["provider"], n=gere.get("account", 0),
+            date=datetime.date.fromtimestamp(gere.get("key_since", 0)).isoformat()))
+    elif st.get("tunnel_up") and st.get("transport") == "wireguard":
         note(OK, _("Tunnel"), _("{iface} depuis {duree} ({fournisseur}, WireGuard, "
                                 "fichier {n})").format(
             iface=st["tunnel_iface"], duree=duree(st["tunnel_uptime"]),

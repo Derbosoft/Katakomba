@@ -65,6 +65,9 @@ class StatusMixin:
             # Transport de l'étape en cours (v4.0.0) : « wireguard » ou
             # « openvpn » ; vide si le fournisseur n'en sert aucun.
             "transport":      self._transport,
+            # WireGuard géré (v4.2.0) : fournisseur, numéro du compte qui
+            # porte la session de ce PC, date de la clé ; vide sinon.
+            "wg_managed":     self._wg_gere_statut(),
             "account_index":  self._current_account_idx,
             # Comptes de l'étape courante (fournisseur et transport) écartés
             # temporairement après un refus d'authentification ou une

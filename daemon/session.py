@@ -31,6 +31,7 @@ from .core import (
     RECONNECT_DELAY, RECONNECT_MAX, AUTH_COOLDOWN, AUTH_PASS_MAX,
     AUTH_PASS_DELAY, VPN_USER,
 )
+from .gestion_wg import SERVEURS_GERES, service_gere
 
 TRANSPORTS = ("wireguard", "openvpn")
 NOMS_TRANSPORT = {"wireguard": "WireGuard", "openvpn": "OpenVPN"}
@@ -56,7 +57,7 @@ def ordre_transports(config, fournisseur=None) -> list:
 def transports_du(fournisseur: dict, ordre) -> list:
     """Transports que ce fournisseur peut servir, dans l'ordre voulu."""
     offerts = {
-        "wireguard": bool(fournisseur.get("wireguard")),
+        "wireguard": bool(fournisseur.get("wireguard") or service_gere(fournisseur)),
         "openvpn":   bool(fournisseur.get("ovpn_file") or fournisseur.get("accounts")),
     }
     return [t for t in ordre if offerts[t]]
@@ -102,6 +103,10 @@ class SessionMixin:
             offerts = transports_du(p, ordre_transports(self.config, p))
             self._transport = offerts[0] if offerts else ""
         if self._transport == "wireguard":
+            if service_gere(p):
+                # WireGuard géré : une seule clé, valable partout ; les
+                # « comptes » de l'étape sont des serveurs.
+                return [{"serveur": i} for i in range(SERVEURS_GERES)]
             return p.get("wireguard", [])
         if self._transport == "openvpn":
             return p.get("accounts", [])
@@ -116,6 +121,8 @@ class SessionMixin:
                    if 0 <= idx < len(providers) else [])
         self._transport = (transport if transport in offerts
                            else offerts[0] if offerts else "")
+        self._ivpn_hotes = []            # serveurs gérés : nouveau tirage
+        self._ivpn_resynchro = False
         self._plan_accounts()
 
     def _etape_suivante(self) -> bool:
@@ -595,9 +602,15 @@ class SessionMixin:
                 self._log("Aucun fournisseur/compte utilisable.", "ERROR")
                 break
             transport = self._transport
-            prov_name = self.config["providers"][self._current_provider_idx].get("name", "?")
+            p_courant = self.config["providers"][self._current_provider_idx]
+            prov_name = p_courant.get("name", "?")
             acc_idx = self._current_account_idx
-            if transport == "wireguard":
+            gere = transport == "wireguard" and bool(service_gere(p_courant))
+            quoi_wg = "serveur" if gere else ".conf"
+            if gere:
+                self._log(f"Fournisseur : {prov_name}  (WireGuard géré, serveur "
+                          f"{acc_idx+1})", "INFO")
+            elif transport == "wireguard":
                 self._log(f"Fournisseur : {prov_name}  (WireGuard, .conf "
                           f"{acc_idx+1} : {compte[0].rsplit('/', 1)[-1]})", "INFO")
             else:
@@ -613,8 +626,15 @@ class SessionMixin:
                     return
                 break
             self._noter_passerelle()
+            self._wg_gere_menage()
 
-            if transport == "wireguard":
+            if gere:
+                # Session et liste des serveurs par l'API (Tor prêt), sauf si
+                # ce PC les a déjà : le cas d'un redémarrage ordinaire.
+                reglages, nom, issue = self._wg_gere_reglages(p_courant, acc_idx)
+                if not issue:
+                    issue = self._session_wireguard(nom, *ids, reglages=reglages)
+            elif transport == "wireguard":
                 issue = self._session_wireguard(compte[0], *ids)
             else:
                 issue = self._session_openvpn(compte, *ids)
@@ -629,6 +649,19 @@ class SessionMixin:
                 # Programme manquant (openvpn, wg) : l'étape entière est
                 # perdue, l'autre transport peut servir.
                 if self._etape_suivante():
+                    continue
+                break
+            if issue == "indisponible":
+                # WireGuard géré sans session ni liste de serveurs pour
+                # l'instant (API injoignable, comptes pleins, captcha) :
+                # l'étape suivante peut servir.  L'API n'est rappelée
+                # qu'après une pause : un parc ne la martèle pas.
+                if self._etape_suivante():
+                    continue
+                suite = self._nouvelle_passe("obtenir une session WireGuard")
+                if suite is None:
+                    return
+                if suite:
                     continue
                 break
             if issue == "refus":
@@ -717,17 +750,22 @@ class SessionMixin:
 
             if issue == "echec":
                 echecs += 1
+                if echecs == 1 and gere and self._wg_gere_echec():
+                    # Session fermée ou adresse changée chez le fournisseur :
+                    # la panne venait de là, pas du serveur.
+                    echecs = 0
+                    continue
                 if echecs < ECHECS_PAR_CONF:
                     self._reconnect_reason = "aucune poignée de main, nouvel essai"
-                    self._log(f"WireGuard : nouvel essai du même .conf dans "
+                    self._log(f"WireGuard : nouvel essai du même {quoi_wg} dans "
                               f"{RECONNECT_DELAY}s ({echecs}/{ECHECS_PAR_CONF}) …", "WARN")
                     if not self._attendre(RECONNECT_DELAY):
                         return
                     continue
                 echecs = 0
-                self._reconnect_reason = "aucune poignée de main, .conf suivant"
+                self._reconnect_reason = f"aucune poignée de main, {quoi_wg} suivant"
                 self._mettre_en_quarantaine(acc_idx)
-                self._log(f".conf {acc_idx+1} ({prov_name}) sans poignée de "
+                self._log(f"{quoi_wg} {acc_idx+1} ({prov_name}) sans poignée de "
                           f"main — mis en quarantaine {AUTH_COOLDOWN//60} min.",
                           "WARN")
                 if self._try_failover():
@@ -757,7 +795,7 @@ class SessionMixin:
                     "aucun fournisseur de secours, abandon.", "ERROR")
                 break
 
-            quoi = "même .conf" if transport == "wireguard" else "même compte"
+            quoi = f"même {quoi_wg}" if transport == "wireguard" else "même compte"
             self._log(
                 f"{nom} : reconnexion du {quoi} dans {RECONNECT_DELAY}s "
                 f"({self._reconnect_vpn_count}/{RECONNECT_MAX}) …", "WARN")
