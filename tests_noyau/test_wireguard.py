@@ -12,6 +12,7 @@ import base64
 import datetime
 import os
 import socket
+import shutil
 import struct
 import subprocess
 import sys
@@ -253,6 +254,15 @@ class WireGuardBoutEnBoutTest(CasNoyau):
         self.addCleanup(self._tmp.cleanup)
         tmp = Path(self._tmp.name)
         os.chmod(tmp, 0o755)
+        # Le pont rangé comme dans /opt/katakomba (644 sous 755) : en vrai
+        # root, son utilisateur sans droit ne traverserait pas le dépôt
+        # (/home/runner, 750 sur la CI).
+        code = tmp / "code"
+        code.mkdir(mode=0o755)
+        shutil.copy(RACINE / "pont_wg.py", code)
+        (code / "pont_wg.py").chmod(0o644)
+        self.addCleanup(setattr, m_wireguard, "SCRIPT_DIR", m_wireguard.SCRIPT_DIR)
+        m_wireguard.SCRIPT_DIR = code
 
         sh("ip route add default via 192.168.1.1 dev eth0")
         self.pair.internet(INTERNET)

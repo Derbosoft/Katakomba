@@ -55,15 +55,16 @@ PY
 )
 [ "${#PONT_ARGS[@]}" -ge 4 ] || exit 1
 EMBALLAGE=${PONT_ARGS[1]}
-[ -n "$CLE_PUBLIQUE" ] && [ -n "$ADRESSE" ] && [ -n "$SERVEUR" ] \
-    || { echo "Configuration incomplète : $CONF" >&2; exit 1; }
+if [ -z "$CLE_PUBLIQUE" ] || [ -z "$ADRESSE" ] || [ -z "$SERVEUR" ]; then
+    echo "Configuration incomplète : $CONF" >&2; exit 1
+fi
 
 # Dossier court : un chemin de socket Unix ne dépasse pas 107 octets.
 TRAVAIL=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/essai-wg.XXXXXX")
 chmod 700 "$TRAVAIL"
 TOR_PID=
 nettoyer() {
-    [ -n "$TOR_PID" ] && kill "$TOR_PID" 2>/dev/null || true
+    if [ -n "$TOR_PID" ]; then kill "$TOR_PID" 2>/dev/null || true; fi
     rm -rf "$TRAVAIL"
 }
 trap nettoyer EXIT
@@ -94,6 +95,7 @@ echo "── Espace isolé : WireGuard → pont ($EMBALLAGE) → Tor → serveur
 echo "nameserver $DNS" > "$TRAVAIL/resolv.conf"
 export TRAVAIL CLE_PUBLIQUE ADRESSE SOCKS
 export PONT_ARGS_TXT="${PONT_ARGS[*]}"
+# shellcheck disable=SC2016  # développé par le bash de l'espace isolé
 unshare -rnm bash -euo pipefail -c '
     mount --bind "$TRAVAIL/resolv.conf" /etc/resolv.conf
     # Le profil AppArmor de wg (Ubuntu) ne lui laisse lire que /etc/wireguard.
