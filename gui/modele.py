@@ -247,24 +247,37 @@ def regler_transports(p: dict, ordre) -> None:
         raise ValueError(ordre)
 
 
+def sert_openvpn(p: dict) -> bool:
+    """Le fournisseur a une étape OpenVPN (comme daemon/session.transports_du) :
+    Mullvad n'a plus d'OpenVPN, ses comptes ne servent qu'au WireGuard géré."""
+    return bool(p.get("ovpn_file")
+                or (p.get("accounts") and service_gere(p) != "mullvad"))
+
+
 def deux_transports(p: dict) -> bool:
     """Le fournisseur sert WireGuard et OpenVPN : l'ordre a un sens."""
-    return (bool(p.get("wireguard") or wg_gere(p))
-            and bool(p.get("ovpn_file") or p.get("accounts")))
+    return bool(p.get("wireguard") or wg_gere(p)) and sert_openvpn(p)
 
 
-# ── WireGuard géré (v4.2.0) ──────────────────────────────────────────────────
-# Katakomba enregistre lui-même sa clé sur un compte IVPN (daemon/gestion_wg.py).
+# ── WireGuard géré (v4.2.0 IVPN, v4.3.0 Mullvad) ─────────────────────────────
+# Katakomba enregistre lui-même sa clé sur un compte (daemon/gestion_wg.py).
+
+SERVICES_GERES = {"ivpn": "IVPN", "mullvad": "Mullvad"}
+
+
+def service_gere(p: dict) -> str:
+    g = p.get("wg_auto")
+    return g["service"] if isinstance(g, dict) and g.get("service") in SERVICES_GERES else ""
+
 
 def wg_gere(p: dict) -> bool:
-    g = p.get("wg_auto")
-    return isinstance(g, dict) and g.get("service") == "ivpn"
+    return bool(service_gere(p))
 
 
 def est_ivpn(p: dict) -> bool:
     """Le fournisseur ressemble à IVPN : son nom, ou les serveurs de son
-    fichier OpenVPN.  Seul IVPN sait, pour l'instant, être géré."""
-    if wg_gere(p) or "ivpn" in str(p.get("name", "")).lower():
+    fichier OpenVPN."""
+    if service_gere(p) == "ivpn" or "ivpn" in str(p.get("name", "")).lower():
         return True
     rel = p.get("ovpn_file", "")
     if not rel or not chemin_fournisseur_sur(rel):
@@ -275,9 +288,47 @@ def est_ivpn(p: dict) -> bool:
         return False
 
 
-def regler_wg_gere(p: dict, actif=None, pays=None, reserves=None) -> None:
+def service_detecte(p: dict) -> str:
+    """Le service que ce fournisseur peut faire gérer (« ivpn », « mullvad »),
+    ou "" : seuls ces deux-là ont une API d'enregistrement des clés."""
+    if service_gere(p):
+        return service_gere(p)
+    if "mullvad" in str(p.get("name", "")).lower():
+        return "mullvad"
+    return "ivpn" if est_ivpn(p) else ""
+
+
+def lire_numero(service: str, texte: str) -> tuple:
+    """(numéro normalisé, "") ou (None, erreur).  Mullvad : 16 chiffres
+    (espaces admis) ; IVPN : i-XXXX-XXXX-XXXX ou ivpnXXXXXXXX."""
+    brut = texte.strip()
+    if service == "mullvad":
+        numero = re.sub(r"\s+", "", brut)
+        if re.fullmatch(r"\d{16}", numero):
+            return numero, ""
+        return None, _("Un numéro de compte Mullvad a 16 chiffres.")
+    if re.fullmatch(r"i-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}|ivpn[A-Za-z0-9]{8}", brut):
+        return brut, ""
+    return None, _("Un numéro de compte IVPN a la forme i-XXXX-XXXX-XXXX (ou ivpnXXXXXXXX).")
+
+
+def masquer_numero(numero: str) -> str:
+    """« •••• 0693 » : chez Mullvad, le numéro EST l'identifiant complet."""
+    return "•••• " + numero[-4:] if len(numero) > 4 else "••••"
+
+
+def nouveau_fournisseur_gere(config: dict, nom: str, service: str, numeros) -> dict:
+    """Fournisseur sans fichier : ses numéros de compte, WireGuard géré."""
+    p = {"name": nom, "ovpn_file": "", "wireguard": [],
+         "accounts": [{"u": obf(n), "p": obf("")} for n in numeros],
+         "wg_auto": {"service": service, "countries": [], "reserved_accounts": False}}
+    config.setdefault("providers", []).append(p)
+    return p
+
+
+def regler_wg_gere(p: dict, actif=None, pays=None, reserves=None, service=None) -> None:
     """Active ou coupe le WireGuard géré du fournisseur `p`, ou en change
-    les pays ou la remise à zéro ; None : inchangé."""
+    les pays ou la récupération des places ; None : inchangé."""
     if actif is False:
         p.pop("wg_auto", None)
         return
@@ -285,8 +336,8 @@ def regler_wg_gere(p: dict, actif=None, pays=None, reserves=None) -> None:
     if g is None:
         if not actif:
             return
-        g = p["wg_auto"] = {"service": "ivpn", "countries": [],
-                            "reserved_accounts": False}
+        g = p["wg_auto"] = {"service": service or service_detecte(p) or "ivpn",
+                            "countries": [], "reserved_accounts": False}
     if pays is not None:
         g["countries"] = list(pays)
     if reserves is not None:
@@ -304,7 +355,7 @@ def lire_pays(texte: str) -> tuple:
 
 
 def wg_gere_valide(g) -> bool:
-    return (isinstance(g, dict) and g.get("service") == "ivpn"
+    return (isinstance(g, dict) and g.get("service") in SERVICES_GERES
             and isinstance(g.get("countries", []), list)
             and all(isinstance(c, str) and re.fullmatch(r"[A-Z]{2}", c)
                     for c in g.get("countries", []))
@@ -563,7 +614,9 @@ def resume_comptes(p: dict) -> str:
     """« 2 comptes OpenVPN · 3 fichiers WireGuard »."""
     morceaux = []
     n = len(p.get("accounts", []))
-    if n or p.get("ovpn_file"):
+    if service_gere(p) == "mullvad":
+        morceaux.append(ngettext("{n} compte Mullvad", "{n} comptes Mullvad", n).format(n=n))
+    elif n or p.get("ovpn_file"):
         morceaux.append(ngettext("{n} compte OpenVPN", "{n} comptes OpenVPN", n).format(n=n))
     n = len(p.get("wireguard", []))
     if wg_gere(p):
@@ -1340,12 +1393,14 @@ _EVENEMENTS = (
      N_("Fichier WireGuard {n} : aucune réponse du serveur")),
     (re.compile(r"^serveur (?P<n>\d+) \(.*\) sans poignée de main"), "erreur",
      N_("Serveur WireGuard {n} : aucune réponse")),
-    (re.compile(r"^IVPN : session ouverte sur le compte (?P<n>\d+)"), "ok",
-     N_("Session IVPN ouverte (compte {n})")),
-    (re.compile(r"^IVPN : clé WireGuard renouvelée"), "ok", N_("Clé WireGuard renouvelée")),
-    (re.compile(r"^IVPN : session fermée"), "attente",
-     N_("Session IVPN fermée : nouvel enregistrement")),
-    (re.compile(r"^IVPN : tous les comptes"), "erreur", N_("IVPN : tous les comptes sont pleins")),
+    (re.compile(r"^(?P<service>IVPN|Mullvad) : session ouverte sur le compte (?P<n>\d+)"),
+     "ok", N_("Session {service} ouverte (compte {n})")),
+    (re.compile(r"^(IVPN|Mullvad) : clé WireGuard renouvelée"), "ok",
+     N_("Clé WireGuard renouvelée")),
+    (re.compile(r"^(?P<service>IVPN|Mullvad) : session fermée"), "attente",
+     N_("Session {service} fermée : nouvel enregistrement")),
+    (re.compile(r"^(?P<service>IVPN|Mullvad) : tous les comptes"), "erreur",
+     N_("{service} : tous les comptes sont pleins")),
     (re.compile(r"^Fournisseur suivant"), "attente", N_("Bascule vers le fournisseur suivant")),
     (re.compile(r" : (WireGuard|OpenVPN) épuisé → (?P<vers>WireGuard|OpenVPN)$"), "attente",
      N_("Bascule vers {vers}")),
@@ -1358,7 +1413,7 @@ _EVENEMENTS = (
 _FILTRE_EVENEMENTS = (r"démarré \(PID|arrêté proprement|Tunnel VPN actif|"
                       r"\[circuit\] Débit|Watchdog : (Tor est sain|redémarrage complet)|"
                       r"refusé|sans poignée de main|Fournisseur suivant|épuisé →|"
-                      r"IVPN : (session|clé WireGuard renouvelée|tous les comptes)")
+                      r"(IVPN|Mullvad) : (session|clé WireGuard renouvelée|tous les comptes)")
 
 
 def lire_evenements(maximum: int = 8) -> list:

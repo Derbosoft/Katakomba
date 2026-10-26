@@ -351,6 +351,32 @@ class FenetreTest(unittest.TestCase):
         page.recharger()
         pomper()
 
+    def test_mullvad_numero_jamais_affiche(self):
+        from gui import modele
+        cfg = self.fen.config
+        modele.nouveau_fournisseur_gere(cfg, "mullvad", "mullvad", ["1234567812345678"])
+        page = self.fen.pages["fournisseurs"]
+        rangee = page._rangee(len(cfg["providers"]) - 1, cfg["providers"][-1])
+        textes = []
+
+        def parcourir(w):
+            for nom in ("get_title", "get_subtitle", "get_label", "get_text"):
+                if hasattr(w, nom):
+                    try:
+                        textes.append(str(getattr(w, nom)() or ""))
+                    except TypeError:
+                        pass
+            enfant = w.get_first_child()
+            while enfant is not None:
+                parcourir(enfant)
+                enfant = enfant.get_next_sibling()
+        parcourir(rangee)
+        tout = "\n".join(textes)
+        self.assertNotIn("1234567812345678", tout)
+        self.assertIn("•••• 5678", tout)
+        self.assertNotIn("Fichier de configuration OpenVPN", tout)
+        self.assertIn("Ajouter un compte Mullvad", tout)
+
     def test_assistant_wireguard_sans_identifiants(self):
         import base64
         from gui.assistant import Assistant

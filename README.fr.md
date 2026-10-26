@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.2.0
+# Katakomba — v4.3.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.2.0-blue)
+![Version](https://img.shields.io/badge/Version-4.3.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -277,7 +277,8 @@ En root, ou en membre du groupe `katakomba` (sans `sudo`, comme l'interface). Le
 | `fournisseur ajouter <fichier.ovpn\|.zip\|.conf…> [--name NOM] [--stdin]` | Ajoute un fournisseur, en dernière priorité : OpenVPN (`.ovpn`, `.zip`) ou WireGuard (`.conf`) |
 | `fournisseur retirer <nom>` | Le retire (ses fichiers restent sur le disque) |
 | `fournisseur priorite <nom> <rang>` | Le déplace dans l'ordre de bascule |
-| `fournisseur wg-auto <nom> on\|off` | WireGuard géré (IVPN) : clé enregistrée par Katakomba ; `countries NL,CH\|all`, `reserved on\|off` |
+| `fournisseur managed <mullvad\|ivpn> [--name NOM] [--stdin]` | Fournisseur sans fichier, par numéro de compte, en WireGuard géré |
+| `fournisseur wg-auto <nom> on\|off` | WireGuard géré (IVPN, Mullvad) : clé enregistrée par Katakomba ; `countries NL,CH\|all`, `reserved on\|off` |
 | `fournisseur transports <nom> <ordre\|default>` | Ordre des transports propre à ce fournisseur (`openvpn,wireguard`…), ou `default` pour suivre le réglage général |
 | `compte liste\|ajouter\|retirer <fournisseur> …` | Comptes d'un fournisseur : `ajouter` demande les identifiants OpenVPN, ou ajoute des `.conf` donnés en argument ; `retirer <fournisseur> wg2` retire un fichier WireGuard |
 | `exclusion liste\|ajouter\|retirer <adresse\|réseau\|domaine>` | Exclusions du tunnel et domaines locaux, mêmes contrôles que l'interface |
@@ -322,7 +323,7 @@ L'emballage est choisi d'après le fichier `.conf`, sans rien régler :
 | Fournisseur | Emballage | Port | Fichier WireGuard | Reconnu à |
 |---|---|---|---|---|
 | **Proton VPN** | mode « Stealth » : TLS, trames TunSafe | TCP 443, même IP que le serveur | téléchargé sur account.protonvpn.com (offre gratuite comprise) | par défaut |
-| **Mullvad** | udp-over-tcp : chaque paquet précédé de sa taille | TCP 443, même IP que le serveur | générateur de configuration de mullvad.net | son DNS (10.64.0.1) ou son adresse IPv6 interne |
+| **Mullvad** | udp-over-tcp : chaque paquet précédé de sa taille | TCP 443, même IP que le serveur | aucun : **WireGuard géré**, par numéro de compte (voir plus bas), ou générateur de configuration de mullvad.net | son DNS (10.64.0.1) ou son adresse IPv6 interne |
 | **IVPN** | V2Ray : VMess sans chiffrement, déguisé en HTTP | TCP 80, adresse V2Ray du serveur | aucun : **WireGuard géré** (voir plus bas), ou créé par `ivpn.py` | ses commentaires `# Katakomba-…` |
 
 Les formats viennent du code source publié par les fournisseurs (ProtonVPN/wireguard-go, mullvad/udp-over-tcp, ivpn/desktop-app) et de V2Ray (v2fly/v2ray-core). Proton et IVPN ont été vérifiés pour de vrai à travers Tor ; les ports udp-over-tcp de Mullvad (80, 443, 5001) acceptent les connexions venues de sorties Tor. Un réglage explicite reste possible en tête du fichier : `# Katakomba-Emballage = mullvad`, `# Katakomba-Serveur = IP:80`.
@@ -337,35 +338,41 @@ python3 /opt/katakomba/ivpn.py --socks 127.0.0.1:9050 --compte-katakomba 1 --pay
 
 Chaque fichier créé occupe une place d'appareil sur le compte IVPN.
 
-### WireGuard géré (IVPN, v4.2.0)
+### WireGuard géré (IVPN v4.2.0, Mullvad v4.3.0)
 
-Pour un fournisseur IVPN qui a déjà ses numéros de compte (les identifiants OpenVPN d'IVPN), Katakomba enregistre **lui-même** sa clé WireGuard : aucun fichier à créer, ni à copier d'un PC à l'autre. Conçu pour un **parc de PC qui partagent des comptes** :
+Avec les seuls **numéros de compte**, Katakomba enregistre **lui-même** sa clé WireGuard : aucun fichier à créer, ni à copier d'un PC à l'autre. Conçu pour un **parc de PC qui partagent des comptes** :
 
 | Situation | Ce que fait Katakomba |
 |---|---|
 | Premier démarrage | Une clé neuve, enregistrée par Tor sur un compte **tiré au hasard** (un parc se répartit de lui-même) : une place d'appareil pour ce PC. Compte plein : le suivant. |
-| Redémarrage, reconnexion | **Aucun appel à l'API** : même session, même clé, même place. |
+| Redémarrage, reconnexion | **Aucun appel à l'API** : même place, même clé. |
 | Serveur qui ne répond pas | **Un autre serveur** (trois, dans des villes différentes), jamais un autre compte : la clé vaut partout. |
-| Après une semaine | Clé **renouvelée sur la même session** (aucune place de plus), étalé au hasard sur une journée. |
-| Session fermée chez IVPN (compte remis à zéro, site) | Constaté après un échec de connexion : nouvel enregistrement, automatique. |
-| Tous les comptes pleins | Le dire et passer à OpenVPN, ou, si les comptes sont **réservés à Katakomba**, remettre l'un d'eux à zéro (ses autres appareils sont déconnectés ; les PC Katakomba se réenregistrent seuls). |
-| API injoignable, captcha | OpenVPN prend le relais ; l'API n'est rappelée qu'après 15 min (1 h pour un captcha). |
-| Image disque clonée | La session est liée à `/etc/machine-id` : le clone ouvre la sienne, sans fermer celle de l'original. |
-| Désinstallation | La session est fermée : la place est rendue au compte. |
+| Après une semaine | Clé renouvelée, étalé au hasard sur une journée. IVPN : **sur la même session**. Mullvad : **appareil neuf, l'ancien supprimé** — l'API de Mullvad ne donnant que la date de création d'un appareil, elle devient sa **preuve de vie**. |
+| Place supprimée ailleurs (compte remis à zéro, site, autre PC) | Constaté après un échec de connexion : nouvel enregistrement, automatique. |
+| Abonnement expiré | Constaté après un échec de connexion : place rendue, un autre compte est essayé. |
+| Tous les comptes pleins | Le dire et passer à OpenVPN (IVPN ; Mullvad n'en a plus), ou, si les comptes sont **réservés à Katakomba**, récupérer une place : Mullvad, appareils **de plus de 3 semaines** supprimés (PC disparus : un PC vivant renouvelle le sien chaque semaine) ; IVPN, qui ne montre pas les autres sessions, remise à zéro d'un compte (ses autres appareils sont déconnectés ; les PC Katakomba se réenregistrent seuls). |
+| API injoignable, captcha | L'étape suivante prend le relais ; l'API n'est rappelée qu'après 15 min (1 h pour un captcha). |
+| Image disque clonée | La place est liée à `/etc/machine-id` : le clone ouvre la sienne, sans toucher à celle de l'original. |
+| Désinstallation | La place est rendue au compte. |
 
-Interface : page Fournisseurs, sous le fournisseur IVPN, « WireGuard géré par Katakomba », puis les pays des serveurs et « Comptes réservés à Katakomba ». Console :
+**Mullvad** (comptes sans mot de passe : le numéro suffit) se crée par son numéro, sans fichier. **IVPN** se gère à partir d'un fournisseur qui a déjà ses numéros de compte (les identifiants OpenVPN d'IVPN), ou se crée de même.
+
+Interface : page Fournisseurs, bouton « Par numéro de compte » ; sous un fournisseur IVPN ou Mullvad, « WireGuard géré par Katakomba », les pays des serveurs et « Comptes réservés à Katakomba ». Console :
 
 ```bash
-katakomba fournisseur wg-auto ivpn on                   # activer
-katakomba fournisseur wg-auto ivpn countries NL,CH,SE   # pays des serveurs (all : tous)
-katakomba fournisseur wg-auto ivpn reserved on          # remise à zéro permise en dernier recours
+katakomba fournisseur managed mullvad                   # numéro demandé sans écho (ou --stdin, un par ligne)
+katakomba compte ajouter mullvad                        # un compte de plus
+katakomba fournisseur wg-auto ivpn on                   # IVPN : activer sur un fournisseur existant
+katakomba fournisseur wg-auto mullvad countries NL,DE,SE   # pays des serveurs (all : tous)
+katakomba fournisseur wg-auto mullvad reserved on       # récupération des places de PC disparus
 ```
 
-- **Comptes réservés** : à n'activer que si les comptes ne servent qu'à des PC Katakomba. Un téléphone connecté au même compte serait déconnecté lors d'une remise à zéro. IVPN ne permet pas de voir les autres appareils d'un compte : c'est le seul moyen de récupérer les places de PC disparus sans désinstallation.
-- **Double authentification** : elle doit être désactivée sur ces comptes, sinon aucune session ne peut s'ouvrir sans vous (le journal le dit).
-- **Places** : 2 appareils par compte en offre Standard, 7 en Pro. Prévoir de la marge : un PC jeté sans désinstallation garde sa place jusqu'à la prochaine remise à zéro.
-- **Séparation des droits** : les échanges avec l'API passent par `ivpn.py`, lancé **sans aucun droit** (il lit ce que le réseau renvoie) ; le numéro de compte lui est passé par l'entrée standard, jamais en argument, et il ne voit jamais la clé privée. La session (jeton, clé privée) vit dans `/var/lib/katakomba/ivpn-session.json`, mode 0600, root ; le numéro de compte n'y figure qu'en empreinte. Le `.conf` produit passe par la même validation qu'un fichier importé.
-- `katakomba doctor` affiche le compte qui porte la session et la date de la clé. Les `.conf` éventuels du fournisseur sont ignorés tant que la gestion est active.
+- **Comptes réservés** : à n'activer que si les comptes ne servent qu'à des PC Katakomba. Mullvad : l'appli officielle d'un téléphone, qui ne renouvelle pas son appareil chaque semaine, serait prise pour un PC disparu. IVPN : un téléphone serait déconnecté lors d'une remise à zéro.
+- **Numéros de compte** : chez Mullvad, le numéro est l'identifiant complet du compte ; l'interface et la console n'en montrent que les 4 derniers chiffres.
+- **Double authentification (IVPN)** : elle doit être désactivée sur ces comptes, sinon aucune session ne peut s'ouvrir sans vous (le journal le dit).
+- **Places** : Mullvad, 5 appareils par compte ; IVPN, 2 en offre Standard, 7 en Pro. Prévoir de la marge.
+- **Séparation des droits** : les échanges avec l'API passent par `ivpn.py` ou `mullvad.py`, lancés **sans aucun droit** (ils lisent ce que le réseau renvoie) ; le numéro de compte leur est passé par l'entrée standard, jamais en argument, et ils ne voient jamais la clé privée. La place (identifiant, clé privée) vit dans `/var/lib/katakomba/<service>-session.json`, mode 0600, root ; le numéro de compte n'y figure qu'en empreinte. Le `.conf` produit passe par la même validation qu'un fichier importé.
+- `katakomba doctor` affiche le compte qui porte la place et la date de la clé. Les `.conf` éventuels du fournisseur sont ignorés tant que la gestion est active.
 
 ### Ajouter des fichiers WireGuard
 
@@ -428,6 +435,7 @@ katakomba/
 ├── validation.py        Listes blanches : directives .ovpn, .conf WireGuard, options torrc (daemon + GUI)
 ├── pont_wg.py           Pont WireGuard → Tor : emballages Proton (TLS), IVPN (VMess), Mullvad (udp-over-tcp)
 ├── ivpn.py              Configuration WireGuard d'un compte IVPN, obtenue par son API à travers Tor
+├── mullvad.py           Appareils WireGuard d'un compte Mullvad, par son API à travers Tor
 ├── essai/               essai_wg_tor.sh : essai réel d'un .conf par Tor, sans root ni installation
 ├── adaptation.py        Adaptation automatique d'un .ovpn de fournisseur (GUI)
 ├── i18n.py              Traductions : choix de la langue, lecture des catalogues po/
@@ -480,7 +488,8 @@ katakomba/
 │   ├── test_pont_wg.py      pont : trames TunSafe, TLS, udp-over-tcp, SOCKS
 │   ├── test_vmess.py        VMess d'IVPN, comparé à des vecteurs de V2Ray
 │   ├── test_ivpn.py         API d'IVPN (sans réseau)
-│   ├── test_gestion_wg.py   WireGuard géré : session, places, renouvellement, faux service IVPN
+│   ├── test_gestion_wg.py   WireGuard géré : places, renouvellement, faux services IVPN et Mullvad
+│   ├── test_mullvad.py      API de Mullvad (sans réseau)
 │   ├── test_watchdog.py     connectivité, filet anti-inertie, redémarrage
 │   ├── test_config_status.py  chargement de config, socket de statut
 │   ├── test_core_lifecycle.py ControlPort réel, nettoyage, arrêt propre
@@ -1423,7 +1432,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 | `providers[].accounts[].u` | string | Identifiant en base64 |
 | `providers[].accounts[].p` | string | Mot de passe en base64 |
 | `providers[].wireguard[].conf` | string | Fichier WireGuard, relatif au répertoire d'installation (v4.0.0) |
-| `providers[].wg_auto` | objet | Facultatif : WireGuard géré (IVPN) ; `countries` : pays des serveurs (vide : tous) ; `reserved_accounts` : remise à zéro d'un compte plein permise (v4.2.0) |
+| `providers[].wg_auto` | objet | Facultatif : WireGuard géré, `service` `ivpn` (v4.2.0) ou `mullvad` (v4.3.0) ; `countries` : pays des serveurs (vide : tous) ; `reserved_accounts` : récupération d'une place quand tous les comptes sont pleins |
 | `providers[].transports` | liste | Facultatif : ordre propre au fournisseur, mêmes valeurs que `transports`, qu'il remplace pour lui (v4.1.0) |
 | `transports` | liste | Transports essayés chez chaque fournisseur, dans l'ordre : `["wireguard", "openvpn"]` (défaut), l'inverse, ou un seul (v4.0.0) |
 | `excluded_ips` | liste | CIDRs/IPs passant par la passerelle locale |
@@ -1439,7 +1448,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **1042 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **1071 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout

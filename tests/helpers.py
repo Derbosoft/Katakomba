@@ -61,9 +61,7 @@ _REDIRECTIONS = {
     "LAN_DNSMASQ_PID":    _RUN / "dnsmasq.pid",
     "TOR_ROUTES_FILE":    _STATE / "tor-routes.txt",
     "REPRISES_FILE":      _STATE / "reprises.json",
-    # WireGuard géré : session et serveurs d'IVPN, identité de la machine.
-    "SESSION_FILE":       _STATE / "ivpn-session.json",
-    "SERVEURS_FILE":      _STATE / "ivpn-serveurs.json",
+    # WireGuard géré : identité de la machine (ses fichiers vont sous STATE_DIR).
     "MACHINE_ID":         _BAC_A_SABLE / "machine-id",
     "TOR_DATA_DIR":       _STATE / "tor_data",
     "TOR_COOKIE":         _STATE / "tor_data" / "control_auth_cookie",

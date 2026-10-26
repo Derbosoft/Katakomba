@@ -109,6 +109,28 @@ def _identifiants(depuis_stdin: bool) -> tuple:
     return identifiant, getpass.getpass(_("Mot de passe") + " : ")
 
 
+def _numeros(service: str, depuis_stdin: bool) -> list:
+    """Numéros de compte : demandés sans écho, ou lus sur l'entrée standard
+    (un par ligne).  Jamais en argument : chez Mullvad, le numéro suffit à
+    utiliser le compte."""
+    if depuis_stdin:
+        lignes = [ligne for ligne in sys.stdin.read().splitlines() if ligne.strip()]
+    elif sys.stdin.isatty():
+        lignes = [getpass.getpass(_("Numéro de compte") + " : ")]
+    else:
+        raise Erreur(_("Pas de terminal pour saisir le numéro de compte : passez-le "
+                       "sur l'entrée standard avec --stdin."))
+    numeros = []
+    for ligne in lignes:
+        numero, erreur = modele.lire_numero(service, ligne)
+        if erreur:
+            raise Erreur(erreur)
+        numeros.append(numero)
+    if not numeros:
+        raise Erreur(_("Aucun numéro de compte."))
+    return numeros
+
+
 def _options(args: list, attendues: dict) -> tuple:
     """Sépare les options (--nom valeur, ou --drapeau) des arguments."""
     opts, reste = {}, []
@@ -235,6 +257,26 @@ def fournisseur(action: str, args: list):
         _wg_auto(config, args)
         _enregistrer(config)
         return
+
+    if action == "managed":
+        opts, reste = _options(args, {"--name": True, "--stdin": False})
+        if len(reste) != 1 or reste[0].lower() not in modele.SERVICES_GERES:
+            raise Erreur(_("Usage : {usage}").format(
+                usage=_("katakomba provider managed <mullvad|ivpn> [--name NOM] [--stdin]")))
+        service = reste[0].lower()
+        nom = (opts.get("--name") or service).strip()
+        erreur = modele.verifier_nom(nom, fournisseurs)
+        if erreur:
+            raise Erreur(erreur)
+        numeros = _numeros(service, opts.get("--stdin", False))
+        modele.nouveau_fournisseur_gere(config, nom, service, numeros)
+        print(_("Fournisseur « {nom} » ajouté (priorité {rang}) : {service}, "
+                "WireGuard géré, {n} compte(s).").format(
+            nom=nom, rang=len(fournisseurs), service=modele.SERVICES_GERES[service],
+            n=len(numeros)))
+        _enregistrer(config)
+        _rappel_demarrage()
+        return
     raise Erreur(_("Action inconnue : {action}").format(action=action))
 
 
@@ -251,10 +293,10 @@ def _wg_auto(config: dict, args: list):
         if actif and not p.get("accounts"):
             raise Erreur(_("Ajoutez d'abord les numéros de compte IVPN : katakomba "
                            "account add {nom}").format(nom=p["name"]))
-        if actif and not modele.est_ivpn(p):
-            raise Erreur(_("« {nom} » ne ressemble pas à IVPN (nom, serveurs du "
-                           "fichier OpenVPN) : seul IVPN peut être géré pour "
-                           "l'instant.").format(nom=p["name"]))
+        if actif and not modele.service_detecte(p):
+            raise Erreur(_("« {nom} » ne ressemble ni à IVPN ni à Mullvad (nom, "
+                           "serveurs du fichier OpenVPN) : seuls ces deux-là peuvent "
+                           "être gérés.").format(nom=p["name"]))
         modele.regler_wg_gere(p, actif=actif)
         print(_("WireGuard géré : {etat} pour « {nom} ».").format(
             etat="on" if actif else "off", nom=p["name"]))
@@ -304,7 +346,11 @@ def compte(action: str, args: list):
     if action == "list":
         _attendre(args, 1, _("katakomba account list <fournisseur>"))
         p = _fournisseur(config, args[0])
-        if p.get("accounts"):
+        if p.get("accounts") and modele.service_gere(p) == "mullvad":
+            print("Mullvad :")
+            for i, c in enumerate(p.get("accounts", []), 1):
+                print(f"  {i}. {modele.masquer_numero(modele.deobf(c.get('u', '')))}")
+        elif p.get("accounts"):
             print("OpenVPN :")
             for i, c in enumerate(p.get("accounts", []), 1):
                 print(f"  {i}. {modele.deobf(c.get('u', ''))}")
@@ -331,6 +377,15 @@ def compte(action: str, args: list):
             return
         _attendre(reste, 1, _("katakomba account add <fournisseur> [--stdin]"))
         p = _fournisseur(config, reste[0])
+        if modele.service_gere(p) == "mullvad":
+            numeros = _numeros("mullvad", opts.get("--stdin", False))
+            p.setdefault("accounts", []).extend(
+                {"u": modele.obf(n), "p": modele.obf("")} for n in numeros)
+            print(ngettext("{n} compte Mullvad ajouté à {fournisseur}.",
+                           "{n} comptes Mullvad ajoutés à {fournisseur}.",
+                           len(numeros)).format(n=len(numeros), fournisseur=p["name"]))
+            _enregistrer(config)
+            return
         identifiant, mot_de_passe = _identifiants(opts.get("--stdin", False))
         p.setdefault("accounts", []).append(
             {"u": modele.obf(identifiant), "p": modele.obf(mot_de_passe)})
@@ -544,8 +599,10 @@ def aide():
             (_("provider remove <nom> | priority <nom> <rang>"), ""),
             (_("provider transports <nom> <ordre|default>"),
              _("Ordre propre au fournisseur (ex. openvpn,wireguard)")),
+            (_("provider managed <mullvad|ivpn> [--name NOM] [--stdin]"),
+             _("Fournisseur sans fichier, par numéro de compte")),
             (_("provider wg-auto <nom> on|off"),
-             _("WireGuard géré : clé enregistrée par Katakomba (IVPN)")),
+             _("WireGuard géré : clé enregistrée par Katakomba (IVPN, Mullvad)")),
             (_("provider wg-auto <nom> countries <NL,CH|all> | reserved on|off"), ""),
             (_("account list <fournisseur> | add <fournisseur> [--stdin]"), ""),
             (_("account add <fournisseur> <fichier.conf>…"),

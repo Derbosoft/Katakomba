@@ -435,11 +435,37 @@ class WireGuardConsoleTest(Console):
         self.assertEqual(self.lancer("provider", "wg-auto", "ivpn", "off")[0], 0)
         self.assertNotIn("wg_auto", self.config()["providers"][0])
 
+    def test_mullvad_par_numero(self):
+        code, sortie, err = self.lancer("provider", "managed", "mullvad", "--stdin",
+                                        entree="1234 5678 1234 5678\n")
+        self.assertEqual(code, 0, err)
+        p = self.config()["providers"][0]
+        self.assertEqual((p["name"], p["wg_auto"]["service"], p["ovpn_file"]),
+                         ("mullvad", "mullvad", ""))
+        self.assertEqual(modele.deobf(p["accounts"][0]["u"]), "1234567812345678")
+        code, sortie, err = self.lancer("account", "add", "mullvad", "--stdin",
+                                        entree="1111222233334444\n5555666677778888\n")
+        self.assertEqual(code, 0, err)
+        self.assertIn("2 comptes Mullvad ajoutés", sortie)
+        code, sortie, _ = self.lancer("account", "list", "mullvad")
+        self.assertIn("1. •••• 5678", sortie)
+        _, liste, _ = self.lancer("provider", "list")
+        for texte in (sortie, liste):
+            for numero in ("1234567812345678", "1111222233334444"):
+                self.assertNotIn(numero, texte, "numéro de compte affiché")
+        self.assertIn("3 comptes Mullvad · WireGuard géré", liste)
+        code, _, err = self.lancer("provider", "managed", "mullvad", "--name", "m2",
+                                   "--stdin", entree="123\n")
+        self.assertEqual(code, 1)
+        self.assertIn("16 chiffres", err)
+        self.assertEqual(self.lancer("provider", "managed", "nordvpn", "--stdin",
+                                     entree="1\n")[0], 1)
+
     def test_wireguard_gere_refuse(self):
         self.ajouter("proton")
         code, _, err = self.lancer("provider", "wg-auto", "proton", "on")
         self.assertEqual(code, 1)
-        self.assertIn("ne ressemble pas à IVPN", err)
+        self.assertIn("ne ressemble ni à IVPN ni à Mullvad", err)
         code, _, err = self.lancer("provider", "wg-auto", "proton", "reserved", "on")
         self.assertIn("Activez d'abord", err)
         self.ajouter_wg("ivpn-wg")                     # sans compte

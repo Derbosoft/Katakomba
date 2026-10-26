@@ -1,5 +1,6 @@
 """
-WireGuard géré : l'assistant de l'API IVPN (ivpn.py), lancé par le vrai
+WireGuard géré : les assistants des API IVPN et Mullvad (ivpn.py,
+mullvad.py), lancés par le vrai
 daemon comme en production — « python3 -I », depuis /, sans aucun droit en
 root réel (CI), depuis un dossier rangé comme /opt/katakomba.  Sans réseau
 dans cet espace : la réponse doit être une erreur JSON propre, jamais une
@@ -28,7 +29,7 @@ class AssistantIvpnTest(CasNoyau):
         code.mkdir()
         os.chmod(tmp.name, 0o755)
         os.chmod(code, 0o755)
-        for f in ("ivpn.py", "pont_wg.py"):
+        for f in ("ivpn.py", "mullvad.py", "pont_wg.py"):
             shutil.copy(RACINE / f, code)
             (code / f).chmod(0o644)
         self.addCleanup(setattr, m_gestion_wg, "SCRIPT_DIR", m_gestion_wg.SCRIPT_DIR)
@@ -52,11 +53,16 @@ class AssistantIvpnTest(CasNoyau):
 
     def test_erreur_propre_sans_reseau(self):
         debut = time.monotonic()
-        r = self.d._api_ivpn({"action": "statut", "jeton": "x"})
+        r = self.d._api_wg("ivpn", {"action": "statut", "jeton": "x"})
         self.assertEqual((r["ok"], r["code"]), (False, 0), r)
         self.assertIn("API injoignable", r["message"])
         self.assertLess(time.monotonic() - debut, 30)
 
+    def test_mullvad_erreur_propre_sans_reseau(self):
+        r = self.d._api_wg("mullvad", {"action": "appareils", "compte": "0000"})
+        self.assertEqual((r["ok"], r["code"]), (False, 0), r)
+        self.assertIn("API injoignable", r["message"])
+
     def test_requete_inconnue(self):
-        r = self.d._api_ivpn({"action": "rm"})
+        r = self.d._api_wg("ivpn", {"action": "rm"})
         self.assertEqual(r, {"ok": False, "code": 0, "message": "requête illisible"})

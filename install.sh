@@ -384,7 +384,7 @@ echo "[3/7] Déploiement du code dans $INSTALL_DIR …"
 # n'importe quel programme lancé sous ce compte pouvait réécrire le daemon et
 # obtenir root au redémarrage suivant, sans mot de passe.
 FICHIERS_CODE=(constants.py main.py console.py validation.py adaptation.py i18n.py daemon gui
-               pont_wg.py ivpn.py
+               pont_wg.py ivpn.py mullvad.py
                assets polkit po repair_network.sh katakomba-cli.sh install.sh uninstall.sh
                template.ovpn LICENSE README.md README.fr.md)
 if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then

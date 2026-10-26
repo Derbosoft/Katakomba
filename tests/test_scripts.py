@@ -597,8 +597,9 @@ class PaquetDebTest(unittest.TestCase):
     def test_session_ivpn_rendue_avant_l_arret(self):
         """WireGuard géré : la place d'appareil est rendue au compte pendant
         que Tor (lancé par le service) tourne encore."""
-        self.assertIn("ivpn.py\" liberer", UNINSTALL)
-        self.assertLess(UNINSTALL.index("ivpn.py\" liberer"),
+        self.assertIn('for service in ivpn mullvad', UNINSTALL)
+        self.assertIn('$service.py" liberer', UNINSTALL)
+        self.assertLess(UNINSTALL.index('$service.py" liberer'),
                         UNINSTALL.index("systemctl disable --now katakomba"))
 
     def test_postinst_reutilise_install_sh(self):

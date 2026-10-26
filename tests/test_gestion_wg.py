@@ -100,16 +100,16 @@ def compte(i):
 class Base(unittest.TestCase):
 
     def setUp(self):
-        for f in (m_gestion_wg.SESSION_FILE, m_gestion_wg.SERVEURS_FILE):
+        for f in (m_gestion_wg.fichier_session("ivpn"), m_gestion_wg.fichier_serveurs("ivpn")):
             f.unlink(missing_ok=True)
         m_gestion_wg.MACHINE_ID.write_text("machine-a\n")
-        self.addCleanup(m_gestion_wg.SESSION_FILE.unlink, missing_ok=True)
-        self.addCleanup(m_gestion_wg.SERVEURS_FILE.unlink, missing_ok=True)
+        self.addCleanup(m_gestion_wg.fichier_session("ivpn").unlink, missing_ok=True)
+        self.addCleanup(m_gestion_wg.fichier_serveurs("ivpn").unlink, missing_ok=True)
 
     def daemon(self, api, p=None, **config):
         p = p or fournisseur()
         d = FakeDaemon(config={"providers": [p], "random_account": False, **config})
-        d._api_ivpn = api
+        d._api_wg = lambda service, q: api(q)
         return d, p
 
 
@@ -124,8 +124,8 @@ class SessionTest(Base):
         self.assertTrue(nom.startswith("IVPN "))
         self.assertEqual(api.actions(), ["nouvelle", "serveurs"])
         self.assertEqual(len(api.sessions), 1)
-        brut = m_gestion_wg.SESSION_FILE.read_text()
-        self.assertEqual(stat.S_IMODE(os.stat(m_gestion_wg.SESSION_FILE).st_mode), 0o600)
+        brut = m_gestion_wg.fichier_session("ivpn").read_text()
+        self.assertEqual(stat.S_IMODE(os.stat(m_gestion_wg.fichier_session("ivpn")).st_mode), 0o600)
         self.assertNotIn("i-AAAA", brut, "numéro de compte écrit en clair")
         self.assertNotIn("i-AAAA", "\n".join(m for _, m in d.logs))
 
@@ -152,7 +152,7 @@ class SessionTest(Base):
     def test_un_seul_serveur_dans_le_pays(self):
         api = FausseApi({compte(0): 1})
         d, p = self.daemon(api, fournisseur(countries=["NL"]))
-        d._ivpn_hotes = []
+        d._wg_hotes = []
         with mock.patch.object(m_gestion_wg.ivpn, "choisir_hotes",
                                side_effect=lambda l, pays, n: [c[1:] for c in
                                                                 m_gestion_wg.ivpn.candidats(l, pays)[:1]]):
@@ -200,7 +200,7 @@ class SessionTest(Base):
         d, p = self.daemon(api)
         self.assertEqual(d._wg_gere_reglages(p, 0)[2], "indisponible")
         self.assertEqual(api.actions(), ["nouvelle"], "les autres comptes martelés")
-        self.assertGreater(d._wg_gere_pause - time.time(), m_gestion_wg.PAUSE_API)
+        self.assertGreater(d._wg_pauses["ivpn"] - time.time(), m_gestion_wg.PAUSE_API)
 
     def test_api_injoignable(self):
         api = FausseApi({compte(0): 1}, reseau=True)
@@ -248,9 +248,9 @@ class RenouvellementTest(Base):
         api = FausseApi({compte(0): 1})
         d, p = self.daemon(api)
         d._wg_gere_reglages(p, 0)
-        etat = json.loads(m_gestion_wg.SESSION_FILE.read_text())
+        etat = json.loads(m_gestion_wg.fichier_session("ivpn").read_text())
         etat["rotation"] = time.time() - 1
-        m_gestion_wg.SESSION_FILE.write_text(json.dumps(etat))
+        m_gestion_wg.fichier_session("ivpn").write_text(json.dumps(etat))
         api.appels.clear()
         return api, d, p, etat
 
@@ -259,7 +259,7 @@ class RenouvellementTest(Base):
         d._wg_gere_reglages(p, 0)
         self.assertEqual(api.actions(), ["cle"])
         self.assertEqual(api.appels[0]["active"], avant["publique"])
-        apres = json.loads(m_gestion_wg.SESSION_FILE.read_text())
+        apres = json.loads(m_gestion_wg.fichier_session("ivpn").read_text())
         self.assertEqual(apres["jeton"], avant["jeton"])
         self.assertNotEqual(apres["cle"], avant["cle"])
         self.assertEqual(api.sessions[avant["jeton"]][1], apres["publique"])
@@ -277,7 +277,7 @@ class RenouvellementTest(Base):
         api, d, p, avant = self._session()
         api.reseau = True
         self.assertEqual(d._wg_gere_reglages(p, 0)[2], "", "session perdue sur un refus")
-        apres = json.loads(m_gestion_wg.SESSION_FILE.read_text())
+        apres = json.loads(m_gestion_wg.fichier_session("ivpn").read_text())
         self.assertEqual(apres["cle"], avant["cle"])
         self.assertAlmostEqual(apres["rotation"] - time.time(),
                                m_gestion_wg.ROTATION_REPORT, delta=60)
@@ -295,22 +295,22 @@ class EchecTest(Base):
     def test_session_fermee_par_un_autre_pc(self):
         api, d, p = self._pret()
         api.sessions.clear()
-        self.assertTrue(d._wg_gere_echec())
-        self.assertFalse(m_gestion_wg.SESSION_FILE.exists())
+        self.assertTrue(d._wg_gere_echec(p))
+        self.assertFalse(m_gestion_wg.fichier_session("ivpn").exists())
 
     def test_session_active_cle_reposee_une_fois(self):
         api, d, p = self._pret()
-        self.assertFalse(d._wg_gere_echec())
+        self.assertFalse(d._wg_gere_echec(p))
         self.assertEqual(api.actions(), ["statut", "cle"])
         api.appels.clear()
-        self.assertFalse(d._wg_gere_echec())
+        self.assertFalse(d._wg_gere_echec(p))
         self.assertEqual(api.actions(), ["statut"])
 
     def test_api_injoignable_le_serveur_reste_en_cause(self):
         api, d, p = self._pret()
         api.reseau = True
-        self.assertFalse(d._wg_gere_echec())
-        self.assertTrue(m_gestion_wg.SESSION_FILE.exists())
+        self.assertFalse(d._wg_gere_echec(p))
+        self.assertTrue(m_gestion_wg.fichier_session("ivpn").exists())
 
 
 class MenageTest(Base):
@@ -325,7 +325,7 @@ class MenageTest(Base):
         d2._wg_gere_menage()
         d2._wg_gere_menage()
         self.assertEqual(api.sessions, {})
-        self.assertFalse(m_gestion_wg.SESSION_FILE.exists())
+        self.assertFalse(m_gestion_wg.fichier_session("ivpn").exists())
         self.assertEqual(api.actions().count("fermer"), 1)
 
     def test_gestion_active_rien_a_faire(self):
@@ -345,7 +345,7 @@ class AssistantTest(Base):
         d._utilisateur_vpn = lambda: (997, 996)
         sortie = mock.Mock(stdout='{"ok": true, "jeton": "j", "adresse": "a"}')
         with mock.patch.object(m_gestion_wg.subprocess, "run", return_value=sortie) as run:
-            r = d.__class__._api_ivpn(d, {"action": "nouvelle", "compte": "i-SECRET"})
+            r = d.__class__._api_wg(d, "ivpn", {"action": "nouvelle", "compte": "i-SECRET"})
         self.assertTrue(r["ok"])
         cmd, kw = run.call_args.args[0], run.call_args.kwargs
         self.assertNotIn("i-SECRET", " ".join(cmd))
@@ -359,7 +359,7 @@ class AssistantTest(Base):
         for sortie in ("", "[1]", '{"ok": "oui"}', "Traceback"):
             with mock.patch.object(m_gestion_wg.subprocess, "run",
                                    return_value=mock.Mock(stdout=sortie)):
-                self.assertEqual(d.__class__._api_ivpn(d, {"action": "statut"})["ok"], False)
+                self.assertEqual(d.__class__._api_wg(d, "ivpn", {"action": "statut"})["ok"], False)
 
 
 class BoucleTest(Base):
@@ -413,7 +413,7 @@ class BoucleTest(Base):
         st = d._status_snapshot()["wg_managed"]
         self.assertEqual((st["service"], st["account"]), ("ivpn", 1))
         brut = json.dumps(d._status_snapshot())
-        etat = json.loads(m_gestion_wg.SESSION_FILE.read_text())
+        etat = json.loads(m_gestion_wg.fichier_session("ivpn").read_text())
         for secret in (etat["jeton"], etat["cle"], compte(0)):
             self.assertNotIn(secret, brut)
 
@@ -421,6 +421,234 @@ class BoucleTest(Base):
         p = fournisseur(0)
         self.assertEqual(m_gestion_wg.service_gere(p), "")
         self.assertEqual(m_session.transports_du(p, ["wireguard", "openvpn"]), ["openvpn"])
+
+
+# ── Mullvad (v4.3.0) ─────────────────────────────────────────────────────────
+
+RELAIS = {
+    "locations": {f"{c}-{v}": {"country": c.upper(), "city": v.title()}
+                  for c, v in (("nl", "ams"), ("de", "fra"), ("se", "sto"), ("ch", "zrh"))},
+    "relays": [{"hostname": f"{loc}-wg-00{n}", "location": loc, "active": True,
+                "ipv4_addr_in": f"185.1.{i}.{n}", "public_key": CLE, "weight": 100}
+               for i, loc in enumerate(("nl-ams", "de-fra", "se-sto", "ch-zrh"))
+               for n in (1, 2)],
+}
+JOUR = 24 * 3600
+
+
+class FauxMullvad:
+    """Le service Mullvad : 5 appareils par compte, date de création."""
+
+    def __init__(self, comptes, actif=True):
+        self.appareils = {c: [] for c in comptes}   # compte → [[id, clé, créé, adresse]]
+        self.actif, self.appels, self.n = actif, [], 0
+        self.maintenant = time.time()
+
+    def __call__(self, q):
+        self.appels.append(q)
+        a = q["action"]
+        if a == "serveurs":
+            return {"ok": True, "liste": json.loads(json.dumps(RELAIS))}
+        compte = q.get("compte")
+        if compte not in self.appareils:
+            return {"ok": False, "code": 401, "message": "compte refusé"}
+        liste = self.appareils[compte]
+        if a == "nouvelle":
+            if len(liste) >= 5:
+                return {"ok": False, "code": 602, "message": "compte plein"}
+            self.n += 1
+            ident = f"00000000-0000-4000-8000-{self.n:012d}"
+            liste.append([ident, q["publique"], self.maintenant, f"10.64.0.{self.n}/32"])
+            return {"ok": True, "jeton": ident, "adresse": f"10.64.0.{self.n}/32",
+                    "publique": q["publique"], "cree": int(self.maintenant)}
+        if a == "appareils":
+            return {"ok": True, "maintenant": int(self.maintenant),
+                    "appareils": [{"jeton": x[0], "cree": int(x[2])} for x in liste]}
+        trouve = [x for x in liste if x[0] == q.get("jeton")]
+        if a == "fermer":
+            for x in trouve:
+                liste.remove(x)
+            return {"ok": True}
+        if not trouve:
+            return {"ok": False, "code": 601, "message": "appareil inconnu"}
+        if a == "statut":
+            return {"ok": True, "actif": self.actif, "jusqua": 0, "publique": trouve[0][1]}
+        if a == "cle":
+            trouve[0][1] = q["publique"]
+            return {"ok": True, "adresse": trouve[0][3]}
+        raise AssertionError(a)
+
+    def actions(self):
+        return [q["action"] for q in self.appels]
+
+    def total(self):
+        return sum(len(x) for x in self.appareils.values())
+
+
+def mullvad(n=1, **gestion):
+    enc = lambda s: base64.b64encode(s.encode()).decode()      # noqa: E731
+    return {"name": "mullvad", "ovpn_file": "",
+            "accounts": [{"u": enc(f"123456781234567{i}"), "p": ""} for i in range(n)],
+            "wg_auto": {"service": "mullvad", **gestion}}
+
+
+def numero(i):
+    return f"123456781234567{i}"
+
+
+class MullvadTest(Base):
+
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(m_gestion_wg.fichier_session("mullvad").unlink, missing_ok=True)
+        self.addCleanup(m_gestion_wg.fichier_serveurs("mullvad").unlink, missing_ok=True)
+        for f in (m_gestion_wg.fichier_session("mullvad"),
+                  m_gestion_wg.fichier_serveurs("mullvad")):
+            f.unlink(missing_ok=True)
+
+    def daemon(self, api, p=None, **config):
+        p = p or mullvad()
+        d = FakeDaemon(config={"providers": [p], "random_account": False, **config})
+        d._api_wg = lambda service, q: (self.assertEqual(service, "mullvad"), api(q))[1]
+        return d, p
+
+    def etat(self):
+        return json.loads(m_gestion_wg.fichier_session("mullvad").read_text())
+
+    def test_premier_appareil(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        reglages, nom, issue = d._wg_gere_reglages(p, 0)
+        self.assertEqual(issue, "", d.log_dump())
+        self.assertEqual(reglages["emballage"], "mullvad")
+        self.assertTrue(reglages["serveur"].endswith(":443"), "udp-over-tcp sur TCP 443")
+        self.assertTrue(nom.startswith("Mullvad "))
+        self.assertEqual(api.total(), 1)
+        self.assertNotIn(numero(0), m_gestion_wg.fichier_session("mullvad").read_text())
+
+    def test_pas_d_openvpn_chez_mullvad(self):
+        self.assertEqual(m_session.transports_du(mullvad(), ["wireguard", "openvpn"]),
+                         ["wireguard"])
+        sans = mullvad()
+        del sans["wg_auto"]
+        self.assertEqual(m_session.transports_du(sans, ["wireguard", "openvpn"]),
+                         ["openvpn"], "comportement d'avant la v4.3.0 changé")
+
+    def test_renouvellement_par_appareil_neuf(self):
+        """La preuve de vie : un appareil neuf, l'ancien supprimé."""
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        avant = self.etat()
+        avant["rotation"] = time.time() - 1
+        m_gestion_wg.fichier_session("mullvad").write_text(json.dumps(avant))
+        api.appels.clear()
+        d2, _ = self.daemon(api, p)
+        self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
+        apres = self.etat()
+        self.assertEqual(api.actions(), ["nouvelle", "fermer"])
+        self.assertNotEqual(apres["jeton"], avant["jeton"])
+        self.assertEqual(api.total(), 1)
+        self.assertTrue(d2.has_log("appareil neuf, l'ancien supprimé", "OK"))
+        self.assertFalse(d2.has_log("session ouverte"), "renouvellement annoncé comme nouveau")
+
+    def test_renouvellement_compte_plein(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        for k in range(4):
+            api.appareils[numero(0)].append([f"autre{k}", "x", time.time(), "10.9.9.9/32"])
+        avant = self.etat()
+        avant["rotation"] = time.time() - 1
+        m_gestion_wg.fichier_session("mullvad").write_text(json.dumps(avant))
+        d2, _ = self.daemon(api, p)
+        self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
+        ids = [x[0] for x in api.appareils[numero(0)]]
+        self.assertNotIn(avant["jeton"], ids)
+        self.assertIn(self.etat()["jeton"], ids)
+        self.assertEqual(len(ids), 5)
+
+    def test_compte_plein_appareils_morts_supprimes(self):
+        api = FauxMullvad([numero(0)])
+        vieux = time.time() - 30 * JOUR
+        recent = time.time() - 10 * JOUR
+        api.appareils[numero(0)] = [[f"mort{k}", "x", vieux, "10.9.9.9/32"] for k in range(2)] + \
+                                   [[f"vivant{k}", "x", recent, "10.9.9.9/32"] for k in range(3)]
+        d, p = self.daemon(api, mullvad(reserved_accounts=True))
+        self.assertEqual(d._wg_gere_reglages(p, 0)[2], "", d.log_dump())
+        ids = [x[0] for x in api.appareils[numero(0)]]
+        self.assertEqual([i for i in ids if i.startswith("mort")], [])
+        self.assertEqual(len([i for i in ids if i.startswith("vivant")]), 3,
+                         "appareil de moins de 3 semaines supprimé")
+        self.assertTrue(d.has_log("2 appareil(s) de plus de 3 semaines supprimé(s)", "WARN"))
+
+    def test_compte_plein_sans_reserve_rien_supprime(self):
+        api = FauxMullvad([numero(0)])
+        api.appareils[numero(0)] = [[f"mort{k}", "x", time.time() - 60 * JOUR, "a"]
+                                    for k in range(5)]
+        d, p = self.daemon(api)
+        self.assertEqual(d._wg_gere_reglages(p, 0)[2], "indisponible")
+        self.assertEqual(api.total(), 5)
+        self.assertNotIn("appareils", api.actions())
+        self.assertNotIn("fermer", api.actions())
+
+    def test_appareil_supprime_par_un_autre(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        api.appareils[numero(0)].clear()
+        self.assertTrue(d._wg_gere_echec(p))
+        self.assertFalse(m_gestion_wg.fichier_session("mullvad").exists())
+
+    def test_cle_juste_pas_de_resynchro(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        api.appels.clear()
+        self.assertFalse(d._wg_gere_echec(p))
+        self.assertEqual(api.actions(), ["statut"])
+
+    def test_compte_expire(self):
+        api = FauxMullvad([numero(0)], actif=False)
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        self.assertTrue(d._wg_gere_echec(p))
+        self.assertEqual(api.total(), 0, "appareil du compte expiré laissé en place")
+
+    def test_menage_supprime_l_appareil(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        sans = {**p}
+        del sans["wg_auto"]
+        d2, _ = self.daemon(api, sans)
+        d2._wg_gere_menage()
+        self.assertEqual(api.total(), 0)
+        fermer = [q for q in api.appels if q["action"] == "fermer"]
+        self.assertEqual(fermer[0]["compte"], numero(0), "compte retrouvé par son empreinte")
+
+    def test_statut(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        st = d._status_snapshot()["wg_managed"]
+        self.assertEqual((st["service"], st["account"], st["provider"]), ("mullvad", 1, "mullvad"))
+        self.assertNotIn(numero(0), json.dumps(d._status_snapshot()))
+
+    def test_indisponible_sans_openvpn_nouvelle_passe(self):
+        api = FauxMullvad([])                         # compte refusé partout
+        d, p = self.daemon(api)
+        vus = []
+        d._session_wireguard = lambda *a, **k: vus.append("wg") or "arret"
+        d._session_openvpn = lambda *a: vus.append("openvpn") or "arret"
+        d._utilisateur_vpn = lambda: (997, 996)
+        d._check_socks_port = lambda: True
+        d._get_default_gateway = lambda: ("192.168.1.1", "eth0")
+        d._ipv6_block_off = lambda: None
+        with no_sleep(m_session):
+            d._vpn_loop()
+        self.assertEqual(vus, [], "OpenVPN tenté chez Mullvad")
+        self.assertTrue(d.has_log("Aucun compte n'a pu obtenir une session WireGuard"))
 
 
 if __name__ == "__main__":

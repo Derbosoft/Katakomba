@@ -1070,13 +1070,31 @@ class WireGuardGereTest(unittest.TestCase):
         self.assertIn("WireGuard géré", modele.resume_comptes(p))
 
     def test_sauvegarde_piegee(self):
-        for faux in ({"service": "mullvad"}, {"service": "ivpn", "countries": "NL"},
+        for faux in ({"service": "nordvpn"}, {"service": "ivpn", "countries": "NL"},
                      {"service": "ivpn", "countries": ["nl; rm"]},
                      {"service": "ivpn", "reserved_accounts": "oui"}, "ivpn"):
             config = {"providers": [{"name": "x", "wg_auto": faux}]}
             ecartes = modele.assainir_reglages(config)
             self.assertNotIn("wg_auto", config["providers"][0], faux)
             self.assertTrue(any("WireGuard géré" in e for e in ecartes))
+
+    def test_mullvad_par_numero(self):
+        self.assertEqual(modele.lire_numero("mullvad", " 1234 5678 1234 5678 "),
+                         ("1234567812345678", ""))
+        for faux in ("123456781234567", "1234-5678-1234-5678", "abcd567812345678"):
+            self.assertIsNone(modele.lire_numero("mullvad", faux)[0], faux)
+        self.assertEqual(modele.lire_numero("ivpn", "i-AB12-CD34-EF56")[0], "i-AB12-CD34-EF56")
+        self.assertIsNone(modele.lire_numero("ivpn", "1234567812345678")[0])
+        self.assertEqual(modele.masquer_numero("1234567812345678"), "•••• 5678")
+        config = {"providers": []}
+        p = modele.nouveau_fournisseur_gere(config, "mullvad", "mullvad", ["1234567812345678"])
+        self.assertEqual(modele.deobf(p["accounts"][0]["u"]), "1234567812345678")
+        self.assertEqual(p["wg_auto"]["service"], "mullvad")
+        self.assertFalse(modele.sert_openvpn(p), "Mullvad n'a plus d'OpenVPN")
+        self.assertFalse(modele.deux_transports(p))
+        self.assertEqual(modele.resume_comptes(p), "1 compte Mullvad · WireGuard géré")
+        self.assertEqual(modele.service_detecte({"name": "Mullvad-pro"}), "mullvad")
+        self.assertTrue(modele.wg_gere_valide(p["wg_auto"]))
 
     def test_trajet(self):
         st = {"tunnel_up": True, "tor_ready": True, "provider": "ivpn",
@@ -1138,6 +1156,13 @@ class WireGuardEtatTest(unittest.TestCase):
             "Session IVPN fermée : nouvel enregistrement",
             "Serveur WireGuard 1 : aucune réponse", "Session IVPN ouverte (compte 2)"])
         self.assertIn("aucune poignée de main, serveur suivant", modele.RAISONS)
+        ligne = ("2026-10-26T20:00:00+02:00 h katakomba[1]: [2026-10-26 20:00:00] [OK   ] "
+                 "Mullvad : clé WireGuard renouvelée (appareil neuf, l'ancien supprimé).")
+        self.assertTrue(re.search(modele._FILTRE_EVENEMENTS, ligne))
+        ligne2 = ligne.replace("clé WireGuard renouvelée (appareil neuf, l'ancien supprimé)",
+                               "session ouverte sur le compte 1 — une place")
+        self.assertEqual([e[3] for e in modele.evenements([ligne, ligne2])],
+                         ["Session Mullvad ouverte (compte 1)", "Clé WireGuard renouvelée"])
 
 
 if __name__ == "__main__":

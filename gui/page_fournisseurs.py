@@ -31,7 +31,15 @@ class PageFournisseurs(Gtk.Stack):
         b.add_css_class("pill")
         b.add_css_class("suggested-action")
         b.connect("clicked", lambda _b: fen.ouvrir_assistant())
-        vide.set_child(b)
+        par_numero = Gtk.Button(label=_("Mullvad ou IVPN : par numéro de compte…"),
+                                halign=Gtk.Align.CENTER)
+        par_numero.add_css_class("pill")
+        par_numero.connect("clicked", lambda _b: self._creer_gere())
+        boutons = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
+                          halign=Gtk.Align.CENTER)
+        boutons.append(b)
+        boutons.append(par_numero)
+        vide.set_child(boutons)
         self.add_named(vide, "vide")
 
         page = Adw.PreferencesPage()
@@ -46,7 +54,16 @@ class PageFournisseurs(Gtk.Stack):
                                             label=_("Ajouter")))
         ajouter.add_css_class("flat")
         ajouter.connect("clicked", lambda _b: fen.ouvrir_assistant())
-        self.groupe.set_header_suffix(ajouter)
+        numero_compte = Gtk.Button(valign=Gtk.Align.CENTER,
+                                   tooltip_text=_("Mullvad ou IVPN : par numéro de compte…"))
+        numero_compte.set_child(Adw.ButtonContent(icon_name="avatar-default-symbolic",
+                                                  label=_("Par numéro de compte")))
+        numero_compte.add_css_class("flat")
+        numero_compte.connect("clicked", lambda _b: self._creer_gere())
+        entete = Gtk.Box(spacing=6)
+        entete.append(numero_compte)
+        entete.append(ajouter)
+        self.groupe.set_header_suffix(entete)
         self.liste = GroupeListe(self.groupe)
         page.add(self.groupe)
         self.add_named(page, "liste")
@@ -73,13 +90,14 @@ class PageFournisseurs(Gtk.Stack):
         confs = p.get("wireguard", [])
         morceaux = [_("Prioritaire") if i == 0 else _("Priorité {n}").format(n=i + 1),
                     modele.resume_comptes(p)]
-        if comptes and not fichier:
+        mullvad = modele.service_gere(p) == "mullvad"
+        if comptes and not fichier and not modele.wg_gere(p):
             morceaux.append(_("aucun fichier OpenVPN"))
         r = Adw.ExpanderRow(title=p["name"], subtitle=" · ".join(morceaux))
         r.set_expanded(p["name"] in self._ouverts)
         r.connect("notify::expanded", self._depliage, p["name"])
         r.add_prefix(numero(i + 1))
-        if not confs and not (fichier and comptes):
+        if not confs and not (fichier and comptes) and not (modele.wg_gere(p) and comptes):
             alerte_icone = Gtk.Image(icon_name="dialog-warning-symbolic",
                                      tooltip_text=_("Fichier ou compte manquant"))
             alerte_icone.add_css_class("warning")
@@ -95,7 +113,7 @@ class PageFournisseurs(Gtk.Stack):
             r.add_row(self._rangee_transports(i, p))
 
         gere = modele.wg_gere(p)
-        if comptes and modele.est_ivpn(p):
+        if comptes and modele.service_detecte(p):
             for rangee in self._rangees_wg_gere(i, p):
                 r.add_row(rangee)
         # WireGuard géré : le daemon ignore les .conf, inutile de les proposer.
@@ -118,18 +136,27 @@ class PageFournisseurs(Gtk.Stack):
             ajout_wg.connect("activated", lambda _r: self._choisir_confs(i))
             r.add_row(ajout_wg)
 
-        f = Adw.ActionRow(title=_("Fichier de configuration OpenVPN"),
-                          subtitle=fichier or _("Aucun — choisissez celui du fournisseur"))
-        f.add_prefix(Gtk.Image(icon_name="text-x-generic-symbolic"))
-        changer = Gtk.Button(label=_("Remplacer…") if fichier else _("Choisir…"),
-                             valign=Gtk.Align.CENTER)
-        changer.connect("clicked", lambda _b: self._choisir_fichier(i))
-        f.add_suffix(changer)
-        r.add_row(f)
+        # Mullvad n'a plus d'OpenVPN : ses comptes sont de simples numéros.
+        if not mullvad:
+            f = Adw.ActionRow(title=_("Fichier de configuration OpenVPN"),
+                              subtitle=fichier or _("Aucun — choisissez celui du fournisseur"))
+            f.add_prefix(Gtk.Image(icon_name="text-x-generic-symbolic"))
+            changer = Gtk.Button(label=_("Remplacer…") if fichier else _("Choisir…"),
+                                 valign=Gtk.Align.CENTER)
+            changer.connect("clicked", lambda _b: self._choisir_fichier(i))
+            f.add_suffix(changer)
+            r.add_row(f)
 
         for j, compte in enumerate(comptes):
-            c = Adw.ActionRow(title=modele.deobf(compte.get("u", "")),
-                              subtitle=_("Compte {n} · mot de passe enregistré").format(n=j + 1))
+            if mullvad:
+                # Le numéro EST l'identifiant complet du compte : jamais affiché.
+                c = Adw.ActionRow(
+                    title=modele.masquer_numero(modele.deobf(compte.get("u", ""))),
+                    subtitle=_("Compte {n} · numéro de compte Mullvad").format(n=j + 1))
+            else:
+                c = Adw.ActionRow(
+                    title=modele.deobf(compte.get("u", "")),
+                    subtitle=_("Compte {n} · mot de passe enregistré").format(n=j + 1))
             c.add_prefix(Gtk.Image(icon_name="avatar-default-symbolic"))
             c.add_suffix(menu_actions((
                 (_("Essayer plus tôt"), lambda j=j: self._compte_deplacer(i, j, -1), j > 0, False),
@@ -139,7 +166,8 @@ class PageFournisseurs(Gtk.Stack):
             )))
             r.add_row(c)
 
-        ajout = Adw.ActionRow(title=_("Ajouter un compte OpenVPN"), activatable=True)
+        ajout = Adw.ActionRow(title=_("Ajouter un compte Mullvad") if mullvad
+                              else _("Ajouter un compte OpenVPN"), activatable=True)
         ajout.add_prefix(Gtk.Image(icon_name="list-add-symbolic"))
         ajout.connect("activated", lambda _r: self._compte_ajouter(i))
         r.add_row(ajout)
@@ -161,9 +189,10 @@ class PageFournisseurs(Gtk.Stack):
         return choix
 
     def _rangees_wg_gere(self, i, p):
-        """IVPN : clé WireGuard enregistrée par Katakomba sur l'un des
-        comptes, par Tor, sans fichier .conf (daemon/gestion_wg.py)."""
+        """IVPN, Mullvad : clé WireGuard enregistrée par Katakomba sur l'un
+        des comptes, par Tor, sans fichier .conf (daemon/gestion_wg.py)."""
         gere = modele.wg_gere(p)
+        mullvad = modele.service_detecte(p) == "mullvad"
         interrupteur = Adw.SwitchRow(
             title=_("WireGuard géré par Katakomba"),
             subtitle=_("Katakomba enregistre lui-même une clé WireGuard sur l'un "
@@ -183,10 +212,14 @@ class PageFournisseurs(Gtk.Stack):
         pays.connect("apply", lambda e: self._wg_gere_pays(i, e.get_text()))
         reserves = Adw.SwitchRow(
             title=_("Comptes réservés à Katakomba"),
-            subtitle=_("Si tous les comptes sont pleins, Katakomba peut en remettre "
-                       "un à zéro : ses autres appareils (téléphone, autre "
-                       "ordinateur) sont déconnectés. À activer seulement si ces "
-                       "comptes ne servent qu'à des PC Katakomba."))
+            subtitle=_("Si tous les comptes sont pleins, Katakomba supprime les "
+                       "appareils qui ne se sont pas renouvelés depuis 3 semaines "
+                       "(PC disparus). À activer seulement si ces comptes ne "
+                       "servent qu'à des PC Katakomba.") if mullvad else
+            _("Si tous les comptes sont pleins, Katakomba peut en remettre "
+              "un à zéro : ses autres appareils (téléphone, autre "
+              "ordinateur) sont déconnectés. À activer seulement si ces "
+              "comptes ne servent qu'à des PC Katakomba."))
         reserves.set_active(bool(g.get("reserved_accounts")))
         reserves.connect("notify::active", lambda s, _p: self._wg_gere(
             i, reserves=s.get_active()))
@@ -292,6 +325,9 @@ class PageFournisseurs(Gtk.Stack):
                   _("Supprimer"), lambda: (comptes.pop(j), self._modifie()))
 
     def _compte_ajouter(self, i):
+        if modele.service_gere(self.fournisseurs[i]) == "mullvad":
+            self._numero_ajouter(i)
+            return
         liste = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         liste.add_css_class("boxed-list")
         ident = Adw.EntryRow(title=_("Identifiant"))
@@ -312,6 +348,71 @@ class PageFournisseurs(Gtk.Stack):
         alerte(self.fen, _("Ajouter un compte"),
                _("Les identifiants OpenVPN de ce fournisseur, souvent différents "
                  "de ceux de votre compte sur son site."),
+               reponses=(("annuler", _("Annuler")), ("ajouter", _("Ajouter"))),
+               defaut="ajouter", suggeree="ajouter", rappel=reponse, extra=liste)
+
+    def _numero_ajouter(self, i):
+        """Mullvad : un compte n'est qu'un numéro, sans mot de passe."""
+        liste = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        liste.add_css_class("boxed-list")
+        saisie = Adw.PasswordEntryRow(title=_("Numéro de compte Mullvad"))
+        liste.append(saisie)
+
+        def reponse(r):
+            if r != "ajouter":
+                return
+            numero, erreur = modele.lire_numero("mullvad", saisie.get_text())
+            if erreur:
+                alerte(self.fen, _("Numéro de compte"), erreur)
+                return
+            self.fournisseurs[i].setdefault("accounts", []).append(
+                {"u": modele.obf(numero), "p": modele.obf("")})
+            self._ouverts.add(self.fournisseurs[i]["name"])
+            self._modifie()
+            self.fen.notifier(_("Compte ajouté"))
+
+        alerte(self.fen, _("Ajouter un compte"),
+               _("Le numéro de compte Mullvad (16 chiffres). Il suffit à lui seul à "
+                 "utiliser le compte : Katakomba ne l'affiche jamais en entier."),
+               reponses=(("annuler", _("Annuler")), ("ajouter", _("Ajouter"))),
+               defaut="ajouter", suggeree="ajouter", rappel=reponse, extra=liste)
+
+    def _creer_gere(self):
+        """Nouveau fournisseur sans fichier : Mullvad ou IVPN, par numéro de
+        compte, en WireGuard géré."""
+        services = ("mullvad", "ivpn")
+        liste = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        liste.add_css_class("boxed-list")
+        service = Adw.ComboRow(title=_("Fournisseur"), model=Gtk.StringList.new(
+            [modele.SERVICES_GERES[s] for s in services]))
+        nom = Adw.EntryRow(title=_("Nom dans Katakomba"))
+        nom.set_text("mullvad")
+        saisie = Adw.PasswordEntryRow(title=_("Numéro de compte"))
+        service.connect("notify::selected", lambda c, _p: nom.set_text(
+            services[c.get_selected()]))
+        for rangee in (service, nom, saisie):
+            liste.append(rangee)
+
+        def reponse(r):
+            if r != "ajouter":
+                return
+            s = services[service.get_selected()]
+            n = nom.get_text().strip() or s
+            erreur = modele.verifier_nom(n, self.fournisseurs)
+            numero, erreur_numero = modele.lire_numero(s, saisie.get_text())
+            if erreur or erreur_numero:
+                alerte(self.fen, _("Ce fournisseur ne peut pas être ajouté"),
+                       erreur or erreur_numero)
+                return
+            modele.nouveau_fournisseur_gere(self.fen.config, n, s, [numero])
+            self._ouverts.add(n)
+            self._modifie()
+            self.fen.notifier(_("Fournisseur « {nom} » ajouté").format(nom=n))
+
+        alerte(self.fen, _("Par numéro de compte"),
+               _("Sans fichier à télécharger : Katakomba enregistre lui-même sa clé "
+                 "WireGuard sur le compte, à travers Tor. D'autres comptes "
+                 "s'ajoutent ensuite sous le fournisseur."),
                reponses=(("annuler", _("Annuler")), ("ajouter", _("Ajouter"))),
                defaut="ajouter", suggeree="ajouter", rappel=reponse, extra=liste)
 

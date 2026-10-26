@@ -95,6 +95,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.3.0" date="2026-10-26">
+      <description>
+        <p>Managed WireGuard for Mullvad: a provider created from its account number alone, with no file to download.</p>
+        <ul>
+          <li>One device per PC, kept across reboots; weekly renewal with a new device, which proves the PC is alive</li>
+          <li>For accounts reserved for Katakomba, devices of PCs that vanished more than 3 weeks ago are deleted when an account is full</li>
+          <li>Account numbers are never shown in full</li>
+          <li>"By account number" on the Providers page, and katakomba provider managed in the console, for Mullvad and IVPN</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.3.0</url>
+    </release>
     <release version="4.2.0" date="2026-10-25">
       <description>
         <p>Managed WireGuard for IVPN: Katakomba registers its own WireGuard key on your IVPN account, through Tor, with no file to create.</p>

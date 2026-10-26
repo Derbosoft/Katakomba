@@ -32,7 +32,7 @@ export SOURCE_DATE_EPOCH
 
 # Mêmes fichiers que le déploiement d'install.sh (vérifié par les tests).
 FICHIERS_CODE=(constants.py main.py console.py validation.py adaptation.py i18n.py daemon gui
-               pont_wg.py ivpn.py
+               pont_wg.py ivpn.py mullvad.py
                assets polkit po repair_network.sh katakomba-cli.sh install.sh uninstall.sh
                template.ovpn LICENSE README.md README.fr.md)
 

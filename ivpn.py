@@ -262,6 +262,10 @@ def choisir_hotes(liste: dict, pays=None, n=3) -> list:
     return choisis
 
 
+def nom_hote(passerelle, hote) -> str:
+    return str(hote.get("hostname", "?"))
+
+
 def port_cible(liste: dict) -> int:
     """Port V2Ray interne vers WireGuard (config.ports.v2ray.wireguard)."""
     for p in liste["config"]["ports"]["v2ray"]["wireguard"]:

@@ -56,9 +56,12 @@ def ordre_transports(config, fournisseur=None) -> list:
 
 def transports_du(fournisseur: dict, ordre) -> list:
     """Transports que ce fournisseur peut servir, dans l'ordre voulu."""
+    gere = service_gere(fournisseur)
     offerts = {
-        "wireguard": bool(fournisseur.get("wireguard") or service_gere(fournisseur)),
-        "openvpn":   bool(fournisseur.get("ovpn_file") or fournisseur.get("accounts")),
+        "wireguard": bool(fournisseur.get("wireguard") or gere),
+        # Mullvad n'a plus d'OpenVPN : ses comptes ne servent qu'au WireGuard géré.
+        "openvpn":   bool(fournisseur.get("ovpn_file")
+                          or (fournisseur.get("accounts") and gere != "mullvad")),
     }
     return [t for t in ordre if offerts[t]]
 
@@ -121,8 +124,8 @@ class SessionMixin:
                    if 0 <= idx < len(providers) else [])
         self._transport = (transport if transport in offerts
                            else offerts[0] if offerts else "")
-        self._ivpn_hotes = []            # serveurs gérés : nouveau tirage
-        self._ivpn_resynchro = False
+        self._wg_hotes = []              # serveurs gérés : nouveau tirage
+        self._wg_resynchro = False
         self._plan_accounts()
 
     def _etape_suivante(self) -> bool:
@@ -750,7 +753,7 @@ class SessionMixin:
 
             if issue == "echec":
                 echecs += 1
-                if echecs == 1 and gere and self._wg_gere_echec():
+                if echecs == 1 and gere and self._wg_gere_echec(p_courant):
                     # Session fermée ou adresse changée chez le fournisseur :
                     # la panne venait de là, pas du serveur.
                     echecs = 0
