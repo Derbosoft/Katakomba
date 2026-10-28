@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.4.0
+# Katakomba — v4.4.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.4.0-blue)
+![Version](https://img.shields.io/badge/Version-4.4.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -346,7 +346,7 @@ With nothing but **account numbers**, Katakomba registers its WireGuard key **it
 |---|---|
 | First start | A new key, registered through Tor on an account **drawn at random** (a fleet spreads itself out): one device slot for this PC. Account full: the next one. |
 | Reboot, reconnection | **No API call**: same slot, same key. |
-| Every connection *(v4.4.0)* | **A server drawn at random** in the chosen countries, never the one of the previous connection: at start-up and at every reconnection after a drop, like OpenVPN's `remote-random`. The server list is downloaded once a day; no `.conf` file is stored. |
+| Every connection *(v4.4.0)* | **A server drawn at random** in the chosen countries, never the one of the previous connection: at start-up and at every reconnection after a drop, like OpenVPN's `remote-random`. The server list (about 100 KB, through Tor, no account) is only downloaded at connection time, and only when the copy is more than 7 days old, or more than 24 h after a silent server *(v4.4.1)*; no `.conf` file is stored. |
 | Server not answering | **Another server** (three, in different cities), never another account: the key works everywhere. |
 | After a week | Key renewed, spread at random over a day. IVPN: **on the same session**. Mullvad: **new device, old one deleted** — Mullvad's API only gives a device's creation date, which becomes its **proof of life**. |
 | Slot deleted elsewhere (account reset, website, another PC) | Noticed after a failed connection: registers again, automatically. |
@@ -1089,6 +1089,8 @@ Two design points worth stating:
 
 **No continuous monitoring**: this test does not run in the background and costs nothing after connection.
 
+*(v4.4.1)* **Once per daemon start**: once the check has concluded (enough throughput, measurement impossible or maximum attempts reached), later reconnections (drop, restart by the watchdog) no longer measure. Each measurement downloads 4.5 MB from a third party; with WireGuard, which changes server at every reconnection, it would otherwise repeat every time. **The watchdog does not conclude to an outage while measuring**: the measurement saturates the circuit, which can go silent for a few seconds without being dead. If the tunnel really dies, the measurement fails and stops after 75 s at most. Through Tor, a VPN travels inside a TCP stream: 2 MB samples spend most of their time ramping up and underestimate what a long transfer gets; a threshold above 250 KB/s rejects most circuits.
+
 #### How the measurement is taken (v3.6.3)
 
 A single request measured **the cost of opening a connection**, not the circuit's capacity. Recorded under real conditions, the daemon's own measurement replayed three times in a row on a 9-hour-old circuit:
@@ -1399,7 +1401,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 
 ## Tests
 
-The project is covered by a suite of **1075 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **1082 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything

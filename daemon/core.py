@@ -271,6 +271,7 @@ class DaemonCore:
         self._wg_etats             = {}
         self._wg_hotes             = []
         self._wg_dernier           = ""
+        self._wg_liste_douteuse    = False
         self._wg_code              = 0
         self._wg_pauses            = {}
         self._wg_resynchro         = False
@@ -316,6 +317,12 @@ class DaemonCore:
 
         self._circuit_attempts = 0      # essais de re-tirage du circuit Tor
         self._circuit_retry    = False  # reconnexion pour circuit (pas un failover)
+        # Contrôle conclu (débit OK, mesure impossible ou plafond atteint) :
+        # pas de nouvelle mesure avant le prochain démarrage du daemon.
+        self._circuit_controle_fait = False
+        # Mesure en cours : elle sature le circuit, la surveillance ne la
+        # prend pas pour une panne.
+        self._mesure_en_cours  = False
         self._auth_failed      = False  # dernière rupture = refus d'identifiants
 
         # Dernière mesure de débit du circuit courant.  0.0 signifie « aucune

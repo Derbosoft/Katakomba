@@ -387,7 +387,8 @@ class BoucleTest(Base):
         api = FausseApi({compte(0): 1})
         d, vus = self._boucle(api, ["arret"])
         self.assertEqual(vus, [("wireguard", "172.30.0.1")])
-        self.assertTrue(d.has_log("WireGuard géré, serveur 1"))
+        self.assertTrue(d.has_log("(WireGuard géré)"))
+        self.assertFalse(d.has_log("ordre des .conf"))
 
     def test_api_indisponible_openvpn_prend_le_relais(self):
         api = FausseApi({compte(0): 1}, reseau=True)
@@ -675,6 +676,50 @@ class MullvadTest(Base):
         for _ in range(2):
             d._wg_hotes = []
             self.assertEqual(d._wg_gere_reglages(p, 0)[2], "")
+
+    def test_liste_des_serveurs_gardee_7_jours(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        cache = m_gestion_wg.fichier_serveurs("mullvad")
+        brut = json.loads(cache.read_text())
+        brut["le"] -= 3 * JOUR
+        cache.write_text(json.dumps(brut))
+        api.appels.clear()
+        d._wg_hotes = []
+        d._wg_gere_reglages(p, 0)
+        self.assertEqual(api.actions(), [], "liste retéléchargée avant 7 jours")
+
+    def test_liste_des_serveurs_rafraichie_apres_un_serveur_muet(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        cache = m_gestion_wg.fichier_serveurs("mullvad")
+        brut = json.loads(cache.read_text())
+        brut["le"] -= 2 * JOUR
+        cache.write_text(json.dumps(brut))
+        d._wg_gere_echec(p)                       # serveur muet, appareil en règle
+        api.appels.clear()
+        d._wg_hotes = []
+        d._wg_gere_reglages(p, 0)
+        self.assertEqual(api.actions(), ["serveurs"])
+        self.assertFalse(d._wg_liste_douteuse)
+
+    def test_serveur_muet_nomme_dans_le_journal(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        suite = iter(["echec", "echec"])
+        d._session_wireguard = lambda nom, *a, reglages=None: next(suite, "arret")
+        d._utilisateur_vpn = lambda: (997, 996)
+        d._check_socks_port = lambda: True
+        d._get_default_gateway = lambda: ("192.168.1.1", "eth0")
+        d._ipv6_block_off = lambda: None
+        with no_sleep(m_session):
+            d._vpn_loop()
+        self.assertTrue(d.has_log("(mullvad) sans poignée de main — serveur suivant", "WARN"),
+                        d.log_dump())
+        self.assertTrue(any(m.startswith("Serveur ") and "-wg-" in m for _, m in d.logs),
+                        "le serveur muet n'est pas nommé")
 
     def test_indisponible_sans_openvpn_nouvelle_passe(self):
         api = FauxMullvad([])                         # compte refusé partout

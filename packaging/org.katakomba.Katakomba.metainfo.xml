@@ -95,6 +95,17 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.4.1" date="2026-10-28">
+      <description>
+        <p>Fewer reconnections and less traffic.</p>
+        <ul>
+          <li>The Tor circuit throughput check runs once per daemon start, no longer after every reconnection (4.5 MB each time)</li>
+          <li>The watchdog no longer mistakes the throughput check, which saturates the circuit, for an outage</li>
+          <li>Managed WireGuard: server list kept 7 days (24 hours after a silent server), clearer log lines naming the real server</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.4.1</url>
+    </release>
     <release version="4.4.0" date="2026-10-28">
       <description>
         <p>Managed WireGuard: a different server at every connection, like OpenVPN's remote-random.</p>

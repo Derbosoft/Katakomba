@@ -557,6 +557,39 @@ class CircuitQualityTest(unittest.TestCase):
         self.assertFalse(d.openvpn_process.terminated)
         self.assertTrue(d.has_log("Mesure du débit impossible", "WARN"))
 
+    def test_une_seule_mesure_par_demarrage(self):
+        """Contrôle conclu : les reconnexions suivantes ne mesurent plus
+        (v4.4.1 — chaque mesure télécharge 4,5 Mo)."""
+        for kbs, attempts in ((400.0, 0), (-1.0, 0), (50.0, 3)):
+            d = self._daemon(kbs)
+            d._circuit_attempts = attempts
+            self._run(d)
+            self.assertTrue(d._circuit_controle_fait, kbs)
+            mesures = []
+            d._measure_tunnel_speed = lambda *a, m=mesures, **k: m.append(1) or 10.0
+            self._run(d)
+            self.assertEqual(mesures, [], f"nouvelle mesure après {kbs}")
+
+    def test_re_tirage_mesure_encore(self):
+        d = self._run(self._daemon(100.0))
+        self.assertFalse(d._circuit_controle_fait, "le re-tirage doit être mesuré")
+
+    def test_mesure_signalee_a_la_surveillance(self):
+        d = self._daemon(400.0)
+        pendant = []
+        d._measure_tunnel_speed = lambda *a, **k: pendant.append(d._mesure_en_cours) or 400.0
+        self._run(d)
+        self.assertEqual(pendant, [True])
+        self.assertFalse(d._mesure_en_cours)
+        d = self._daemon(400.0)
+
+        def plante(*a, **k):
+            raise RuntimeError("curl")
+        d._measure_tunnel_speed = plante
+        with self.assertRaises(RuntimeError):
+            self._run(d)
+        self.assertFalse(d._mesure_en_cours, "drapeau resté levé après une erreur")
+
     def test_desactive_ne_mesure_pas(self):
         d = self._daemon(10.0, circuit_check=False)
         called = []

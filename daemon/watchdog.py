@@ -290,7 +290,11 @@ class WatchdogMixin:
             d_tx = max(0, tx - self._last_tx) if self._last_tx else 0
             self._last_rx, self._last_tx = rx, tx
             self._rx_history.append(float(d_rx))
-            if not self._tunnel_up or d_rx:
+            # Mesure du débit en cours : elle sature le circuit, qui peut se
+            # taire plusieurs secondes sans être mort (constaté deux fois
+            # sur deux).  Si le tunnel meurt vraiment, la mesure échoue et
+            # s'arrête au plus tard après son budget (75 s).
+            if not self._tunnel_up or d_rx or self._mesure_en_cours:
                 self._tx_sans_rx = 0
             elif d_tx:
                 self._tx_sans_rx += 1
@@ -379,6 +383,8 @@ class WatchdogMixin:
                     and not self._canal_mort()):
                 continue
 
+            if self._mesure_en_cours:
+                continue
             ok = self._check_connectivity()
             if ok:
                 # Seule une connectivité VÉRIFIÉE clôt la panne.

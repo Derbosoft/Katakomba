@@ -24,7 +24,7 @@ Principe, pour un parc de PC qui partagent des comptes :
 - chaque connexion tire un serveur au hasard dans les pays choisis, autre
   que le précédent : au démarrage, et à chaque reconnexion après une
   coupure (comme « remote-random » d'OpenVPN).  Aucun appel à l'API : la
-  liste des serveurs est en cache ;
+  liste des serveurs est en cache (7 jours ; 24 h après un serveur muet) ;
 - la clé est renouvelée toutes les semaines.  IVPN : sur la même session.
   Mullvad : par un appareil neuf, l'ancien supprimé ensuite ; l'API ne
   donnant que la date de création d'un appareil, elle devient sa preuve de
@@ -65,7 +65,8 @@ NOMS = {"ivpn": "IVPN", "mullvad": "Mullvad"}
 MACHINE_ID = Path("/etc/machine-id")
 
 SERVEURS_GERES = 3               # serveurs essayés à tour de rôle, villes différentes
-SERVEURS_FRAICHEUR = 24 * 3600   # âge de la liste avant un nouveau téléchargement
+SERVEURS_FRAICHEUR = 7 * 24 * 3600   # âge de la liste avant un nouveau téléchargement
+SERVEURS_DOUTE     = 24 * 3600       # après un serveur muet : la liste a pu changer
 ROTATION = 7 * 24 * 3600         # renouvellement de la clé
 ROTATION_ALEA = 24 * 3600        # étalement, pour qu'un parc ne renouvelle pas d'un coup
 ROTATION_REPORT = 6 * 3600       # renouvellement refusé : nouvel essai
@@ -383,8 +384,10 @@ class GestionWgMixin:
         return etat
 
     def _wg_serveurs(self, service: str):
-        """La liste des serveurs : celle du cache tant qu'elle a moins d'un
-        jour, sinon téléchargée ; l'ancienne si le téléchargement échoue."""
+        """La liste des serveurs : celle du cache tant qu'elle a moins de 7
+        jours (24 h après un serveur muet : il a pu être retiré), sinon
+        téléchargée ; l'ancienne si le téléchargement échoue.  Elle n'est
+        demandée qu'à une connexion, jamais par une minuterie."""
         nom = NOMS[service]
         cache = None
         try:
@@ -393,10 +396,12 @@ class GestionWgMixin:
                 cache = brut
         except (OSError, ValueError):
             pass
-        if cache and 0 <= time.time() - cache.get("le", 0) < SERVEURS_FRAICHEUR:
+        fraicheur = SERVEURS_DOUTE if self._wg_liste_douteuse else SERVEURS_FRAICHEUR
+        if cache and 0 <= time.time() - cache.get("le", 0) < fraicheur:
             return cache["liste"]
         r = self._api_wg(service, {"action": "serveurs"})
         if r["ok"] and isinstance(r.get("liste"), dict):
+            self._wg_liste_douteuse = False
             try:
                 _write_private(fichier_serveurs(service), json.dumps(
                     {"le": time.time(), "liste": r["liste"]}), dir_mode=0o755)
@@ -471,6 +476,7 @@ class GestionWgMixin:
         essai suit aussitôt) ; faux si le serveur reste en cause."""
         service = service_gere(p)
         nom = NOMS[service]
+        self._wg_liste_douteuse = True       # ce serveur a peut-être disparu
         etat = self._wg_lire(service)
         if etat is None:
             return False

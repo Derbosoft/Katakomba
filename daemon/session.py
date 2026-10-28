@@ -203,7 +203,10 @@ class SessionMixin:
         # donc « tous les comptes essayés » garde son sens.
         ordre = libres + punis
         quoi = "des .conf" if self._transport == "wireguard" else "des comptes"
-        if n > 1 and self.config.get("random_account", True):
+        # WireGuard géré : pas de .conf, le serveur est tiré à la connexion
+        # (et nommé à ce moment-là) ; cet ordre interne n'apprend rien.
+        gere = self._transport == "wireguard" and service_gere(p)
+        if n > 1 and self.config.get("random_account", True) and not gere:
             self._log(f"[provider] {p.get('name','?')} : ordre {quoi} tiré "
                       f"au hasard → {' '.join(str(i+1) for i in ordre)}", "INFO")
         if punis:
@@ -411,8 +414,15 @@ class SessionMixin:
         neuf (NEWNYM) puis on relance OpenVPN ou le pont WireGuard — seule
         action qui change réellement les relais.  Borné par
         circuit_max_retries pour ne jamais boucler : au-delà, on garde le
-        circuit tel quel."""
+        circuit tel quel.
+
+        Une fois par démarrage du daemon (v4.4.1) : une fois le contrôle
+        conclu, les reconnexions suivantes (coupure, relance par la
+        surveillance) ne mesurent plus.  Chaque mesure télécharge 4,5 Mo
+        vers un tiers, et sature le circuit pendant jusqu'à 75 s."""
         if not self.config.get("circuit_check", True):
+            return
+        if self._circuit_controle_fait:
             return
         min_kbs = self.config.get("circuit_min_kbs", 250)
         max_try = self.config.get("circuit_max_retries", 3)
@@ -435,7 +445,11 @@ class SessionMixin:
 
         # Contrôle PENDANT la mesure : inutile de continuer à sonder une
         # interface morte pendant plusieurs requêtes.
-        kbs = self._measure_tunnel_speed(tun, still_valid=tunnel_intact)
+        self._mesure_en_cours = True
+        try:
+            kbs = self._measure_tunnel_speed(tun, still_valid=tunnel_intact)
+        finally:
+            self._mesure_en_cours = False
 
         # Et contrôle APRÈS : le tunnel peut tomber entre la dernière requête
         # et l'exploitation du résultat.  Sans ce second contrôle, un thread
@@ -449,6 +463,7 @@ class SessionMixin:
         if kbs < 0:
             self._log("[circuit] Mesure du débit impossible — "
                       "circuit conservé.", "WARN")
+            self._circuit_controle_fait = True
             return
         mbps = kbs * 8 / 1000
         # Mesure conservée pour le socket de statut : elle est prise une seule
@@ -461,9 +476,11 @@ class SessionMixin:
             self._log(f"[circuit] Débit OK : {kbs:.0f} KB/s "
                       f"(~{mbps:.1f} Mbps).", "OK")
             self._circuit_attempts = 0
+            self._circuit_controle_fait = True
             return
 
         if self._circuit_attempts >= max_try:
+            self._circuit_controle_fait = True
             self._log(
                 f"[circuit] Débit toujours faible ({kbs:.0f} KB/s) après "
                 f"{max_try} essais — circuit conservé (mieux vaut un tunnel "
@@ -611,8 +628,7 @@ class SessionMixin:
             gere = transport == "wireguard" and bool(service_gere(p_courant))
             quoi_wg = "serveur" if gere else ".conf"
             if gere:
-                self._log(f"Fournisseur : {prov_name}  (WireGuard géré, serveur "
-                          f"{acc_idx+1})", "INFO")
+                self._log(f"Fournisseur : {prov_name}  (WireGuard géré)", "INFO")
             elif transport == "wireguard":
                 self._log(f"Fournisseur : {prov_name}  (WireGuard, .conf "
                           f"{acc_idx+1} : {compte[0].rsplit('/', 1)[-1]})", "INFO")
@@ -770,9 +786,13 @@ class SessionMixin:
                 echecs = 0
                 self._reconnect_reason = f"aucune poignée de main, {quoi_wg} suivant"
                 self._mettre_en_quarantaine(acc_idx)
-                self._log(f"{quoi_wg} {acc_idx+1} ({prov_name}) sans poignée de "
-                          f"main — mis en quarantaine {AUTH_COOLDOWN//60} min.",
-                          "WARN")
+                if gere:
+                    self._log(f"Serveur {self._wg_dernier} ({prov_name}) sans "
+                              "poignée de main — serveur suivant.", "WARN")
+                else:
+                    self._log(f"{quoi_wg} {acc_idx+1} ({prov_name}) sans poignée de "
+                              f"main — mis en quarantaine {AUTH_COOLDOWN//60} min.",
+                              "WARN")
                 if self._try_failover():
                     time.sleep(3)
                     continue

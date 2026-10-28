@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.4.0
+# Katakomba — v4.4.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.4.0-blue)
+![Version](https://img.shields.io/badge/Version-4.4.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -346,7 +346,7 @@ Avec les seuls **numéros de compte**, Katakomba enregistre **lui-même** sa cl�
 |---|---|
 | Premier démarrage | Une clé neuve, enregistrée par Tor sur un compte **tiré au hasard** (un parc se répartit de lui-même) : une place d'appareil pour ce PC. Compte plein : le suivant. |
 | Redémarrage, reconnexion | **Aucun appel à l'API** : même place, même clé. |
-| Chaque connexion *(v4.4.0)* | **Un serveur tiré au hasard** dans les pays choisis, jamais celui de la connexion précédente : au démarrage comme à chaque reconnexion après une coupure, comme `remote-random` d'OpenVPN. La liste des serveurs est téléchargée une fois par jour ; aucun fichier `.conf` n'est stocké. |
+| Chaque connexion *(v4.4.0)* | **Un serveur tiré au hasard** dans les pays choisis, jamais celui de la connexion précédente : au démarrage comme à chaque reconnexion après une coupure, comme `remote-random` d'OpenVPN. La liste des serveurs (environ 100 Ko, par Tor, sans compte) n'est téléchargée qu'à une connexion, et seulement si la copie a plus de 7 jours, ou plus de 24 h après un serveur muet *(v4.4.1)* ; aucun fichier `.conf` n'est stocké. |
 | Serveur qui ne répond pas | **Un autre serveur** (trois, dans des villes différentes), jamais un autre compte : la clé vaut partout. |
 | Après une semaine | Clé renouvelée, étalé au hasard sur une journée. IVPN : **sur la même session**. Mullvad : **appareil neuf, l'ancien supprimé** — l'API de Mullvad ne donnant que la date de création d'un appareil, elle devient sa **preuve de vie**. |
 | Place supprimée ailleurs (compte remis à zéro, site, autre PC) | Constaté après un échec de connexion : nouvel enregistrement, automatique. |
@@ -1137,6 +1137,8 @@ Deux points de conception importants :
 
 **Aucune surveillance continue** : ce test ne tourne pas en tâche de fond et ne consomme rien après la connexion.
 
+*(v4.4.1)* **Une seule fois par démarrage du daemon** : une fois le contrôle conclu (débit suffisant, mesure impossible ou plafond d'essais atteint), les reconnexions suivantes (coupure, relance par la surveillance) ne mesurent plus. Chaque mesure télécharge 4,5 Mo vers un tiers ; avec WireGuard, qui change de serveur à chaque reconnexion, elle se répétait sinon à chaque fois. **Pendant la mesure, la surveillance ne conclut pas à une panne** : la mesure sature le circuit, qui peut se taire plusieurs secondes sans être mort. Si le tunnel meurt vraiment, la mesure échoue et s'arrête au plus tard après 75 s. À travers Tor, un VPN voyage dans un flux TCP : les échantillons de 2 Mo passent l'essentiel de leur temps à monter en débit et sous-estiment ce qu'un long transfert obtient ; un seuil au-dessus de 250 KB/s fait rejeter la plupart des circuits.
+
 #### Comment la mesure est prise (v3.6.3)
 
 Une requête unique mesurait le **coût d'établissement de la connexion**, pas la capacité du circuit. Relevé en conditions réelles, mesure du daemon rejouée trois fois de suite sur un circuit vieux de 9 h :
@@ -1450,7 +1452,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **1075 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **1082 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout

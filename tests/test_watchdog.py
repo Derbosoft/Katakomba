@@ -344,6 +344,22 @@ class MonitorLoopTest(unittest.TestCase):
         self.assertEqual(d.appels, ["recover"])
         self.assertTrue(d.has_log("émet sans rien recevoir", "WARN"))
 
+    def test_pas_de_verdict_pendant_la_mesure_du_debit(self):
+        """La mesure sature le circuit, qui peut se taire plusieurs secondes :
+        ni canal muet ni panne tant qu'elle dure (v4.4.1)."""
+        d = self._daemon()
+        d.compteurs = True
+        tx = [0]
+
+        def compteurs():
+            tx[0] += 1000
+            return 0, tx[0]
+        d._compteurs_tun = compteurs
+        d._mesure_en_cours = True
+        self._boucle(d, ticks=12, verifs=[False] * 5)
+        self.assertEqual((d.verifs, d.appels), ([], []))
+        self.assertFalse(d.has_log("émet sans rien recevoir"))
+
     def test_trafic_recu_pas_de_canal_muet(self):
         d = self._daemon()
         d.compteurs = True
