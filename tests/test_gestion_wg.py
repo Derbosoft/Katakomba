@@ -635,6 +635,47 @@ class MullvadTest(Base):
         self.assertEqual((st["service"], st["account"], st["provider"]), ("mullvad", 1, "mullvad"))
         self.assertNotIn(numero(0), json.dumps(d._status_snapshot()))
 
+    def test_chaque_connexion_un_autre_serveur(self):
+        """Comme « remote-random » d'OpenVPN : chaque reconnexion après une
+        coupure tire un serveur, jamais celui d'avant, sans appel à l'API."""
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api, mullvad(countries=["NL"]))     # 2 relais
+        serveurs, suite = [], iter(["coupure"] * 4)
+        d._session_wireguard = lambda nom, *a, reglages=None: (
+            serveurs.append(reglages["serveur"]), next(suite, "arret"))[1]
+        d._utilisateur_vpn = lambda: (997, 996)
+        d._check_socks_port = lambda: True
+        d._get_default_gateway = lambda: ("192.168.1.1", "eth0")
+        d._ipv6_block_off = lambda: None
+        with no_sleep(m_session):
+            d._vpn_loop()
+        self.assertEqual(len(serveurs), 5, d.log_dump())
+        for avant, apres in zip(serveurs, serveurs[1:]):
+            self.assertNotEqual(avant, apres, serveurs)
+        self.assertTrue(d.has_log("reconnexion sur un autre serveur", "WARN"))
+        self.assertEqual(api.actions(), ["nouvelle", "serveurs"])   # au démarrage seulement
+
+    def test_nouveau_tirage_sans_le_serveur_precedent(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        precedent = None
+        for _ in range(20):
+            d._wg_hotes = []
+            serveur = d._wg_gere_reglages(p, 0)[0]["serveur"]
+            self.assertNotEqual(serveur, precedent)
+            precedent = serveur
+
+    def test_seul_serveur_repris(self):
+        """Un seul serveur dans les pays choisis : il sert encore."""
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api, mullvad(countries=["NL"]))
+        RELAIS_NL = [r for r in RELAIS["relays"] if r["location"] == "nl-ams"][:1]
+        with mock.patch.dict(RELAIS, relays=RELAIS_NL):
+            d._wg_gere_reglages(p, 0)
+        for _ in range(2):
+            d._wg_hotes = []
+            self.assertEqual(d._wg_gere_reglages(p, 0)[2], "")
+
     def test_indisponible_sans_openvpn_nouvelle_passe(self):
         api = FauxMullvad([])                         # compte refusé partout
         d, p = self.daemon(api)

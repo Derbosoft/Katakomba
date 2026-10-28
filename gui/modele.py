@@ -344,14 +344,34 @@ def regler_wg_gere(p: dict, actif=None, pays=None, reserves=None, service=None) 
         g["reserved_accounts"] = bool(reserves)
 
 
+# Pays d'Europe, pour le raccourci « Europe » des serveurs gérés (Russie et
+# Biélorussie exclues).
+EUROPE = ("AD", "AL", "AT", "BA", "BE", "BG", "CH", "CY", "CZ", "DE", "DK", "EE",
+          "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IS", "IT", "LI", "LT",
+          "LU", "LV", "MC", "MD", "ME", "MK", "MT", "NL", "NO", "PL", "PT", "RO",
+          "RS", "SE", "SI", "SK", "SM", "UA", "XK")
+
+
 def lire_pays(texte: str) -> tuple:
-    """« nl, CH » → (["NL", "CH"], "") ; (None, erreur) sinon.  Vide : tous."""
-    codes = [c.strip().upper() for c in re.split(r"[\s,;]+", texte) if c.strip()]
+    """« nl, CH » → (["NL", "CH"], "") ; (None, erreur) sinon.  Vide : tous.
+    « Europe » (ou « EU ») : les pays d'EUROPE."""
+    codes = []
+    for c in re.split(r"[\s,;]+", texte):
+        c = c.strip().upper()
+        codes += EUROPE if c in ("EU", "EUROPE") else [c] if c else []
     for c in codes:
         if not re.fullmatch(r"[A-Z]{2}", c):
             return None, _("« {code} » n'est pas un code pays à deux lettres "
                            "(ex. NL, CH).").format(code=c)
     return list(dict.fromkeys(codes)), ""
+
+
+def texte_pays(codes) -> str:
+    """Les pays tels que lire_pays les relit : « Europe » plutôt que 43 codes."""
+    reste = [c for c in codes if c not in EUROPE]
+    if set(EUROPE) <= set(codes):
+        return ", ".join(["Europe"] + reste)
+    return ", ".join(codes)
 
 
 def wg_gere_valide(g) -> bool:

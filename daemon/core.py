@@ -264,11 +264,13 @@ class DaemonCore:
         self._transport            = ""
         self._current_account_idx  = 0
         # WireGuard géré (GestionWgMixin) : place de ce PC par service (en
-        # mémoire, pour le statut), serveurs de l'étape, dernier code de
-        # l'API, pause des appels après un échec (par service), clé reposée
-        # une fois par série d'échecs, ménage fait au démarrage.
+        # mémoire, pour le statut), serveurs de l'étape, dernier serveur
+        # utilisé, dernier code de l'API, pause des appels après un échec
+        # (par service), clé reposée une fois par série d'échecs, ménage fait
+        # au démarrage.
         self._wg_etats             = {}
         self._wg_hotes             = []
+        self._wg_dernier           = ""
         self._wg_code              = 0
         self._wg_pauses            = {}
         self._wg_resynchro         = False

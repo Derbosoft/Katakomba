@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.3.0
+# Katakomba — v4.4.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.3.0-blue)
+![Version](https://img.shields.io/badge/Version-4.4.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -346,6 +346,7 @@ With nothing but **account numbers**, Katakomba registers its WireGuard key **it
 |---|---|
 | First start | A new key, registered through Tor on an account **drawn at random** (a fleet spreads itself out): one device slot for this PC. Account full: the next one. |
 | Reboot, reconnection | **No API call**: same slot, same key. |
+| Every connection *(v4.4.0)* | **A server drawn at random** in the chosen countries, never the one of the previous connection: at start-up and at every reconnection after a drop, like OpenVPN's `remote-random`. The server list is downloaded once a day; no `.conf` file is stored. |
 | Server not answering | **Another server** (three, in different cities), never another account: the key works everywhere. |
 | After a week | Key renewed, spread at random over a day. IVPN: **on the same session**. Mullvad: **new device, old one deleted** — Mullvad's API only gives a device's creation date, which becomes its **proof of life**. |
 | Slot deleted elsewhere (account reset, website, another PC) | Noticed after a failed connection: registers again, automatically. |
@@ -364,6 +365,7 @@ katakomba provider managed mullvad                   # number asked without echo
 katakomba account add mullvad                        # one more account
 katakomba provider wg-auto ivpn on                   # IVPN: turn on for an existing provider
 katakomba provider wg-auto mullvad countries NL,DE,SE   # server countries (all: every country)
+katakomba provider wg-auto mullvad countries europe     # every European country (v4.4.0)
 katakomba provider wg-auto mullvad reserved on       # win back the slots of vanished PCs
 ```
 
@@ -1381,7 +1383,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 | `providers[].accounts[].u` | string | Base64-encoded username |
 | `providers[].accounts[].p` | string | Base64-encoded password |
 | `providers[].wireguard[].conf` | string | WireGuard file, relative to the install directory (v4.0.0) |
-| `providers[].wg_auto` | object | Optional: managed WireGuard, `service` `ivpn` (v4.2.0) or `mullvad` (v4.3.0); `countries`: server countries (empty: all); `reserved_accounts`: win a slot back when every account is full |
+| `providers[].wg_auto` | object | Optional: managed WireGuard, `service` `ivpn` (v4.2.0) or `mullvad` (v4.3.0); `countries`: server countries (empty: all; "Europe" in the interface or the console fills in the list); `reserved_accounts`: win a slot back when every account is full |
 | `providers[].transports` | list | Optional: this provider's own order, same values as `transports`, which it overrides for that provider (v4.1.0) |
 | `transports` | list | Transports tried for each provider, in order: `["wireguard", "openvpn"]` (default), the reverse, or just one (v4.0.0) |
 | `excluded_ips` | list | CIDRs/IPs routed via local gateway |
@@ -1397,7 +1399,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 
 ## Tests
 
-The project is covered by a suite of **1071 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **1075 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything

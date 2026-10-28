@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.3.0
+# Katakomba — v4.4.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.3.0-blue)
+![Version](https://img.shields.io/badge/Version-4.4.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -346,6 +346,7 @@ Avec les seuls **numéros de compte**, Katakomba enregistre **lui-même** sa cl�
 |---|---|
 | Premier démarrage | Une clé neuve, enregistrée par Tor sur un compte **tiré au hasard** (un parc se répartit de lui-même) : une place d'appareil pour ce PC. Compte plein : le suivant. |
 | Redémarrage, reconnexion | **Aucun appel à l'API** : même place, même clé. |
+| Chaque connexion *(v4.4.0)* | **Un serveur tiré au hasard** dans les pays choisis, jamais celui de la connexion précédente : au démarrage comme à chaque reconnexion après une coupure, comme `remote-random` d'OpenVPN. La liste des serveurs est téléchargée une fois par jour ; aucun fichier `.conf` n'est stocké. |
 | Serveur qui ne répond pas | **Un autre serveur** (trois, dans des villes différentes), jamais un autre compte : la clé vaut partout. |
 | Après une semaine | Clé renouvelée, étalé au hasard sur une journée. IVPN : **sur la même session**. Mullvad : **appareil neuf, l'ancien supprimé** — l'API de Mullvad ne donnant que la date de création d'un appareil, elle devient sa **preuve de vie**. |
 | Place supprimée ailleurs (compte remis à zéro, site, autre PC) | Constaté après un échec de connexion : nouvel enregistrement, automatique. |
@@ -364,6 +365,7 @@ katakomba fournisseur managed mullvad                   # numéro demandé sans 
 katakomba compte ajouter mullvad                        # un compte de plus
 katakomba fournisseur wg-auto ivpn on                   # IVPN : activer sur un fournisseur existant
 katakomba fournisseur wg-auto mullvad countries NL,DE,SE   # pays des serveurs (all : tous)
+katakomba fournisseur wg-auto mullvad countries europe     # tous les pays d'Europe (v4.4.0)
 katakomba fournisseur wg-auto mullvad reserved on       # récupération des places de PC disparus
 ```
 
@@ -1432,7 +1434,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 | `providers[].accounts[].u` | string | Identifiant en base64 |
 | `providers[].accounts[].p` | string | Mot de passe en base64 |
 | `providers[].wireguard[].conf` | string | Fichier WireGuard, relatif au répertoire d'installation (v4.0.0) |
-| `providers[].wg_auto` | objet | Facultatif : WireGuard géré, `service` `ivpn` (v4.2.0) ou `mullvad` (v4.3.0) ; `countries` : pays des serveurs (vide : tous) ; `reserved_accounts` : récupération d'une place quand tous les comptes sont pleins |
+| `providers[].wg_auto` | objet | Facultatif : WireGuard géré, `service` `ivpn` (v4.2.0) ou `mullvad` (v4.3.0) ; `countries` : pays des serveurs (vide : tous ; « Europe » dans l'interface ou la console en donne la liste) ; `reserved_accounts` : récupération d'une place quand tous les comptes sont pleins |
 | `providers[].transports` | liste | Facultatif : ordre propre au fournisseur, mêmes valeurs que `transports`, qu'il remplace pour lui (v4.1.0) |
 | `transports` | liste | Transports essayés chez chaque fournisseur, dans l'ordre : `["wireguard", "openvpn"]` (défaut), l'inverse, ou un seul (v4.0.0) |
 | `excluded_ips` | liste | CIDRs/IPs passant par la passerelle locale |
@@ -1448,7 +1450,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **1071 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **1075 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout

@@ -206,9 +206,9 @@ class PageFournisseurs(Gtk.Stack):
         if not gere:
             return rangees
         g = p["wg_auto"]
-        pays = Adw.EntryRow(title=_("Pays des serveurs (ex. NL, CH ; vide : tous)"),
+        pays = Adw.EntryRow(title=_("Pays des serveurs (ex. NL, CH ou Europe ; vide : tous)"),
                             show_apply_button=True)
-        pays.set_text(", ".join(g.get("countries", [])))
+        pays.set_text(modele.texte_pays(g.get("countries", [])))
         pays.connect("apply", lambda e: self._wg_gere_pays(i, e.get_text()))
         reserves = Adw.SwitchRow(
             title=_("Comptes réservés à Katakomba"),

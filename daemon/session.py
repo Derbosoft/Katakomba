@@ -690,6 +690,8 @@ class SessionMixin:
             # MÊME compte (ce n'est pas un échec d'authentification).
             if self._circuit_retry:
                 self._circuit_retry = False
+                if gere:
+                    self._wg_hotes = []      # nouveau tirage, autre serveur
                 self._log("Reconnexion sur un circuit Tor neuf …", "WARN")
                 time.sleep(2)
                 continue
@@ -798,9 +800,15 @@ class SessionMixin:
                     "aucun fournisseur de secours, abandon.", "ERROR")
                 break
 
-            quoi = f"même {quoi_wg}" if transport == "wireguard" else "même compte"
+            if gere:
+                # La clé vaut pour tous les serveurs : la reconnexion en tire
+                # un autre, sans appel à l'API (« remote-random » d'OpenVPN).
+                self._wg_hotes = []
+                quoi = "sur un autre serveur"
+            else:
+                quoi = f"du même {quoi_wg}" if transport == "wireguard" else "du même compte"
             self._log(
-                f"{nom} : reconnexion du {quoi} dans {RECONNECT_DELAY}s "
+                f"{nom} : reconnexion {quoi} dans {RECONNECT_DELAY}s "
                 f"({self._reconnect_vpn_count}/{RECONNECT_MAX}) …", "WARN")
             if not self._attendre(RECONNECT_DELAY):
                 return

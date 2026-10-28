@@ -21,6 +21,10 @@ Principe, pour un parc de PC qui partagent des comptes :
   compte inactif) ou par la configuration (compte retiré) ;
 - un échec de connexion change de serveur, jamais de compte : la clé vaut
   pour tous les serveurs du fournisseur ;
+- chaque connexion tire un serveur au hasard dans les pays choisis, autre
+  que le précédent : au démarrage, et à chaque reconnexion après une
+  coupure (comme « remote-random » d'OpenVPN).  Aucun appel à l'API : la
+  liste des serveurs est en cache ;
 - la clé est renouvelée toutes les semaines.  IVPN : sur la même session.
   Mullvad : par un appareil neuf, l'ancien supprimé ensuite ; l'API ne
   donnant que la date de création d'un appareil, elle devient sa preuve de
@@ -430,8 +434,12 @@ class GestionWgMixin:
             return None, "", "indisponible"
         if not self._wg_hotes:
             pays = p["wg_auto"].get("countries") or []
-            self._wg_hotes = module.choisir_hotes(
-                liste, [c for c in pays if isinstance(c, str)], SERVEURS_GERES)
+            # Un de plus que nécessaire : le serveur de la connexion
+            # précédente est écarté, sauf s'il est le seul.
+            hotes = module.choisir_hotes(
+                liste, [c for c in pays if isinstance(c, str)], SERVEURS_GERES + 1)
+            autres = [h for h in hotes if module.nom_hote(*h) != self._wg_dernier]
+            self._wg_hotes = (autres or hotes)[:SERVEURS_GERES]
         if not 0 <= idx < len(self._wg_hotes):
             if self._wg_hotes:
                 # Moins de serveurs que d'essais prévus (un seul pays, petit) :
@@ -444,7 +452,8 @@ class GestionWgMixin:
             return None, "", "indisponible"
         hote = self._wg_hotes[idx]
         try:
-            nom = f"{nom_service} {module.nom_hote(*hote)}"
+            self._wg_dernier = module.nom_hote(*hote)
+            nom = f"{nom_service} {self._wg_dernier}"
             texte = module.config_wg(etat["cle"], etat["adresse"], liste, *hote)
         except (ivpn.ErreurIvpn, KeyError, TypeError, AttributeError) as e:
             self._log(f"{nom_service} : liste des serveurs inattendue ({e}).", "WARN")

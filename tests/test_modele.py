@@ -1047,6 +1047,18 @@ class WireGuardGereTest(unittest.TestCase):
         for faux in ("NLD", "N1", "fr-be"):
             self.assertIsNone(modele.lire_pays(faux)[0], faux)
 
+    def test_pays_europe(self):
+        for texte in ("Europe", "eu", "europe, NL"):
+            pays, erreur = modele.lire_pays(texte)
+            self.assertEqual((pays, erreur), (list(modele.EUROPE), ""), texte)
+        pays, _ = modele.lire_pays("US; europe")
+        self.assertEqual(pays[0], "US")
+        self.assertNotIn("RU", pays)
+        self.assertEqual(modele.texte_pays(pays), "Europe, US")
+        self.assertEqual(set(modele.lire_pays("Europe, US")[0]), set(pays))
+        self.assertEqual(modele.texte_pays(["NL", "CH"]), "NL, CH")
+        self.assertTrue(modele.wg_gere_valide({"service": "mullvad", "countries": pays}))
+
     def test_reconnaitre_ivpn(self):
         self.assertTrue(modele.est_ivpn({"name": "IVPN Pro"}))
         self.assertFalse(modele.est_ivpn({"name": "proton"}))

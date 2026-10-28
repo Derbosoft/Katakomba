@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "4.3.0"
+VERSION       = "4.4.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")

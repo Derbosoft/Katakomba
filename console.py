@@ -282,7 +282,7 @@ def fournisseur(action: str, args: list):
 
 def _wg_auto(config: dict, args: list):
     """WireGuard géré (IVPN) : on|off, countries <codes|all>, reserved on|off."""
-    usage = _("katakomba provider wg-auto <nom> on|off | countries <NL,CH|all> | "
+    usage = _("katakomba provider wg-auto <nom> on|off | countries <NL,CH|europe|all> | "
               "reserved on|off")
     if len(args) not in (2, 3):
         raise Erreur(_("Usage : {usage}").format(usage=usage))
@@ -313,7 +313,7 @@ def _wg_auto(config: dict, args: list):
         if erreur:
             raise Erreur(erreur)
         modele.regler_wg_gere(p, pays=pays)
-        print(_("Pays des serveurs : {pays}").format(pays=", ".join(pays)) if pays
+        print(_("Pays des serveurs : {pays}").format(pays=modele.texte_pays(pays)) if pays
               else _("Pays des serveurs : tous"))
         return
     if quoi == "reserved" and len(args) == 3 and args[2].lower() in OUI + NON:
@@ -603,7 +603,7 @@ def aide():
              _("Fournisseur sans fichier, par numéro de compte")),
             (_("provider wg-auto <nom> on|off"),
              _("WireGuard géré : clé enregistrée par Katakomba (IVPN, Mullvad)")),
-            (_("provider wg-auto <nom> countries <NL,CH|all> | reserved on|off"), ""),
+            (_("provider wg-auto <nom> countries <NL,CH|europe|all> | reserved on|off"), ""),
             (_("account list <fournisseur> | add <fournisseur> [--stdin]"), ""),
             (_("account add <fournisseur> <fichier.conf>…"),
              _("Fichiers WireGuard (Proton, Mullvad, IVPN)")),

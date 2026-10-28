@@ -10,8 +10,8 @@ Only the latest release receives fixes.
 
 | Version | Supported |
 |---------|-----------|
-| 4.3.x   | ✅ |
-| < 4.3   | ❌ |
+| 4.4.x   | ✅ |
+| < 4.4   | ❌ |
 
 ## Reporting a vulnerability
 
