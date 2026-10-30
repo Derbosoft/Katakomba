@@ -95,6 +95,17 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.4.2" date="2026-10-30">
+      <description>
+        <p>Tor never goes through the tunnel that depends on it.</p>
+        <ul>
+          <li>All of Tor's connections leave through the network card from the first packet, instead of relays being protected every 30 seconds</li>
+          <li>After a reconnection, the status keeps the throughput measured at startup and says it comes from an earlier circuit</li>
+          <li>No more false "tunnel dead" warning when the service stops</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.4.2</url>
+    </release>
     <release version="4.4.1" date="2026-10-28">
       <description>
         <p>Fewer reconnections and less traffic.</p>

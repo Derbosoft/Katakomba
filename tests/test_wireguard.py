@@ -481,6 +481,12 @@ class SessionTest(unittest.TestCase):
         self.assertTrue(d.has_log("tunnel mort", "WARN"))
         self.assertTrue(proc.terminated)
 
+    def test_arret_pendant_la_surveillance_sans_fausse_alerte(self):
+        """L'arrêt supprime l'interface : plus de poignée de main lisible, ce
+        qui ne dit rien de l'état du tunnel."""
+        d, _ = self._session(ProcVivant(n=2), [3.0])
+        self.assertFalse(d.has_log("tunnel mort"), d.log_dump())
+
     def test_arret_demande(self):
         proc = ProcVivant()
         d, issue = self._session(proc, [], _stop_vpn=True)

@@ -274,9 +274,14 @@ class SessionMixin:
         # l'écart.
         self._account_cooldown.pop(self._cle_compte(self._current_account_idx), None)
         # Nouveau circuit : la mesure du précédent ne le décrit plus.  Remise
-        # à zéro plutôt qu'héritage.
-        self._last_circuit_kbs = 0.0
-        self._last_circuit_at  = 0.0
+        # à zéro, sauf si aucune autre ne suivra (une mesure par démarrage) :
+        # elle reste alors consultable, signalée comme celle d'un autre circuit.
+        if self._circuit_controle_fait:
+            self._circuit_mesure_passee = self._last_circuit_at > 0
+        else:
+            self._last_circuit_kbs = 0.0
+            self._last_circuit_at  = 0.0
+            self._circuit_mesure_passee = False
         self._log("Tunnel VPN actif.", "OK")
         # DNS du VPN d'abord (resolvectl sur l'interface), puis le split DNS
         # (drop-in) qui garde la priorité sur les domaines exclus.
@@ -471,6 +476,7 @@ class SessionMixin:
         # le journal.  Aucun trafic supplémentaire n'est généré.
         self._last_circuit_kbs = kbs
         self._last_circuit_at  = time.time()
+        self._circuit_mesure_passee = False
 
         if kbs >= min_kbs:
             self._log(f"[circuit] Débit OK : {kbs:.0f} KB/s "

@@ -502,6 +502,8 @@ for c in "PREROUTING KATAKOMBA_RETOUR" "OUTPUT KATAKOMBA_RETOUR_OUT"; do
 done
 while ip rule del priority 30300 2>/dev/null; do :; done
 while ip rule del priority 30301 2>/dev/null; do :; done
+while ip rule del priority 30302 2>/dev/null; do :; done
+while ip rule del priority 30303 2>/dev/null; do :; done
 ip route flush table 19265 2>/dev/null
 while ip6tables -D OUTPUT  -j KATAKOMBA_KS6     2>/dev/null; do :; done
 ip6tables -F KATAKOMBA_KS6                 2>/dev/null

@@ -441,6 +441,7 @@ class DoctorCommandTest(unittest.TestCase):
             ("katakomba.sock", "état du daemon"),
             ("tor_ready", "bootstrap Tor"),
             ("last_circuit_kbs", "qualité du circuit"),
+            ("tor_outside_tunnel", "Tor hors du tunnel"),
             ("accounts_cooldown", "comptes en quarantaine"),
             ("route", "route par défaut et guards /32"),
             ("scope", "piège scope-link"),
@@ -507,6 +508,7 @@ class DoctorCommandTest(unittest.TestCase):
         bloc = CLI[CLI.index("    status)"):CLI.index("    doctor)")]
         self.assertIn("last_circuit_kbs", bloc)
         self.assertIn("last_circuit_age", bloc)
+        self.assertIn("last_circuit_past", bloc)
 
 class DeploymentTest(unittest.TestCase):
     """Le service root ne doit exécuter que du code modifiable par root seul."""
@@ -899,6 +901,7 @@ class RetourEntrantScriptsTest(unittest.TestCase):
         for texte, nom in ((cleanup, "cleanup"), (REPAIR, "repair_network.sh")):
             for attendu in ("KATAKOMBA_RETOUR", "KATAKOMBA_RETOUR_OUT", "-t mangle -D",
                             "ip rule del priority 30300", "ip rule del priority 30301",
+                            "ip rule del priority 30302", "ip rule del priority 30303",
                             "ip route flush table 19265"):
                 self.assertIn(attendu, texte, f"{nom} : {attendu}")
 
@@ -906,6 +909,7 @@ class RetourEntrantScriptsTest(unittest.TestCase):
         import daemon.core as core
         self.assertEqual(core.RETOUR_TABLE, "19265")
         self.assertEqual(core.RETOUR_PRIORITES, ("30300", "30301"))
+        self.assertEqual(core.TOR_PRIORITES, ("30302", "30303"))
         self.assertEqual([c for _p, c in core.RETOUR_CHAINES],
                          ["KATAKOMBA_RETOUR", "KATAKOMBA_RETOUR_OUT"])
         self.assertIn("lookup 19265", CLI, "doctor ne vérifie pas la bonne table")

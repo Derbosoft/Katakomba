@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.4.1
+# Katakomba — v4.4.2
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.4.1-blue)
+![Version](https://img.shields.io/badge/Version-4.4.2-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -905,6 +905,8 @@ Without it, the reply to an incoming connection (SSH, web server…) would follo
 
 Connections the machine opens itself are never marked: they stay in the tunnel. Everything is removed when the tunnel goes down, and by the cleanup script and `repair_network.sh`. Without an original gateway, or if the kernel refuses a rule, the tunnel still comes up and the journal and `doctor` report the problem. Checked on a real kernel with a real OpenVPN, in an isolated network namespace, with strict reverse-path filtering: a session opened before the tunnel survives it, new incoming connections are accepted, the machine's own traffic to the same peer never leaves outside the tunnel.
 
+**Tor outside the tunnel (v4.4.2):** `/32` routes can only come afterwards, because the daemon reads Tor's connections every 30 s. A connection to a new relay therefore went into the tunnel, which depends on Tor, and the `/32` route then cut it: it left through the network card while keeping the tunnel address as its source. Tor reported this as "Our IP address has changed". Two routing rules on Tor's user (`debian-tor`, priorities `30302` and `30303`) now choose the network card as soon as the connection opens, and so the right source too. Its connections get the return mark, so strict reverse path filtering, which does not know the user, accepts their replies. The machine's other users stay in the tunnel. The `/32` routes remain for connections already open, and as a fallback if these rules cannot be set. `katakomba doctor` shows the state of this protection.
+
 Relay IPs come from the ControlPort (`GETINFO orconn-status`), with `ss` as fallback. **v3.7.0:** two reading bugs fixed. With a single connection, Tor answers on one line (`250-orconn-status=$FP~name CONNECTED`), a form that was not parsed. And a `552` error on the first line (relay missing from the consensus) was not recognized as the end of the reply: the read waited for the timeout (8 s, while OpenVPN installs its routes), then lost the whole list.
 
 **Split DNS timing:**
@@ -971,7 +973,7 @@ The rules were checked on a real kernel, in an isolated network namespace: direc
 
 ### Incoming connections — `KATAKOMBA_RETOUR` / `KATAKOMBA_RETOUR_OUT` (mangle, v3.10.0)
 
-Mark incoming connections so that their replies leave through the network card they arrived on, not through the tunnel; together with two routing rules (priorities `30300`, `30301`) and table `19265`. Set when the tunnel comes up, removed when it goes down. See [Incoming connections](#incoming-connections-v3100).
+Mark incoming connections so that their replies leave through the network card they arrived on, not through the tunnel; together with two routing rules (priorities `30300`, `30301`) and table `19265`. Set when the tunnel comes up, removed when it goes down. See [Incoming connections](#incoming-connections-v3100). *(v4.4.2)* Also mark Tor's connections, which leave through their own rules (priorities `30302`, `30303`).
 
 ### IPv6 blocking — `KATAKOMBA_KS6` / `KATAKOMBA_KS6_FWD`
 
@@ -1401,7 +1403,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 
 ## Tests
 
-The project is covered by a suite of **1082 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **1097 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything

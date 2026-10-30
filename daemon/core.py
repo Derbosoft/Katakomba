@@ -85,6 +85,8 @@ KILL_CHAINS = (
 RETOUR_MARQUE     = "0x1000000/0x1000000"
 RETOUR_TABLE      = "19265"
 RETOUR_PRIORITES  = ("30300", "30301")
+# Tor hors du tunnel (v4.4.2).  Voir NetworkMixin._tor_hors_tunnel_on.
+TOR_PRIORITES     = ("30302", "30303")
 RETOUR_CHAINES    = (("PREROUTING", "KATAKOMBA_RETOUR"),
                      ("OUTPUT",     "KATAKOMBA_RETOUR_OUT"))
 SRC_VALID_MARK    = Path("/proc/sys/net/ipv4/conf/all/src_valid_mark")
@@ -330,6 +332,7 @@ class DaemonCore:
         # jamais hérité du tunnel précédent (ce serait trompeur).
         self._last_circuit_kbs = 0.0
         self._last_circuit_at  = 0.0
+        self._circuit_mesure_passee = False   # mesure d'un circuit précédent
 
         self._vpn_dns_ips    = []
 
@@ -350,6 +353,7 @@ class DaemonCore:
         self._retour_actif   = False   # retour des connexions entrantes
         self._retour_local   = ""      # adresse du tunnel, pour le reposer
         self._retour_voulu   = False   # posé une fois pour ce tunnel : à tenir
+        self._tor_hors_tunnel = False  # règles par utilisateur de Tor posées
         self._src_valid_mark = None    # valeur d'origine, rendue à l'arrêt
         self._ovpn_texte     = ""      # .ovpn validé (topologie, MTU)
 

@@ -239,8 +239,9 @@ try:
         age = d.get("last_circuit_age", 0)
         quand = f"il y a {age//3600}h{(age%3600)//60:02d}" if age >= 3600 \
                 else f"il y a {age//60} min" if age >= 60 else "à l'instant"
+        passe = " (circuit précédent)" if d.get("last_circuit_past") else ""
         print(f"  Circuit    : {kbs:.0f} KB/s (~{kbs*8/1000:.1f} Mbps) "
-              f"mesuré {quand}")
+              f"mesuré {quand}{passe}")
     elif d["tunnel_up"]:
         print("  Circuit    : non mesuré")
     if d["lan_sharing"]:  print("  Partage LAN: actif")
@@ -440,6 +441,7 @@ if st:
         note(WARN if vieux else OK, _("Qualité du circuit"),
              _("{kbs} Ko/s (~{mbps} Mb/s), mesuré il y a {age}").format(
                  kbs=f"{kbs:.0f}", mbps=nombre(kbs * 8 / 1000), age=duree(age))
+             + (_(" — sur un circuit précédent") if st.get("last_circuit_past") else "")
              + (_(" — mesure ancienne, le circuit a pu se dégrader") if vieux else ""))
     elif st.get("tunnel_up"):
         note(WARN, _("Qualité du circuit"), _("aucune mesure pour ce tunnel"))
@@ -650,6 +652,16 @@ if st.get("tunnel_up") and "incoming_return" in st:
         note(KO, _("Connexions entrantes"),
              _("réponses envoyées dans le tunnel — une session SSH distante serait "
                "coupée (cause dans le journal)"))
+# Tor sort par la carte réseau dès sa première connexion vers un relais.
+# Absent d'un daemon plus ancien : rien à vérifier.
+if st.get("tunnel_up") and "tor_outside_tunnel" in st:
+    _rc, regles = sh("ip", "-4", "rule", "show")
+    if st["tor_outside_tunnel"] and "uidrange" in regles:
+        note(OK, _("Tor hors du tunnel"),
+             _("ses connexions sortent toutes par la carte réseau"))
+    else:
+        note(WARN, _("Tor hors du tunnel"),
+             _("relais protégés seulement toutes les 30 s (cause dans le journal)"))
 # Une exclusion vers Internet est légitime (un service qui refuse Tor), mais
 # elle doit rester visible : elle a pu être ajoutée hors de l'interface.
 if st.get("public_exclusions"):

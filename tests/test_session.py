@@ -181,6 +181,31 @@ class QuarantaineParTransportTest(unittest.TestCase):
         d._tunnel_monte()
         self.assertEqual(list(d._account_cooldown), [(0, 0)])
 
+    def _remonter(self, **etat):
+        d = FakeDaemon(_last_circuit_kbs=733.0, _last_circuit_at=1000.0, **etat)
+        for nom in ("_apply_vpn_dns", "_apply_dns_split", "_circuit_quality_check"):
+            setattr(d, nom, lambda: None)
+        d._tunnel_monte()
+        return d
+
+    def test_mesure_a_refaire_oubliee_au_nouveau_circuit(self):
+        d = self._remonter()
+        self.assertEqual((d._last_circuit_kbs, d._last_circuit_at), (0.0, 0.0))
+        self.assertFalse(d._circuit_mesure_passee)
+
+    def test_mesure_du_demarrage_gardee_pour_le_statut(self):
+        """Une seule mesure par démarrage : l'effacer afficherait « non
+        mesuré » jusqu'au prochain redémarrage du service."""
+        d = self._remonter(_circuit_controle_fait=True)
+        self.assertEqual(d._last_circuit_kbs, 733.0)
+        self.assertTrue(d._circuit_mesure_passee)
+
+    def test_aucune_mesure_rien_a_signaler(self):
+        d = self._remonter(_circuit_controle_fait=True)
+        d._last_circuit_kbs, d._last_circuit_at = 0.0, 0.0
+        d._tunnel_monte()
+        self.assertFalse(d._circuit_mesure_passee)
+
 
 class ProcessusCourantTest(unittest.TestCase):
 

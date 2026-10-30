@@ -264,6 +264,8 @@ class WireGuardMixin:
         if monte:
             while continuer():
                 time.sleep(2)
+                if not continuer():
+                    break
                 age = self._poignee_age()
                 if age is None or age > POIGNEE_PERIMEE:
                     self._log("WireGuard : plus de poignée de main depuis "

@@ -88,6 +88,7 @@ class StatusMixin:
             "last_circuit_kbs": round(self._last_circuit_kbs, 1),
             "last_circuit_age": int(time.time() - self._last_circuit_at)
                                 if self._last_circuit_at else 0,
+            "last_circuit_past": self._circuit_mesure_passee,
             "conn_failures":  self._conn_fail_count,
             "vpn_reconnects": self._reconnect_vpn_count,
             "full_restarts":  self._full_restart_count,
@@ -103,6 +104,7 @@ class StatusMixin:
             # Réponses aux connexions entrantes (SSH…) hors tunnel, par la
             # carte d'origine : sans elles, une session distante tombe.
             "incoming_return": self._retour_actif,
+            "tor_outside_tunnel": self._tor_hors_tunnel,
             "kill_switch_config": bool(self.config.get("kill_switch", True)),
             "public_exclusions": self._exclusions_publiques(),
         }

@@ -1280,6 +1280,12 @@ class CircuitMeasureInStatusTest(unittest.TestCase):
         self.assertEqual(snap["last_circuit_age"], 0,
                          "un âge non nul sans mesure serait ininterprétable")
 
+    def test_mesure_d_un_autre_circuit_signalee(self):
+        d = FakeDaemon(config={"providers": []})
+        self.assertFalse(d._status_snapshot()["last_circuit_past"])
+        d._circuit_mesure_passee = True
+        self.assertTrue(d._status_snapshot()["last_circuit_past"])
+
     def test_statut_toujours_serialisable(self):
         import json
         d = FakeDaemon(config={"providers": []})

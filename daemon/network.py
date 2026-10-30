@@ -7,6 +7,7 @@ sans droit.
 """
 
 import ipaddress
+import pwd
 import socket
 
 from validation import verifier_exclusion
@@ -14,6 +15,7 @@ from validation import verifier_exclusion
 from .core import (
     _run, _write_private, TOR_ROUTES_FILE,
     RETOUR_CHAINES, RETOUR_MARQUE, RETOUR_PRIORITES, RETOUR_TABLE, SRC_VALID_MARK,
+    TOR_PRIORITES, TOR_USER,
 )
 
 
@@ -295,6 +297,7 @@ class NetworkMixin:
         self._retour_voulu = True
         self._log(f"[tunnel] Connexions entrantes : réponses par {self._orig_iface} "
                   "(SSH et services restent joignables).", "OK")
+        self._tor_hors_tunnel_on()
         return True
 
     def _retour_en_place(self) -> bool:
@@ -302,7 +305,8 @@ class NetworkMixin:
         r = _run("ip", "-4", "rule", "show")
         prios = {ligne.split(":", 1)[0].strip()
                  for ligne in r.stdout.decode(errors="ignore").splitlines()}
-        if not all(p in prios for p in RETOUR_PRIORITES):
+        attendues = RETOUR_PRIORITES + (TOR_PRIORITES if self._tor_hors_tunnel else ())
+        if not all(p in prios for p in attendues):
             return False
         r = _run("ip", "-4", "route", "show", "table", RETOUR_TABLE)
         return r.returncode == 0 and bool(r.stdout.strip())
@@ -318,7 +322,7 @@ class NetworkMixin:
                     break
             _run("iptables", "-t", "mangle", "-F", chaine)
             _run("iptables", "-t", "mangle", "-X", chaine)
-        for priorite in RETOUR_PRIORITES:
+        for priorite in RETOUR_PRIORITES + TOR_PRIORITES:
             for _ in range(25):
                 if _run("ip", "rule", "del", "priority", priorite).returncode != 0:
                     break
@@ -330,6 +334,56 @@ class NetworkMixin:
                 pass
             self._src_valid_mark = None
         self._retour_actif = False
+        self._tor_hors_tunnel = False
+
+    # ── Tor hors du tunnel ───────────────────────────────────────────────────
+    #
+    # Les routes /32 des relais ne peuvent venir qu'après coup : le daemon lit
+    # les connexions de Tor toutes les 30 s.  Une connexion vers un nouveau
+    # relais partait donc dans le tunnel, qui dépend de Tor, et sa route /32
+    # la coupait ensuite : elle sortait par la carte réseau en gardant
+    # l'adresse du tunnel comme source.  Tor le signale, « Our IP address has
+    # changed » : une connexion sortante vient d'une adresse encore inconnue.
+    #
+    # Deux règles de routage, sur l'utilisateur de Tor — celui que le blocage
+    # hors tunnel laisse passer —, choisissent la carte réseau dès l'ouverture
+    # de la connexion, donc aussi la bonne source.  La marque du retour fait
+    # accepter les réponses par un filtrage de chemin inverse strict, qui ne
+    # connaît pas l'utilisateur et les croirait attendues du tunnel.
+    #
+    # Les routes /32 restent : elles couvrent les connexions déjà ouvertes, et
+    # tout le reste si ces règles ne peuvent pas être posées.
+
+    def _tor_hors_tunnel_on(self) -> bool:
+        """Fait sortir tout Tor par la passerelle d'origine, en tout ou rien.
+        Suppose le retour posé : sa table et ses chaînes servent ici."""
+        try:
+            uid = pwd.getpwnam(TOR_USER).pw_uid
+        except KeyError:
+            return False
+        plage = f"{uid}-{uid}"
+        etapes = [
+            ["ip", "rule", "add", "priority", TOR_PRIORITES[0], "uidrange", plage,
+             "lookup", "main", "suppress_prefixlength", "1"],
+            ["ip", "rule", "add", "priority", TOR_PRIORITES[1], "uidrange", plage,
+             "lookup", RETOUR_TABLE],
+            # En 2 : après le RETURN de la boucle locale, avant la restauration
+            # de la marque, pour marquer aussi le premier paquet.
+            ["iptables", "-t", "mangle", "-I", RETOUR_CHAINES[1][1], "2",
+             "-m", "owner", "--uid-owner", str(uid),
+             "-j", "CONNMARK", "--set-xmark", RETOUR_MARQUE],
+        ]
+        for cmd in etapes:
+            r = _run(*cmd)
+            if r.returncode != 0:
+                self._log(f"[tunnel] Tor hors du tunnel impossible : « {' '.join(cmd)} » "
+                          f"({r.stderr.decode(errors='ignore').strip()}) — ses relais "
+                          "ne seront protégés que toutes les 30 s.", "WARN")
+                for priorite in TOR_PRIORITES:
+                    _run("ip", "rule", "del", "priority", priorite)
+                return False
+        self._tor_hors_tunnel = True
+        return True
 
     def _add_protected_routes(self, ips, source: str) -> int:
         """Route en /32 via la gateway originale chaque IP IPv4 valide de

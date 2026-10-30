@@ -1,5 +1,6 @@
 """Réseau : passerelle, réseaux connectés, routes exclues, protection des guards."""
 
+import types
 import unittest
 
 from tests.helpers import FakeDaemon, Recorder, patched_run, provider  # noqa: F401
@@ -615,6 +616,118 @@ class RetourEntrantTest(unittest.TestCase):
     def test_expose_au_statut(self):
         d, _, _ = self._monter()
         self.assertTrue(d._status_snapshot()["incoming_return"])
+
+
+class TorHorsTunnelTest(unittest.TestCase):
+    """Tout Tor sort par la carte réseau, sans attendre sa route /32.
+
+    Le comportement réel (source et sortie choisies dès la connexion, autres
+    utilisateurs toujours dans le tunnel, réponses acceptées par un filtrage
+    de chemin inverse strict) a été vérifié sur un noyau, dans un espace
+    réseau isolé ; ces tests en gardent la forme et l'ordre."""
+
+    TOR_UID = 112
+    REGLE = "lookup main suppress_prefixlength 1"
+
+    def setUp(self):
+        m_network.SRC_VALID_MARK.write_text("0\n")
+        self._pwd = m_network.pwd
+        m_network.pwd = types.SimpleNamespace(
+            getpwnam=lambda n: types.SimpleNamespace(pw_uid=self.TOR_UID))
+
+    def tearDown(self):
+        m_network.pwd = self._pwd
+
+    def _monter(self, rec=None, gw="192.168.1.1"):
+        return RetourEntrantTest._monter(self, rec, gw)
+
+    REGLAGES = MontageTunnelTest.REGLAGES
+
+    def test_pose_avant_les_routes_du_tunnel(self):
+        """Aucune connexion de Tor ne doit pouvoir partir dans le tunnel."""
+        d, r, ok = self._monter()
+        self.assertTrue(ok)
+        self.assertTrue(d._tor_hors_tunnel)
+        moitie = r.calls.index("ip route replace 0.0.0.0/1 dev tun-katakomba scope global")
+        for regle in (f"ip rule add priority 30302 uidrange 112-112 {self.REGLE}",
+                      "ip rule add priority 30303 uidrange 112-112 lookup 19265"):
+            self.assertLess(r.calls.index(regle), moitie, regle)
+
+    def test_seul_l_utilisateur_de_tor(self):
+        _, r, _ = self._monter()
+        regles = [c for c in r.calls if "uidrange" in c]
+        self.assertEqual(len(regles), 2)
+        self.assertTrue(all("uidrange 112-112 " in c for c in regles))
+
+    def test_reponses_marquees_pour_le_chemin_inverse(self):
+        """Inséré après le RETURN de la boucle locale, avant la restauration
+        de la marque : le premier paquet est marqué, pas le trafic local."""
+        _, r, _ = self._monter()
+        marque = ("iptables -t mangle -I KATAKOMBA_RETOUR_OUT 2 -m owner --uid-owner 112 "
+                  "-j CONNMARK --set-xmark 0x1000000/0x1000000")
+        self.assertTrue(r.ran(marque))
+        chaine = [i for i, c in enumerate(r.calls) if " -A KATAKOMBA_RETOUR_OUT " in c]
+        self.assertGreater(r.calls.index(marque), chaine[-1], "chaîne encore vide")
+
+    def test_retire_au_demontage(self):
+        d, _, _ = self._monter()
+        r = Recorder({" -D ": (1, ""), "rule del": (1, "")})
+        with patched_run(r):
+            d._demonter_tunnel()
+        self.assertFalse(d._tor_hors_tunnel)
+        self.assertTrue(r.ran("ip rule del priority 30302"))
+        self.assertTrue(r.ran("ip rule del priority 30303"))
+
+    def test_sans_utilisateur_tor_rien_n_est_pose(self):
+        """Tor resté root : une règle sur root sortirait toute la machine."""
+        def absent(_n):
+            raise KeyError(_n)
+        m_network.pwd = types.SimpleNamespace(getpwnam=absent)
+        d, r, ok = self._monter()
+        self.assertTrue(ok)
+        self.assertTrue(d._retour_actif)
+        self.assertFalse(d._tor_hors_tunnel)
+        self.assertFalse(r.ran("uidrange"))
+        self.assertFalse(r.ran("--uid-owner"))
+
+    def test_echec_sans_toucher_au_retour(self):
+        """Une session SSH distante ne dépend pas de ces règles."""
+        d, r, ok = self._monter(rec=Recorder({"uid-owner": (1, "")}))
+        self.assertTrue(ok)
+        self.assertTrue(d._retour_actif, "retour retiré à cause de Tor")
+        self.assertFalse(d._tor_hors_tunnel)
+        self.assertTrue(d.has_log("Tor hors du tunnel impossible", "WARN"))
+        self.assertTrue(r.ran("ip rule del priority 30302"))
+        self.assertTrue(r.ran("ip rule del priority 30303"))
+
+    def test_sans_retour_rien_n_est_pose(self):
+        """Sa table n'existe pas : les règles n'auraient nulle part où mener."""
+        d, r, ok = self._monter(gw=None)
+        self.assertTrue(ok)
+        self.assertFalse(d._tor_hors_tunnel)
+        self.assertFalse(r.ran("uidrange"))
+
+    def test_regle_effacee_reposee(self):
+        """systemd-networkd retire les règles qu'il n'a pas posées."""
+        d = FakeDaemon(_tun_iface="tun-katakomba", _orig_gw="192.168.1.1",
+                       _orig_iface="eth0", _retour_actif=True, _tor_hors_tunnel=True)
+        complet = (b"30300:\tx\n30301:\tx\n30302:\tx\n30303:\tx\n")
+        table = {"table 19265": (0, b"default via 192.168.1.1 dev eth0\n")}
+        with patched_run(Recorder({"rule show": (0, complet), **table})):
+            self.assertTrue(d._retour_en_place())
+        with patched_run(Recorder({"rule show": (0, b"30300:\tx\n30301:\tx\n"), **table})):
+            self.assertFalse(d._retour_en_place())
+
+    def test_echec_passe_sans_boucle_de_reparation(self):
+        """Règles refusées : le contrôle des 30 s ne les réclame pas."""
+        d = FakeDaemon(_retour_actif=True, _tor_hors_tunnel=False)
+        table = {"table 19265": (0, b"default via 192.168.1.1 dev eth0\n")}
+        with patched_run(Recorder({"rule show": (0, b"30300:\tx\n30301:\tx\n"), **table})):
+            self.assertTrue(d._retour_en_place())
+
+    def test_expose_au_statut(self):
+        d, _, _ = self._monter()
+        self.assertTrue(d._status_snapshot()["tor_outside_tunnel"])
 
 
 if __name__ == "__main__":

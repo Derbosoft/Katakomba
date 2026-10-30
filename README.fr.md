@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.4.1
+# Katakomba — v4.4.2
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.4.1-blue)
+![Version](https://img.shields.io/badge/Version-4.4.2-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -953,6 +953,8 @@ Sans cela, la réponse à une connexion entrante (SSH, serveur web…) suivrait 
 
 Les connexions que la machine ouvre elle-même ne sont jamais marquées : elles restent dans le tunnel. Tout est retiré au démontage du tunnel, ainsi que par le script de nettoyage et `repair_network.sh`. Sans passerelle d'origine, ou si le noyau refuse une règle, le tunnel monte quand même, et le journal comme `doctor` signalent le problème. Vérifié sur un vrai noyau, avec un vrai OpenVPN, dans un espace réseau isolé, avec filtrage de chemin inverse strict : une session ouverte avant le tunnel lui survit, les nouvelles connexions entrantes sont acceptées, le trafic émis par la machine vers ce même correspondant ne sort jamais hors du tunnel.
 
+**Tor hors du tunnel (v4.4.2) :** les routes `/32` ne peuvent venir qu'après coup, car le daemon lit les connexions de Tor toutes les 30 s. Une connexion vers un nouveau relais partait donc dans le tunnel, qui dépend de Tor, puis la route `/32` la coupait : elle sortait par la carte réseau en gardant l'adresse du tunnel comme source. Tor le signalait par « Our IP address has changed ». Deux règles de routage sur l'utilisateur de Tor (`debian-tor`, priorités `30302` et `30303`) choisissent désormais la carte réseau dès l'ouverture de la connexion, donc aussi la bonne source. Ses connexions reçoivent la marque du retour : le filtrage de chemin inverse strict, qui ne connaît pas l'utilisateur, accepte ainsi leurs réponses. Les autres utilisateurs de la machine restent dans le tunnel. Les routes `/32` restent en place pour les connexions déjà ouvertes, et comme repli si ces règles ne peuvent pas être posées. `katakomba doctor` affiche l'état de cette protection.
+
 Les IP des relais viennent du ControlPort (`GETINFO orconn-status`), avec `ss` en repli. **v3.7.0 :** deux défauts de lecture corrigés. Avec une seule connexion, Tor répond sur une ligne (`250-orconn-status=$FP~nom CONNECTED`), forme qui n'était pas lue. Et une erreur `552` en première ligne (relais absent du consensus) n'était pas reconnue comme fin de réponse : la lecture attendait le timeout (8 s, pendant qu'OpenVPN installe ses routes) puis perdait toute la liste.
 
 **DNS split timing :**
@@ -1019,7 +1021,7 @@ Les règles ont été vérifiées sur un vrai noyau, dans un espace réseau isol
 
 ### Connexions entrantes — `KATAKOMBA_RETOUR` / `KATAKOMBA_RETOUR_OUT` (mangle, v3.10.0)
 
-Marquent les connexions entrantes pour que leurs réponses repartent par la carte réseau d'arrivée, pas par le tunnel ; avec deux règles de routage (priorités `30300`, `30301`) et la table `19265`. Posées à la montée du tunnel, retirées à son démontage. Voir [Connexions entrantes](#connexions-entrantes-v3100).
+Marquent les connexions entrantes pour que leurs réponses repartent par la carte réseau d'arrivée, pas par le tunnel ; avec deux règles de routage (priorités `30300`, `30301`) et la table `19265`. Posées à la montée du tunnel, retirées à son démontage. Voir [Connexions entrantes](#connexions-entrantes-v3100). *(v4.4.2)* Marquent aussi les connexions de Tor, sorties par ses propres règles (priorités `30302`, `30303`).
 
 ### Blocage IPv6 — `KATAKOMBA_KS6` / `KATAKOMBA_KS6_FWD`
 
@@ -1452,7 +1454,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 ## Tests
 
-Le projet est couvert par une suite de **1082 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **1097 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout
