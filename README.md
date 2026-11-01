@@ -372,7 +372,7 @@ katakomba provider wg-auto mullvad reserved on       # win back the slots of van
 - **Reserved accounts**: only turn this on if the accounts are used solely by Katakomba PCs. Mullvad: the official app on a phone, which does not renew its device every week, would be taken for a vanished PC. IVPN: a phone would be logged out by a reset.
 - **Account numbers**: at Mullvad, the number is the account's whole credential; the interface and the console only show its last 4 digits.
 - **Two-factor authentication (IVPN)** must be off on these accounts, otherwise no session can open without you (the log says so).
-- **Slots**: Mullvad, 5 devices per account; IVPN, 2 on the Standard plan, 7 on Pro. Keep a margin.
+- **Slots**: Mullvad, 5 devices per account; IVPN, 5 on Standard and Plus, 10 on Pro Suite. Keep a margin.
 - **Privilege separation**: API exchanges go through `ivpn.py` or `mullvad.py`, run **without any privilege** (they parse what the network sends); the account number reaches them on standard input, never as an argument, and they never see the private key. The slot (identifier, private key) lives in `/var/lib/katakomba/<service>-session.json`, mode 0600, root; the account number is only stored as a hash. The generated `.conf` goes through the same validation as an imported file.
 - `katakomba doctor` shows which account holds the slot and the key's date. The provider's `.conf` files, if any, are ignored while management is on.
 
@@ -419,6 +419,8 @@ Kill switch, Tor relay routes kept outside the tunnel, replies to incoming conne
 - `.conf` files contain your private key: do not share them, and never copy the same `.conf` to two machines (same key: the two connections cut each other off).
 
 ### Speed and trial
+
+Which tunnel to choose: [WireGuard and OpenVPN through Tor, benchmark](https://github.com/Derbosoft/Katakomba/blob/main/BENCHMARKS.md), with 32 Tor circuits in Europe, North America and Asia-Pacific.
 
 *(v4.4.3)* The bridge starts before the interface: WireGuard sends its first handshake as soon as the interface comes up, and only resends it 5 s later if nobody is listening. Measured on real Mullvad relays: about 1 s instead of 6, on every connection and reconnection.
 

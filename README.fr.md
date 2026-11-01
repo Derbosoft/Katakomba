@@ -372,7 +372,7 @@ katakomba fournisseur wg-auto mullvad reserved on       # récupération des pla
 - **Comptes réservés** : à n'activer que si les comptes ne servent qu'à des PC Katakomba. Mullvad : l'appli officielle d'un téléphone, qui ne renouvelle pas son appareil chaque semaine, serait prise pour un PC disparu. IVPN : un téléphone serait déconnecté lors d'une remise à zéro.
 - **Numéros de compte** : chez Mullvad, le numéro est l'identifiant complet du compte ; l'interface et la console n'en montrent que les 4 derniers chiffres.
 - **Double authentification (IVPN)** : elle doit être désactivée sur ces comptes, sinon aucune session ne peut s'ouvrir sans vous (le journal le dit).
-- **Places** : Mullvad, 5 appareils par compte ; IVPN, 2 en offre Standard, 7 en Pro. Prévoir de la marge.
+- **Places** : Mullvad, 5 appareils par compte ; IVPN, 5 en Standard et Plus, 10 en Pro Suite. Prévoir de la marge.
 - **Séparation des droits** : les échanges avec l'API passent par `ivpn.py` ou `mullvad.py`, lancés **sans aucun droit** (ils lisent ce que le réseau renvoie) ; le numéro de compte leur est passé par l'entrée standard, jamais en argument, et ils ne voient jamais la clé privée. La place (identifiant, clé privée) vit dans `/var/lib/katakomba/<service>-session.json`, mode 0600, root ; le numéro de compte n'y figure qu'en empreinte. Le `.conf` produit passe par la même validation qu'un fichier importé.
 - `katakomba doctor` affiche le compte qui porte la place et la date de la clé. Les `.conf` éventuels du fournisseur sont ignorés tant que la gestion est active.
 
@@ -419,6 +419,8 @@ Blocage hors tunnel, routes des relais Tor hors du tunnel, retour des connexions
 - Les fichiers `.conf` contiennent votre clé privée : ne les partagez pas, et ne copiez jamais le même `.conf` sur deux machines (même clé : les deux connexions se coupent l'une l'autre).
 
 ### Débit et essai
+
+Quel tunnel choisir : [WireGuard et OpenVPN à travers Tor, banc de mesure](https://github.com/Derbosoft/Katakomba/blob/main/BENCHMARKS.fr.md), sur 32 circuits Tor en Europe, en Amérique du Nord et en Asie-Pacifique.
 
 *(v4.4.3)* Le pont démarre avant l'interface : WireGuard envoie sa première poignée de main dès l'interface levée, et ne la renvoie que 5 s plus tard si personne n'écoute. Mesuré sur de vrais relais Mullvad : environ 1 s au lieu de 6, à chaque connexion et reconnexion.
 
