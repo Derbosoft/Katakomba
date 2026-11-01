@@ -510,6 +510,12 @@ class DoctorCommandTest(unittest.TestCase):
         self.assertIn("last_circuit_age", bloc)
         self.assertIn("last_circuit_past", bloc)
 
+    def test_doctor_ne_signale_pas_l_age_de_la_mesure(self):
+        """Une seule mesure par démarrage : l'alerte deviendrait permanente."""
+        bloc = CLI[CLI.index("    doctor)"):CLI.index("    logs)")]
+        self.assertNotIn("mesure ancienne", bloc)
+        self.assertIn('st.get("circuit_pending", True)', bloc)
+
 class DeploymentTest(unittest.TestCase):
     """Le service root ne doit exécuter que du code modifiable par root seul."""
 

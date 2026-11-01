@@ -615,6 +615,15 @@ class EtatConnexionTest(unittest.TestCase):
         self.assertEqual((niveau, fini), ("ok", True))
         self.assertIn("4,0\u00a0Mb/s", msg)
 
+    def test_connecte_sans_mesure_a_attendre(self):
+        """Contrôle désactivé ou mesure impossible : ne pas promettre une
+        mesure qui ne viendra jamais."""
+        niveau, msg, fini = modele.etat_connexion(
+            "active", {"tunnel_up": True, "circuit_pending": False})
+        self.assertEqual(niveau, "ok")
+        self.assertTrue(fini)
+        self.assertNotIn("Mesure", msg)
+
     def test_connecte_debit_pas_encore_mesure(self):
         """L'assistant attend la mesure : décidé par un drapeau, jamais en
         cherchant « en cours » dans un texte qui peut être traduit."""

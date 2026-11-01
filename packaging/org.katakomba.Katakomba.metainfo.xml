@@ -95,6 +95,17 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.4.3" date="2026-11-01">
+      <description>
+        <p>WireGuard connects five seconds faster.</p>
+        <ul>
+          <li>The bridge now starts before the WireGuard interface, so the first handshake is no longer lost: about 1 second instead of 6 on every connection and reconnection</li>
+          <li>katakomba doctor no longer warns about the age of the throughput measurement, which is taken once per start</li>
+          <li>The interface no longer shows "measuring throughput" forever when no measurement is coming</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.4.3</url>
+    </release>
     <release version="4.4.2" date="2026-10-30">
       <description>
         <p>Tor never goes through the tunnel that depends on it.</p>

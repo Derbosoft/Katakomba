@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.4.2
+# Katakomba — v4.4.3
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.4.2-blue)
+![Version](https://img.shields.io/badge/Version-4.4.3-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -420,7 +420,9 @@ Kill switch, Tor relay routes kept outside the tunnel, replies to incoming conne
 
 ### Speed and trial
 
-The bridge adds little; the Tor circuit decides. Real measurements, 10 MB downloads: Proton 9 to 18 Mbit/s, IVPN 1 to 2 Mbit/s depending on the circuit. To try a `.conf` without installing anything or touching the machine's network (private Tor, isolated network namespace, no root):
+*(v4.4.3)* The bridge starts before the interface: WireGuard sends its first handshake as soon as the interface comes up, and only resends it 5 s later if nobody is listening. Measured on real Mullvad relays: about 1 s instead of 6, on every connection and reconnection.
+
+The bridge adds little; the Tor circuit decides. The MTU makes no measurable difference either: from 1280 to 1420, on the same circuit, the gaps stay within the noise, and the default remains 1320. Real measurements, 10 MB downloads: Proton 9 to 18 Mbit/s, IVPN 1 to 2 Mbit/s depending on the circuit. To try a `.conf` without installing anything or touching the machine's network (private Tor, isolated network namespace, no root):
 
 ```bash
 bash essai/essai_wg_tor.sh file.conf
@@ -776,7 +778,7 @@ Checks, in one command, the invariants that must hold when the connection is hea
 | Local networks | a directly-connected network overridden by a `via` route (scope-link trap) → segment access broken |
 | Tunnel DNS | missing server, `~.` or `default-route` → public queries outside the tunnel |
 | DNS query path | resolution too fast to be going through Tor → likely leak |
-| Circuit quality | measurement older than 6 h → the circuit may have degraded since |
+| Circuit quality | no measurement although one is expected → check to watch (one measurement per start, its age is no longer reported since v4.4.3) |
 | Kill switch | enabled in the settings but not in place → traffic may leave during reconnections |
 | Incoming connections | replies sent into the tunnel → a remote SSH session would be cut (v3.10.0) |
 | systemd-networkd | active with `ManageForeignRoutes` or `ManageForeignRoutingPolicyRules` left on → each time networkd restarts, the tunnel is cut for up to 30 s while the daemon puts its routes back (warning, v3.13.0) |
@@ -1403,7 +1405,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 
 ## Tests
 
-The project is covered by a suite of **1097 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **1106 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything

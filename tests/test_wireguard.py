@@ -457,6 +457,55 @@ class SessionTest(unittest.TestCase):
             issue = d._session_wireguard(str(self.inst.chemin), 997, 996)
         return d, issue
 
+    def test_pont_lance_avant_l_interface(self):
+        """Sinon la première poignée de main se perd : 5 s de plus à chaque
+        connexion (26 montées sur 26 dans un vrai journal)."""
+        d = FakeDaemon(_tun_iface="tun-katakomba")
+        ordre = []
+        d._configurer_wg = lambda r: ordre.append("interface") or "absent"
+        d._lancer_pont = lambda *a: ordre.append("pont") or ProcVivant()
+        d._session_wireguard(str(self.inst.chemin), 997, 996)
+        self.assertEqual(ordre, ["pont", "interface"])
+
+    def test_interface_attend_que_le_pont_ecoute(self):
+        import threading
+        d = FakeDaemon(_tun_iface="tun-katakomba")
+        attendu = []
+        pret = threading.Event()
+        d._pont_pret = pret
+        d._lancer_pont = lambda *a: ProcVivant()
+        def interface(_r):
+            attendu.append(pret.is_set())
+            return "absent"
+        d._configurer_wg = interface
+        threading.Timer(0.05, pret.set).start()
+        d._session_wireguard(str(self.inst.chemin), 997, 996)
+        self.assertEqual(attendu, [True])
+
+    def test_pont_arrete_si_l_interface_echoue(self):
+        d = FakeDaemon(_tun_iface="tun-katakomba")
+        proc = ProcVivant()
+        d._pont_pret.set()
+        d._lancer_pont = lambda *a: proc
+        d._configurer_wg = lambda r: "absent"
+        self.assertEqual(d._session_wireguard(str(self.inst.chemin), 997, 996), "absent")
+        self.assertTrue(proc.terminated, "pont laissé en vie")
+
+    def test_pont_mort_ne_fait_pas_attendre(self):
+        import threading
+        d = FakeDaemon()
+        pret = threading.Event()
+        d._journal_pont(FakeProc(""), pret)
+        self.assertTrue(pret.is_set())
+
+    def test_pont_pret_a_son_ecoute(self):
+        import threading
+        d = FakeDaemon()
+        pret = threading.Event()
+        d._journal_pont(FakeProc("12:00:00 Écoute UDP sur 127.0.0.1:51871.\n"), pret)
+        self.assertTrue(pret.is_set())
+        self.assertTrue(d.has_log("Écoute UDP"))
+
     def test_aucune_poignee_de_main(self):
         proc = ProcVivant()
         d, issue = self._session(proc, [])

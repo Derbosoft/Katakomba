@@ -42,7 +42,8 @@ WG_CONF_RUN       = Path("/etc/wireguard") / "katakomba-wg.conf"
 PONT_ECOUTE       = "127.0.0.1:51871"
 # MTU du tunnel WireGuard quand le .conf n'en donne pas.  Les paquets voyagent
 # dans un flux TCP : la taille n'y est pas limitée, mais 1320 reste sûr
-# partout (valeur du client tiers pvpn pour Proton Stealth).
+# partout (valeur du client tiers pvpn pour Proton Stealth).  Mesuré à travers
+# Tor, de 1280 à 1420 : aucun écart de débit au-delà du bruit (v4.4.3).
 WG_MTU_DEFAUT     = 1320
 TOR_USER          = "debian-tor"                     # Tor abandonne root
 RESOLVED_DROP_IN  = Path("/etc/systemd/resolved.conf.d/katakomba-split.conf")
@@ -242,6 +243,7 @@ class DaemonCore:
         self.tor_process     = None
         self.openvpn_process = None
         self.pont_process    = None       # pont WireGuard → Tor
+        self._pont_pret      = threading.Event()   # il écoute
         self._tor_thread     = None
 
         self._tor_ready          = threading.Event()

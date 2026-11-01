@@ -43,6 +43,7 @@ from validation import analyser_wg, chemin_fournisseur_sur, conf_wg_noyau
 # sans poignée de main, plus rien ne passe.
 POIGNEE_DELAI = 90
 POIGNEE_PERIMEE = 200
+PONT_PRET_DELAI = 3     # s pour que le pont écoute avant de lever l'interface
 
 
 class WireGuardMixin:
@@ -182,18 +183,31 @@ class WireGuardMixin:
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             user=uid, group=gid, extra_groups=[], cwd="/",
             env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"})
-        threading.Thread(target=self._journal_pont, args=(proc,), daemon=True).start()
+        self._pont_pret = pret = threading.Event()
+        threading.Thread(target=self._journal_pont, args=(proc, pret), daemon=True).start()
         return proc
 
-    def _journal_pont(self, proc):
+    @staticmethod
+    def _arreter_pont(proc):
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                proc.kill()
+
+    def _journal_pont(self, proc, pret):
         for ligne in proc.stdout:
             ligne = ligne.strip()
             # Le pont horodate ses lignes ; le journal du daemon aussi.
             if len(ligne) > 9 and ligne[2] == ":" and ligne[5] == ":" and ligne[8] == " ":
                 ligne = ligne[9:]
             if ligne:
+                if ligne.startswith("Écoute UDP"):
+                    pret.set()
                 grave = ligne.startswith(("Échec", "Connexion perdue"))
                 self._log(f"[pont] {ligne}", "WARN" if grave else "INFO")
+        pret.set()        # pont arrêté : plus rien à attendre
 
     def _poignee_age(self):
         """Secondes depuis la dernière poignée de main WireGuard, None si
@@ -235,18 +249,22 @@ class WireGuardMixin:
         if reglages is None:
             return "refus"
         self._vpn_dns_ips = list(reglages["dns"])
-        issue = self._configurer_wg(reglages)
-        if issue:
-            return issue
         self._log(f"WireGuard : {os.path.basename(chemin)} "
                   f"({reglages['emballage']}, {reglages['serveur']}) via Tor …")
         self._tunnel_up = False
+        # Le pont d'abord : WireGuard envoie sa première poignée de main dès
+        # l'interface levée, et n'en renvoie une que 5 s plus tard si personne
+        # n'écoutait.  Le pont garde ce paquet le temps d'ouvrir la connexion.
         try:
             proc = self.pont_process = self._lancer_pont(reglages, uid, gid)
         except OSError as e:
             self._log(f"Pont WireGuard impossible à lancer : {e}", "ERROR")
-            _run("ip", "link", "del", "dev", self._tun_iface)
             return "interface"
+        self._pont_pret.wait(PONT_PRET_DELAI)
+        issue = self._configurer_wg(reglages)
+        if issue:
+            self._arreter_pont(proc)
+            return issue
 
         def continuer():
             return not (self._stop_vpn or self._stop_flag) and proc.poll() is None
@@ -274,12 +292,7 @@ class WireGuardMixin:
             self._tunnel_down_at = time.time()
             if not self._reconnect_reason:
                 self._reconnect_reason = "connexion VPN interrompue"
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except Exception:
-                proc.kill()
+        self._arreter_pont(proc)
         self._tunnel_up = False
         self._revert_vpn_dns()
         self._demonter_tunnel()

@@ -89,6 +89,11 @@ class StatusMixin:
             "last_circuit_age": int(time.time() - self._last_circuit_at)
                                 if self._last_circuit_at else 0,
             "last_circuit_past": self._circuit_mesure_passee,
+            # Faux : contrôle désactivé, ou conclu pour ce démarrage.  Aucune
+            # mesure n'est plus à attendre.
+            "circuit_pending": bool(self.config.get("circuit_check", True)
+                                    and self.config.get("circuit_min_kbs", 250) > 0
+                                    and not self._circuit_controle_fait),
             "conn_failures":  self._conn_fail_count,
             "vpn_reconnects": self._reconnect_vpn_count,
             "full_restarts":  self._full_restart_count,

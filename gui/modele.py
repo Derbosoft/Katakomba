@@ -1355,6 +1355,9 @@ def etat_connexion(service: str, st: dict, fournisseur: str = "",
         if kbs:
             return ("ok", message + " " + _("Débit mesuré : {debit}.").format(
                 debit=kbs_en_mbps(kbs)), True)
+        # Faux si le contrôle est désactivé ou déjà conclu : rien à attendre.
+        if not st.get("circuit_pending", True):
+            return ("ok", message, True)
         return ("ok", message + " " + _("Mesure du débit en cours…"), False)
     refus = st.get("accounts_cooldown") or {}
     if nb_confs:

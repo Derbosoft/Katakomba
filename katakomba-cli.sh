@@ -437,13 +437,12 @@ if st:
         note(KO, _("Tunnel"), _("fermé{depuis}{cause}").format(depuis=depuis, cause=cause))
     kbs, age = st.get("last_circuit_kbs", 0), st.get("last_circuit_age", 0)
     if kbs:
-        vieux = age > 6 * 3600
-        note(WARN if vieux else OK, _("Qualité du circuit"),
+        # Une seule mesure par démarrage (v4.4.1) : son âge n'annonce rien.
+        note(OK, _("Qualité du circuit"),
              _("{kbs} Ko/s (~{mbps} Mb/s), mesuré il y a {age}").format(
                  kbs=f"{kbs:.0f}", mbps=nombre(kbs * 8 / 1000), age=duree(age))
-             + (_(" — sur un circuit précédent") if st.get("last_circuit_past") else "")
-             + (_(" — mesure ancienne, le circuit a pu se dégrader") if vieux else ""))
-    elif st.get("tunnel_up"):
+             + (_(" — sur un circuit précédent") if st.get("last_circuit_past") else ""))
+    elif st.get("tunnel_up") and st.get("circuit_pending", True):
         note(WARN, _("Qualité du circuit"), _("aucune mesure pour ce tunnel"))
 
     # Comptes écartés temporairement : ni une panne ni un état normal, une

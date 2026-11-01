@@ -1286,6 +1286,17 @@ class CircuitMeasureInStatusTest(unittest.TestCase):
         d._circuit_mesure_passee = True
         self.assertTrue(d._status_snapshot()["last_circuit_past"])
 
+    def test_mesure_attendue_tant_que_le_controle_n_a_pas_conclu(self):
+        d = FakeDaemon(config={"providers": []})
+        self.assertTrue(d._status_snapshot()["circuit_pending"])
+        d._circuit_controle_fait = True
+        self.assertFalse(d._status_snapshot()["circuit_pending"])
+
+    def test_aucune_mesure_attendue_si_desactivee(self):
+        for reglage in ({"circuit_check": False}, {"circuit_min_kbs": 0}):
+            d = FakeDaemon(config={"providers": [], **reglage})
+            self.assertFalse(d._status_snapshot()["circuit_pending"], reglage)
+
     def test_statut_toujours_serialisable(self):
         import json
         d = FakeDaemon(config={"providers": []})
