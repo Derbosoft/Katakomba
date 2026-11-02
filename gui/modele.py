@@ -17,6 +17,7 @@ import copy
 import ipaddress
 import json
 import os
+import pwd
 import re
 import socket
 import stat
@@ -29,7 +30,7 @@ from pathlib import Path
 from adaptation import adapter, lire_sources
 from constants import (
     CONFIG_FILE, DEFAULT_CONFIG, OBSOLETE_CONFIG_KEYS, PROVIDERS_DIR,
-    SCRIPT_DIR, SERVICE_NAME, STATUS_SOCKET, TORRC_FILE,
+    SCRIPT_DIR, SERVICE_NAME, STATUS_SOCKET, TORRC_FILE, VPN_USER,
 )
 from constants import CONFIG_DIR  # noqa: F401  (réexporté : console.py lit modele.CONFIG_DIR)
 from i18n import LANGUES, N_, _, ngettext, nombre
@@ -317,6 +318,35 @@ def masquer_numero(numero: str) -> str:
     return "•••• " + numero[-4:] if len(numero) > 4 else "••••"
 
 
+def appareils_mullvad(numero: str) -> dict:
+    """Appareils et échéance d'un compte Mullvad, par l'assistant à travers
+    Tor : {"ok": True, "appareils", "jusqua"…} ou {"ok": False, "message"}.
+    Le numéro passe par l'entrée standard, jamais en argument.  En root,
+    l'assistant quitte ses droits : il lit ce que le réseau renvoie."""
+    droits = {}
+    if os.geteuid() == 0:
+        try:
+            pw = pwd.getpwnam(VPN_USER)
+        except KeyError:
+            return {"ok": False, "message": _("utilisateur {nom} absent").format(nom=VPN_USER)}
+        droits = {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": []}
+    try:
+        r = subprocess.run(
+            [sys.executable, "-I", str(SCRIPT_DIR / "mullvad.py"), "api",
+             "--socks", "127.0.0.1:9050"],
+            input=json.dumps({"action": "appareils", "compte": numero}),
+            capture_output=True, text=True, timeout=150, cwd="/", **droits,
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"})
+        reponse = json.loads(r.stdout[:4_000_000])
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": _("pas de réponse par Tor")}
+    except (OSError, ValueError):
+        return {"ok": False, "message": _("assistant Mullvad impossible à lancer")}
+    if not isinstance(reponse, dict) or not isinstance(reponse.get("appareils", []), list):
+        return {"ok": False, "message": _("réponse illisible")}
+    return reponse
+
+
 def nouveau_fournisseur_gere(config: dict, nom: str, service: str, numeros) -> dict:
     """Fournisseur sans fichier : ses numéros de compte, WireGuard géré."""
     p = {"name": nom, "ovpn_file": "", "wireguard": [],
@@ -402,6 +432,13 @@ def erreurs_config(config: dict) -> list:
     except (TypeError, ValueError):
         erreurs.append(_("Qualité du circuit : débit minimum entier ≥ 0, "
                          "essais entre 1 et 10."))
+    try:
+        retour = int(config.get("primary_retry_min", 30))
+        if retour != 0 and not 5 <= retour <= 1440:
+            raise ValueError
+    except (TypeError, ValueError):
+        erreurs.append(_("Retour à la première étape : 0 (jamais), ou de 5 à 1440 "
+                         "minutes."))
     if config.get("transports", ["wireguard", "openvpn"]) not in [list(o) for o in ORDRES_TRANSPORTS]:
         erreurs.append(_("Transports : wireguard, openvpn, ou les deux dans "
                          "l'ordre voulu."))
@@ -1175,6 +1212,7 @@ RAISONS = (N_("démarrage du service"), N_("redémarrage complet de Tor et du VP
            N_("aucune poignée de main, nouvel essai"),
            N_("aucune poignée de main, .conf suivant"),
            N_("aucune poignée de main, serveur suivant"), N_("fichier .conf refusé"),
+           N_("retour sur la première étape"),
            N_("interface tunnel impossible à créer"), N_("tunnel impossible à monter"))
 
 

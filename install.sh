@@ -230,6 +230,9 @@ if [ "${KATAKOMBA_SKIP_APT:-0}" = "1" ]; then
     for bin in "${DEPS_BIN[@]}"; do
         command -v "$bin" &>/dev/null || manquants+=("$bin")
     done
+    # Un module Python ne se voit pas à « command -v » : sans lui, le WireGuard
+    # géré et l'emballage VMess échouent au premier usage.
+    python3 -c 'import cryptography' 2>/dev/null || manquants+=(python3-cryptography)
     if [ "$AVEC_GUI" = 1 ]; then
         gui_disponible || manquants+=("${DEPS_GUI[@]}")
     fi

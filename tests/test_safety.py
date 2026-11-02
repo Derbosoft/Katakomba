@@ -153,6 +153,7 @@ class SuiteIntegrityTest(unittest.TestCase):
         "session":  "test_session.py",
         "wireguard": "test_wireguard.py",
         "gestion_wg": "test_gestion_wg.py",
+        "retour":   "test_retour.py",
         "status":   "test_config_status.py",
         "watchdog": "test_watchdog.py",
     }

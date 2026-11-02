@@ -230,6 +230,8 @@ try:
         up = d["tunnel_uptime"]
         vpn = (f"actif ({d['tunnel_iface']} UP, {d['provider']}, "
                f"{d['rx_kbs']:.0f} KB/s, depuis {up//3600}h{(up%3600)//60:02d})")
+        if d.get("fallback"):
+            vpn += f" — SECOURS, étape {d['stage_rank']}/{d['stage_count']}"
     else:
         vpn = "connexion en cours" if d["tor_ready"] else "en attente de Tor"
     print(f"  Tor        : {tor}")
@@ -301,7 +303,7 @@ PYEOF
         # --json : mêmes résultats pour l'interface graphique.  Textes dans la
         # langue de l'utilisateur (KATAKOMBA_LANGUE, sinon celle du système).
         python3 - "$DAEMON_DIR" "${@:2}" << 'PYEOF'
-import datetime, json, os, socket, subprocess, sys, time
+import datetime, importlib.util, json, os, socket, subprocess, sys, time
 
 DAEMON_DIR = sys.argv[1] if len(sys.argv) > 1 else ""
 JSON = "--json" in sys.argv[2:]
@@ -325,6 +327,7 @@ NIVEAUX_JSON = {OK: "ok", WARN: "attention", KO: "erreur", ATTENTE: "attente",
 # secondes.  Au-delà de ce délai, un tunnel toujours absent est une panne,
 # même si le daemon est encore en train d'essayer.
 RECONNEXION_MAX = 120
+ECHEANCE_ALERTE = 14     # jours avant la fin d'un abonnement
 NON_VERIFIE = _("reporté — le tunnel se reconnecte")
 en_cours = ""        # raison d'une reconnexion en cours ; vide sinon
 non_verifie = False  # état du daemon illisible pour ce compte (droits)
@@ -435,6 +438,52 @@ if st:
         depuis = _(" depuis {m} min {s:02d} s").format(m=bas // 60, s=bas % 60) if bas else ""
         cause = _(" — dernière cause : {raison}").format(raison=_(raison)) if raison else ""
         note(KO, _("Tunnel"), _("fermé{depuis}{cause}").format(depuis=depuis, cause=cause))
+    secours = st.get("fallback") or {}
+    if secours:
+        raisons = {"module_missing": _("composant manquant"),
+                   "accounts_full": _("comptes pleins"),
+                   "api_unreachable": _("API injoignable"),
+                   "captcha": _("captcha demandé par l'API"),
+                   "subscription_expired": _("abonnement expiré"),
+                   "accounts_refused": _("comptes refusés"),
+                   "servers_silent": _("serveurs muets"),
+                   "connection_lost": _("connexion instable"),
+                   "config_refused": _("fichier de configuration refusé")}
+        note(WARN, _("Mode secours"),
+             _("étape {rang}/{total} depuis {duree} : {raison}").format(
+                 rang=st.get("stage_rank", 0), total=st.get("stage_count", 0),
+                 duree=duree(int(time.time()) - secours.get("since", int(time.time()))),
+                 raison=raisons.get(secours.get("reason"), _("cause inconnue")))
+             + (_(" — prochain essai dans {duree}").format(
+                 duree=duree(max(0, secours["next_try"] - int(time.time()))))
+                if secours.get("next_try") else ""))
+    for c in st.get("wg_accounts") or []:
+        fin = c.get("expires", 0)
+        titre = _("Compte {fournisseur}").format(fournisseur=c.get("provider", "?"))
+        if not c.get("account"):
+            # Un fournisseur de réserve jamais utilisé n'a pas de place : normal.
+            if secours:
+                note(WARN, titre, _("aucune place enregistrée pour ce PC"))
+            continue
+        qui = "•••• " + c.get("tail", "") + (f", {c['device']}" if c.get("device") else "")
+        if not fin:
+            note(OK, titre, _("{compte} — échéance relevée au prochain renouvellement").format(
+                compte=qui))
+            continue
+        jours = (fin - int(time.time())) // 86400
+        date = datetime.date.fromtimestamp(fin).isoformat()
+        if jours < 0:
+            note(KO, titre, _("{compte} — abonnement expiré le {date}").format(
+                compte=qui, date=date))
+        elif jours < ECHEANCE_ALERTE:
+            note(WARN, titre, _("{compte} — expire le {date}, dans {n} j").format(
+                compte=qui, date=date, n=jours))
+        else:
+            note(OK, titre, _("{compte} — expire le {date}").format(compte=qui, date=date))
+    if st.get("wg_accounts") and importlib.util.find_spec("cryptography") is None:
+        note(KO, _("WireGuard géré"), _("python3-cryptography manque : aucune clé ne "
+                                        "peut être créée (sudo apt install "
+                                        "python3-cryptography)"))
     kbs, age = st.get("last_circuit_kbs", 0), st.get("last_circuit_age", 0)
     if kbs:
         # Une seule mesure par démarrage (v4.4.1) : son âge n'annonce rien.

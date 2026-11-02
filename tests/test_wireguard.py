@@ -674,7 +674,7 @@ class BoucleTest(unittest.TestCase):
         d = FakeDaemon(config={"providers": [provider_wg("a", 3)], "random_account": True})
         vu = []
         d._compte_wireguard = lambda: vu.append(d._current_account_idx) or None
-        d._etape_suivante = lambda: False
+        d._etape_suivante = lambda cause="": False
         d._vpn_loop(0, 0)
         self.assertEqual(vu, [0])
 

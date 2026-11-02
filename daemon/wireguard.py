@@ -31,8 +31,8 @@ import threading
 import time
 
 from .core import (
-    _run, _read_regular, _write_private, PONT_ECOUTE, PONT_PATTERN, SCRIPT_DIR,
-    WG_CONF_RUN, WG_MTU_DEFAUT,
+    _run, _read_regular, _write_private, PONT_ECOUTE, PONT_PATTERN, PONT_SONDE,
+    SCRIPT_DIR, TUN_SONDE, WG_CONF_RUN, WG_CONF_SONDE, WG_MTU_DEFAUT,
 )
 from .gestion_wg import SERVEURS_GERES, service_gere
 from validation import analyser_wg, chemin_fournisseur_sur, conf_wg_noyau
@@ -44,6 +44,7 @@ from validation import analyser_wg, chemin_fournisseur_sur, conf_wg_noyau
 POIGNEE_DELAI = 90
 POIGNEE_PERIMEE = 200
 PONT_PRET_DELAI = 3     # s pour que le pont écoute avant de lever l'interface
+SONDE_DELAI = 60        # s pour la poignée de main d'une sonde
 
 
 class WireGuardMixin:
@@ -82,21 +83,29 @@ class WireGuardMixin:
         confs = p.get("wireguard", [])
         if not confs or self._current_account_idx >= len(confs):
             return None
-        conf = confs[self._current_account_idx].get("conf", "")
-        if not conf:
+        chemin = self._chemin_conf(p, self._current_account_idx)
+        if not chemin:
             return None
+        return chemin, p.get("name", "?"), self._current_account_idx
+
+    def _chemin_conf(self, p: dict, i: int) -> str:
+        """Chemin du .conf n° i du fournisseur, "" s'il est inutilisable
+        (journalisé quand c'est une erreur de configuration)."""
+        conf = p["wireguard"][i].get("conf", "")
+        if not conf:
+            return ""
         # Chemin relatif sous providers/, rien d'autre : config.json est
         # modifiable par le groupe, et tout autre chemin ferait lire au
         # daemon, en root, un fichier arbitraire de la machine.
         if not chemin_fournisseur_sur(conf):
             self._log(f"[provider] {p.get('name', '?')!r} : chemin du .conf "
                       "refusé (hors de providers/<fournisseur>/).", "ERROR")
-            return None
+            return ""
         path = SCRIPT_DIR / conf
         if not path.exists():
             self._log(f"[provider] Fichier .conf introuvable : {path}", "ERROR")
-            return None
-        return str(path), p.get("name", "?"), self._current_account_idx
+            return ""
+        return str(path)
 
     _WG_MAX = 65536     # octets ; un .conf réel en fait quelques centaines
 
@@ -122,14 +131,17 @@ class WireGuardMixin:
             self._log(f"[provider] {nom} refusé.", "ERROR")
         return reglages
 
-    def _configurer_wg(self, reglages: dict) -> str:
+    def _configurer_wg(self, reglages: dict, sonde=False) -> str:
         """Interface WireGuard neuve : clés, pair joint par le pont local,
         adresse, levée.  Aucune route : _monter_tunnel les pose après la
-        première poignée de main, relais Tor protégés d'abord.
+        première poignée de main, relais Tor protégés d'abord.  `sonde` :
+        l'interface de la sonde, sans adresse ni route, qui ne sert qu'à
+        la poignée de main ; le tunnel en service n'en voit rien.
 
         Renvoie "" si tout est en place, « absent » si WireGuard manque à la
         machine (module noyau, wg), « interface » pour tout autre échec."""
-        tun = self._tun_iface
+        tun = TUN_SONDE if sonde else self._tun_iface
+        fichier = WG_CONF_SONDE if sonde else WG_CONF_RUN
         _run("ip", "link", "del", "dev", tun)
         r = _run("ip", "link", "add", "dev", tun, "type", "wireguard")
         if r.returncode != 0:
@@ -140,8 +152,9 @@ class WireGuardMixin:
         try:
             # La clé privée ne fait que passer : fichier 0600 en root, effacé
             # dès que wg l'a lu.
-            _write_private(WG_CONF_RUN, conf_wg_noyau(reglages, PONT_ECOUTE))
-            r = _run("wg", "setconf", tun, str(WG_CONF_RUN))
+            _write_private(fichier, conf_wg_noyau(
+                reglages, PONT_SONDE if sonde else PONT_ECOUTE))
+            r = _run("wg", "setconf", tun, str(fichier))
             erreur = "" if r.returncode == 0 else "wg setconf a échoué"
             issue = "interface"
         except FileNotFoundError:
@@ -151,16 +164,17 @@ class WireGuardMixin:
             erreur = f"fichier de configuration impossible à écrire ({e})"
             issue = "interface"
         finally:
-            WG_CONF_RUN.unlink(missing_ok=True)
+            fichier.unlink(missing_ok=True)
         if erreur:
             # Jamais la sortie de wg : il y recopie une clé qu'il refuse.
             self._log(f"WireGuard : {erreur}.", "ERROR")
             _run("ip", "link", "del", "dev", tun)
             return issue
         mtu = reglages["mtu"] or WG_MTU_DEFAUT
-        for cmd in (["ip", "addr", "add", f"{reglages['adresse']}/32", "dev", tun],
-                    ["ip", "link", "set", "dev", tun, "mtu", str(mtu)],
-                    ["ip", "link", "set", "dev", tun, "up"]):
+        for cmd in ([] if sonde else
+                    [["ip", "addr", "add", f"{reglages['adresse']}/32", "dev", tun],
+                     ["ip", "link", "set", "dev", tun, "mtu", str(mtu)]]) + [
+                ["ip", "link", "set", "dev", tun, "up"]]:
             r = _run(*cmd)
             if r.returncode != 0:
                 self._log(f"WireGuard : « {' '.join(cmd)} » : "
@@ -169,22 +183,28 @@ class WireGuardMixin:
                 return "interface"
         return ""
 
-    def _lancer_pont(self, reglages: dict, uid: int, gid: int):
+    def _lancer_pont(self, reglages: dict, uid: int, gid: int, sonde=False):
         """Le pont, sans aucun droit.  Ses arguments ne contiennent rien de
         secret (l'identifiant VMess d'IVPN est public, le même pour tous)."""
+        ecoute = PONT_SONDE if sonde else PONT_ECOUTE
         cmd = [sys.executable, "-I", str(SCRIPT_DIR / "pont_wg.py"),
                "--emballage", reglages["emballage"],
                "--serveur",   reglages["serveur"],
                "--socks",     "127.0.0.1:9050",
-               "--ecoute",    PONT_ECOUTE]
+               "--ecoute",    ecoute]
         if reglages["emballage"] == "ivpn":
             cmd += ["--cible", reglages["cible"], "--uuid", reglages["uuid"]]
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             user=uid, group=gid, extra_groups=[], cwd="/",
             env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"})
-        self._pont_pret = pret = threading.Event()
-        threading.Thread(target=self._journal_pont, args=(proc, pret), daemon=True).start()
+        pret = threading.Event()
+        if sonde:
+            self._sonde_pret = pret
+        else:
+            self._pont_pret = pret
+        threading.Thread(target=self._journal_pont, args=(proc, pret, sonde),
+                         daemon=True).start()
         return proc
 
     @staticmethod
@@ -196,7 +216,7 @@ class WireGuardMixin:
             except Exception:
                 proc.kill()
 
-    def _journal_pont(self, proc, pret):
+    def _journal_pont(self, proc, pret, sonde=False):
         for ligne in proc.stdout:
             ligne = ligne.strip()
             # Le pont horodate ses lignes ; le journal du daemon aussi.
@@ -205,14 +225,18 @@ class WireGuardMixin:
             if ligne:
                 if ligne.startswith("Écoute UDP"):
                     pret.set()
-                grave = ligne.startswith(("Échec", "Connexion perdue"))
-                self._log(f"[pont] {ligne}", "WARN" if grave else "INFO")
+                # Une sonde qui échoue n'est pas une panne : le tunnel en
+                # service n'y est pour rien.
+                grave = not sonde and ligne.startswith(("Échec", "Connexion perdue"))
+                self._log(f"[{'sonde' if sonde else 'pont'}] {ligne}",
+                          "WARN" if grave else "INFO")
         pret.set()        # pont arrêté : plus rien à attendre
+        proc.stdout.close()
 
-    def _poignee_age(self):
+    def _poignee_age(self, tun=None):
         """Secondes depuis la dernière poignée de main WireGuard, None si
         aucune n'a encore réussi."""
-        r = _run("wg", "show", self._tun_iface, "latest-handshakes")
+        r = _run("wg", "show", tun or self._tun_iface, "latest-handshakes")
         if r.returncode != 0:
             return None
         for ligne in r.stdout.decode(errors="ignore").splitlines():
@@ -220,6 +244,31 @@ class WireGuardMixin:
             if len(champs) == 2 and champs[1].isdigit() and int(champs[1]) > 0:
                 return max(0.0, time.time() - int(champs[1]))
         return None
+
+    def _sonder_poignee(self, reglages: dict, uid: int, gid: int) -> bool:
+        """Une poignée de main avec ce serveur, à côté du tunnel en service :
+        vrai si elle réussit.  Interface et pont sont retirés dans tous les
+        cas ; la clé privée ne fait que passer, comme pour un vrai tunnel."""
+        proc = None
+        try:
+            proc = self._lancer_pont(reglages, uid, gid, sonde=True)
+            self._sonde_pret.wait(PONT_PRET_DELAI)
+            if self._configurer_wg(reglages, sonde=True):
+                return False
+            for _ in range(SONDE_DELAI):
+                if self._stop_vpn or self._stop_flag or proc.poll() is not None:
+                    return False
+                if self._poignee_age(TUN_SONDE) is not None:
+                    return True
+                time.sleep(1)
+            return False
+        except OSError as e:
+            self._log(f"Sonde WireGuard impossible à lancer : {e}", "WARN")
+            return False
+        finally:
+            _run("ip", "link", "del", "dev", TUN_SONDE)
+            if proc:
+                self._arreter_pont(proc)
 
     def _tunnel_actif(self, reglages: dict) -> bool:
         """Première poignée de main réussie : routes, DNS, et tout ce qui

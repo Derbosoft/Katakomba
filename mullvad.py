@@ -55,6 +55,8 @@ DNS = "10.64.0.1"                # DNS de Mullvad dans le tunnel (reconnu par va
 CONFIG_KATAKOMBA = Path("/etc/katakomba/config.json")
 SESSION_GEREE = Path("/var/lib/katakomba/mullvad-session.json")
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+# Nom donné par Mullvad (« Happy Seal ») : il finit au journal et en console.
+NOM_SUR = re.compile(r"[A-Za-z0-9][A-Za-z0-9 _-]{0,39}")
 
 # Codes de l'API → vocabulaire commun (ivpn.py).
 CODES = {"INVALID_ACCOUNT": NON_AUTORISE, "MAX_DEVICES_REACHED": COMPTE_PLEIN,
@@ -118,8 +120,13 @@ def jeton(socks, compte) -> str:
     return str(r["access_token"])
 
 
+def nom_sur(nom) -> str:
+    """Le nom d'appareil s'il est présentable, sinon "" : il vient du réseau."""
+    return nom if isinstance(nom, str) and NOM_SUR.fullmatch(nom) else ""
+
+
 def _appareil(a) -> dict:
-    """Ce que le daemon garde d'un appareil : identifiant, adresse, date."""
+    """Ce que le daemon garde d'un appareil : identifiant, adresse, date, nom."""
     if not isinstance(a, dict) or not UUID.fullmatch(str(a.get("id", ""))):
         raise ErreurMullvad("appareil illisible dans la réponse de l'API")
     try:
@@ -127,7 +134,8 @@ def _appareil(a) -> dict:
     except ValueError:
         cree = 0
     return {"jeton": a["id"], "adresse": str(a.get("ipv4_address", "")),
-            "publique": str(a.get("pubkey", "")), "cree": int(cree)}
+            "publique": str(a.get("pubkey", "")), "cree": int(cree),
+            "nom": nom_sur(a.get("name"))}
 
 
 def _id(appareil: str) -> str:
@@ -150,15 +158,31 @@ def nouvel_appareil(socks, compte, publique) -> dict:
 
 
 def appareils(socks, compte) -> dict:
-    """{"appareils": [{jeton, cree}], "maintenant": heure du serveur} : l'âge
-    d'un appareil se compte à l'heure de Mullvad, pas à celle du PC."""
+    """{"appareils": [{jeton, cree, nom}], "maintenant": heure du serveur,
+    "jusqua": échéance du compte, 0 si elle n'a pas pu être lue} : l'âge d'un
+    appareil se compte à l'heure de Mullvad, pas à celle du PC."""
     j = jeton(socks, compte)
     statut, r, serveur = requete(socks, "GET", "/accounts/v1/devices", jeton=j)
     if statut != 200 or not isinstance(r, list):
         raise _refus(statut, r)
-    return {"appareils": [{"jeton": a["jeton"], "cree": a["cree"]}
-                          for a in map(_appareil, r)],
-            "maintenant": int(serveur)}
+    liste = [{"jeton": a["jeton"], "cree": a["cree"], "nom": a["nom"]}
+             for a in map(_appareil, r)]
+    try:
+        jusqua = _echeance(socks, j)
+    except (ErreurMullvad, ErreurPont, OSError, http.client.HTTPException):
+        jusqua = 0              # la liste reste bonne : elle seule sert au ménage
+    return {"appareils": liste, "maintenant": int(serveur), "jusqua": jusqua}
+
+
+def _echeance(socks, j) -> int:
+    """Fin de l'abonnement du compte, 0 si elle est illisible."""
+    statut, r, _h = requete(socks, "GET", "/accounts/v1/accounts/me", jeton=j)
+    if statut != 200 or not isinstance(r, dict):
+        raise _refus(statut, r)
+    try:
+        return int(datetime.fromisoformat(str(r.get("expiry"))).timestamp())
+    except ValueError:
+        return 0
 
 
 def statut_appareil(socks, compte, appareil) -> dict:
@@ -169,14 +193,9 @@ def statut_appareil(socks, compte, appareil) -> dict:
     if statut != 200:
         raise _refus(statut, r)
     a = _appareil(r)
-    statut, compte_r, _h = requete(socks, "GET", "/accounts/v1/accounts/me", jeton=j)
-    if statut != 200 or not isinstance(compte_r, dict):
-        raise _refus(statut, compte_r)
-    try:
-        jusqua = int(datetime.fromisoformat(str(compte_r.get("expiry"))).timestamp())
-    except ValueError:
-        jusqua = 0
-    return {"actif": jusqua > serveur, "jusqua": jusqua, "publique": a["publique"]}
+    jusqua = _echeance(socks, j)
+    return {"actif": jusqua > serveur, "jusqua": jusqua, "publique": a["publique"],
+            "nom": a["nom"]}
 
 
 def changer_cle(socks, compte, appareil, publique) -> str:

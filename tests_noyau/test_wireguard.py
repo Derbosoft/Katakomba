@@ -300,6 +300,8 @@ class WireGuardBoutEnBoutTest(CasNoyau):
         # pas le droit de lire.
         self.addCleanup(setattr, m_wireguard, "WG_CONF_RUN", m_wireguard.WG_CONF_RUN)
         m_wireguard.WG_CONF_RUN = Path("/etc/wireguard/katakomba-wg.conf")
+        self.addCleanup(setattr, m_wireguard, "WG_CONF_SONDE", m_wireguard.WG_CONF_SONDE)
+        m_wireguard.WG_CONF_SONDE = Path("/etc/wireguard/katakomba-sonde.conf")
         sans_passe_droit_hors_root(self.d)
         self.addCleanup(self.d._kill_switch_off, True)
         self.assertTrue(self.d._kill_switch_on())
@@ -322,14 +324,15 @@ class WireGuardBoutEnBoutTest(CasNoyau):
                 "STDOUT": subprocess.STDOUT})
         time.sleep(0.5)          # serveur TLS du pair à l'écoute
 
-    def _pont(self):
+    def _ids(self):
         if root_reel():
             import pwd
             nobody = pwd.getpwnam("nobody")
-            ids = (nobody.pw_uid, nobody.pw_gid)
-        else:
-            ids = (0, 0)
-        proc = self.d._lancer_pont(self.conf, *ids)
+            return nobody.pw_uid, nobody.pw_gid
+        return 0, 0
+
+    def _pont(self):
+        proc = self.d._lancer_pont(self.conf, *self._ids())
 
         def arreter():
             proc.terminate()
@@ -377,6 +380,32 @@ class WireGuardBoutEnBoutTest(CasNoyau):
         # Le tunnel tombe (pont arrêté) : plus rien ne sort, même à découvert.
         self.d._demonter_tunnel()
         self.assertEqual(joindre(INTERNET, 8080, delai=2), "refus")
+
+    def test_sonde_a_cote_d_un_tunnel_en_service(self):
+        """Retour à la première étape : la sonde obtient une vraie poignée de
+        main alors que le tunnel tourne et que le blocage est actif, sans
+        toucher à ses routes, et ne laisse ni interface, ni pont, ni clé."""
+        self.assertEqual(self.d._configurer_wg(self.conf), "", self.d.log_dump())
+        self._pont()
+        self.assertTrue(self._poignee(), self._etat())
+        self.assertTrue(self.d._tunnel_actif(self.conf), self.d.log_dump())
+        routes = sh("ip route show")
+
+        self.assertTrue(self.d._sonder_poignee(self.conf, *self._ids()), self._etat())
+
+        self.assertEqual(sh("ip route show"), routes, "la sonde a touché aux routes")
+        self.assertEqual(via(INTERNET), "tun-katakomba")
+        self.assertNotIn("tun-kksonde", sh("ip -br link"), "interface de sonde restée")
+        self.assertEqual(sorted(os.listdir("/etc/wireguard")), ["srv.conf"],
+                         "clé privée de la sonde laissée dans /etc/wireguard")
+
+    def test_sonde_sans_reponse(self):
+        """Serveur muet : échec franc au bout du délai, rien ne reste."""
+        self.addCleanup(setattr, m_wireguard, "SONDE_DELAI", m_wireguard.SONDE_DELAI)
+        m_wireguard.SONDE_DELAI = 3
+        self.pair.run("ip link set wg-srv down")
+        self.assertFalse(self.d._sonder_poignee(self.conf, *self._ids()))
+        self.assertNotIn("tun-kksonde", sh("ip -br link"))
 
     def test_sans_pont_aucune_poignee(self):
         self.assertEqual(self.d._configurer_wg(self.conf), "", self.d.log_dump())

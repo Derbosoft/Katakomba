@@ -11,6 +11,7 @@ La classe Daemon hérite de tous les mixins :
                  contrôle du circuit Tor
   OpenVPNMixin — transport OpenVPN
   WireGuardMixin — transport WireGuard (interface, pont vers Tor)
+  RetourMixin  — mode secours : le signaler, en revenir
   GestionWgMixin — WireGuard géré : session et clé enregistrées par
                  Katakomba sur le compte (IVPN)
   StatusMixin  — socket Unix d'état (lecture seule)
@@ -30,6 +31,7 @@ from .session   import SessionMixin
 from .openvpn   import OpenVPNMixin
 from .wireguard import WireGuardMixin
 from .gestion_wg import GestionWgMixin
+from .retour    import RetourMixin
 from .status    import StatusMixin
 from .watchdog  import WatchdogMixin
 
@@ -44,6 +46,7 @@ class Daemon(
     OpenVPNMixin,
     WireGuardMixin,
     GestionWgMixin,
+    RetourMixin,
     StatusMixin,
     WatchdogMixin,
 ):

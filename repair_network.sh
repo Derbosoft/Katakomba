@@ -39,6 +39,7 @@ echo "[2/8] Arrêt des processus OpenVPN/WireGuard/Tor restants..."
 # « pkill -x openvpn » couperait un autre VPN, « pkill -x tor » Tor Browser.
 pkill -f -- "^openvpn .*--auth-user-pass [^ ]*katakomba(-vpn)?/auth\.tmp" 2>/dev/null || true
 pkill -f -- "pont_wg\.py .*--ecoute 127\.0\.0\.1:51871" 2>/dev/null || true
+pkill -f -- "pont_wg\.py .*--ecoute 127\.0\.0\.1:51872" 2>/dev/null || true
 # Clé privée WireGuard d'une interface en cours de création (le daemon
 # l'efface dès que wg l'a lue ; un arrêt brutal pourrait la laisser).
 rm -f /etc/wireguard/katakomba-wg.conf
@@ -117,6 +118,7 @@ for T in "${TUNS[@]}"; do
   ip route del default     dev "$T" 2>/dev/null || true
 done
 ip link del dev tun-katakomba 2>/dev/null || true
+ip link del dev tun-kksonde 2>/dev/null || true
 # Retour des connexions entrantes (v3.10.0) : marquage et règles de routage.
 for c in "PREROUTING KATAKOMBA_RETOUR" "OUTPUT KATAKOMBA_RETOUR_OUT"; do
     # shellcheck disable=SC2086  # découpage voulu : « parent chaîne »

@@ -106,6 +106,16 @@ class PageReglages(Adw.PreferencesPage):
         self.circuit.add(self.essais)
         self.add(self.circuit)
 
+        g = Adw.PreferencesGroup(title=_("Fournisseur de secours"))
+        self.retour = Adw.SpinRow.new_with_range(0, 1440, 5)
+        self.retour.set_title(_("Retour à la première étape (minutes)"))
+        self.retour.set_subtitle(_("En secours, Katakomba essaie la première étape "
+                                   "WireGuard à côté du tunnel, sans le couper, et n'y "
+                                   "revient que si elle répond. 0 : jamais."))
+        self.retour.connect("notify::value", self._retour_change)
+        g.add(self.retour)
+        self.add(g)
+
         g = Adw.PreferencesGroup(
             title=_("Sauvegarde"),
             description=_("Fournisseurs, comptes, fichiers de configuration et "
@@ -146,6 +156,7 @@ class PageReglages(Adw.PreferencesPage):
             self.mesure.set_active(c.get("circuit_check", True))
             self.seuil.set_value(int(c.get("circuit_min_kbs", 250)))
             self.essais.set_value(int(c.get("circuit_max_retries", 3)))
+            self.retour.set_value(int(c.get("primary_retry_min", 30)))
             self.demarrage.set_active(c.get("autostart", False))
             p = self.fen.prefs
             self.langue.set_selected(CODES_LANGUE.index(p["langue"]))
@@ -193,6 +204,11 @@ class PageReglages(Adw.PreferencesPage):
     def _essais_change(self, *_args):
         if not self._charge:
             self.fen.config["circuit_max_retries"] = int(self.essais.get_value())
+            self.fen.reglage_modifie()
+
+    def _retour_change(self, *_args):
+        if not self._charge:
+            self.fen.config["primary_retry_min"] = int(self.retour.get_value())
             self.fen.reglage_modifie()
 
     def _demarrage_change(self, *_args):

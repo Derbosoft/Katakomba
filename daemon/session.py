@@ -31,7 +31,10 @@ from .core import (
     RECONNECT_DELAY, RECONNECT_MAX, AUTH_COOLDOWN, AUTH_PASS_MAX,
     AUTH_PASS_DELAY, VPN_USER,
 )
-from .gestion_wg import SERVEURS_GERES, service_gere
+from .gestion_wg import (
+    CAUSE_API, CAUSE_COMPTES, CAUSE_CONFIG, CAUSE_COUPURES, CAUSE_MODULE,
+    CAUSE_SERVEURS, SERVEURS_GERES, service_gere,
+)
 
 TRANSPORTS = ("wireguard", "openvpn")
 NOMS_TRANSPORT = {"wireguard": "WireGuard", "openvpn": "OpenVPN"}
@@ -128,15 +131,29 @@ class SessionMixin:
         self._wg_resynchro = False
         self._plan_accounts()
 
-    def _etape_suivante(self) -> bool:
+    def _etapes(self) -> list:
+        """Toutes les étapes, dans l'ordre : [(fournisseur, transport)]."""
+        return [(i, t) for i, p in enumerate(self.config.get("providers", []))
+                for t in transports_du(p, ordre_transports(self.config, p))]
+
+    def _rang_etape(self) -> int:
+        """Rang de l'étape courante, 1 pour la première ; 0 si elle n'en est
+        pas une (fournisseur retiré à chaud, aucun transport)."""
+        etapes = self._etapes()
+        courante = (self._current_provider_idx, self._transport)
+        return etapes.index(courante) + 1 if courante in etapes else 0
+
+    def _etape_suivante(self, cause="") -> bool:
         """Passe à l'étape suivante, sur son premier compte : l'autre
-        transport du même fournisseur, ou le fournisseur suivant.
+        transport du même fournisseur, ou le fournisseur suivant.  `cause` :
+        code de raison pour le statut, gardé s'il est le premier.
 
         À la différence de _try_failover, ne parcourt PAS les comptes
         restants de l'étape courante.  Sert quand l'étape entière est
         inutilisable (.ovpn refusé, aucun compte), ou quand une panne vient
         du serveur : tous les comptes OpenVPN d'un fournisseur partagent le
         même .ovpn, donc les mêmes serveurs, et en changer n'y ferait rien."""
+        self._cause_etape = self._cause_etape or cause
         providers = self.config.get("providers", [])
         if 0 <= self._current_provider_idx < len(providers):
             p = providers[self._current_provider_idx]
@@ -219,7 +236,7 @@ class SessionMixin:
         # et l'appelant passera à l'étape suivante.
         self._current_account_idx = ordre[0] if ordre else 0
 
-    def _try_failover(self) -> bool:
+    def _try_failover(self, cause="") -> bool:
         """Compte suivant de l'étape ; à défaut, étape suivante.  Faux quand
         tout est épuisé (on revient alors au premier fournisseur)."""
         providers = self.config.get("providers", [])
@@ -244,7 +261,7 @@ class SessionMixin:
                 f"({self._account_pos+1}/{len(accounts)} essayés) "
                 f"chez {cur_p['name']}", "WARN")
             return True
-        if self._etape_suivante():
+        if self._etape_suivante(cause):
             return True
         self._log("Failover : tous les fournisseurs et comptes épuisés.", "ERROR")
         self._entrer_fournisseur(0)
@@ -283,6 +300,7 @@ class SessionMixin:
             self._last_circuit_at  = 0.0
             self._circuit_mesure_passee = False
         self._log("Tunnel VPN actif.", "OK")
+        self._etape_montee()
         # DNS du VPN d'abord (resolvectl sur l'interface), puis le split DNS
         # (drop-in) qui garde la priorité sur les domaines exclus.
         self._apply_vpn_dns()
@@ -605,6 +623,7 @@ class SessionMixin:
         # Tirage de l'ordre des comptes, puis positionnement sur le compte
         # demandé s'il est explicite (reprise après réparation d'urgence).
         self._entrer_fournisseur(start_provider_idx, start_transport)
+        self._wg_charger_etats()
         # « is not None » et non un test de vérité : 0 est un index de compte
         # valide (le compte 1).  Avec « if start_account_idx », le compte 1
         # n'aurait jamais pu être imposé explicitement.
@@ -623,7 +642,7 @@ class SessionMixin:
                 # Étape inutilisable (.ovpn manquant, aucun compte) : le défaut
                 # touche l'étape entière, pas un compte — inutile de parcourir
                 # ses autres comptes.
-                if self._etape_suivante():
+                if self._etape_suivante(CAUSE_COMPTES):
                     continue
                 self._log("Aucun fournisseur/compte utilisable.", "ERROR")
                 break
@@ -656,7 +675,8 @@ class SessionMixin:
             if gere:
                 # Session et liste des serveurs par l'API (Tor prêt), sauf si
                 # ce PC les a déjà : le cas d'un redémarrage ordinaire.
-                reglages, nom, issue = self._wg_gere_reglages(p_courant, acc_idx)
+                with self._wg_verrou:
+                    reglages, nom, issue = self._wg_gere_reglages(p_courant, acc_idx)
                 if not issue:
                     issue = self._session_wireguard(nom, *ids, reglages=reglages)
             elif transport == "wireguard":
@@ -667,13 +687,17 @@ class SessionMixin:
             if issue == "arret" or self._stop_vpn or self._stop_flag:
                 self._ipv6_block_off()
                 break
+            if self._retour_vers:
+                self._revenir()
+                echecs = 0
+                continue
             if issue == "interface":
                 self._reconnect_reason = "interface tunnel impossible à créer"
                 break
             if issue == "absent":
                 # Programme manquant (openvpn, wg) : l'étape entière est
                 # perdue, l'autre transport peut servir.
-                if self._etape_suivante():
+                if self._etape_suivante(CAUSE_MODULE):
                     continue
                 break
             if issue == "indisponible":
@@ -681,7 +705,7 @@ class SessionMixin:
                 # l'instant (API injoignable, comptes pleins, captcha) :
                 # l'étape suivante peut servir.  L'API n'est rappelée
                 # qu'après une pause : un parc ne la martèle pas.
-                if self._etape_suivante():
+                if self._etape_suivante(self._wg_cause or CAUSE_API):
                     continue
                 suite = self._nouvelle_passe("obtenir une session WireGuard")
                 if suite is None:
@@ -692,14 +716,14 @@ class SessionMixin:
             if issue == "refus":
                 if transport == "openvpn":
                     # .ovpn refusé : tous les comptes de l'étape le partagent.
-                    if self._etape_suivante():
+                    if self._etape_suivante(CAUSE_CONFIG):
                         continue
                     self._log("Aucun fournisseur/compte utilisable.", "ERROR")
                     break
                 # Un .conf refusé ne concerne que lui : le suivant peut servir.
                 self._reconnect_reason = "fichier .conf refusé"
                 echecs = 0
-                if self._try_failover():
+                if self._try_failover(CAUSE_CONFIG):
                     continue
                 self._log("Aucun .conf utilisable.", "ERROR")
                 break
@@ -764,7 +788,7 @@ class SessionMixin:
                           f"({prov_name}) — mis en quarantaine "
                           f"{AUTH_COOLDOWN//60} min (mot de passe invalide ou "
                           f"connexions simultanées épuisées).", "WARN")
-                if self._try_failover():
+                if self._try_failover(CAUSE_COMPTES):
                     self._log("Compte suivant, reconnexion immédiate …", "WARN")
                     time.sleep(3)
                     continue
@@ -799,7 +823,7 @@ class SessionMixin:
                     self._log(f"{quoi_wg} {acc_idx+1} ({prov_name}) sans poignée de "
                               f"main — mis en quarantaine {AUTH_COOLDOWN//60} min.",
                               "WARN")
-                if self._try_failover():
+                if self._try_failover(CAUSE_SERVEURS):
                     time.sleep(3)
                     continue
                 suite = self._nouvelle_passe("se connecter")
@@ -815,8 +839,8 @@ class SessionMixin:
             if self._reconnect_vpn_count > RECONNECT_MAX:
                 # Le compte courant ne repart pas après plusieurs essais
                 # espacés : la panne est probablement côté serveur.
-                change = (self._etape_suivante() if transport == "openvpn"
-                          else self._try_failover())
+                change = (self._etape_suivante(CAUSE_COUPURES) if transport == "openvpn"
+                          else self._try_failover(CAUSE_COUPURES))
                 if change:
                     self._reconnect_vpn_count = 0
                     time.sleep(3)

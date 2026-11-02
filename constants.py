@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "4.4.3"
+VERSION       = "4.5.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")
@@ -19,6 +19,7 @@ STATE_DIR     = Path("/var/lib/katakomba")    # 0755 root, persistant
 # .ovpn, identifiants) vivent à part, lisibles par lui seul en plus de root.
 VPN_USER      = "katakomba-vpn"
 TUN_IFACE     = "tun-katakomba"
+TUN_SONDE     = "tun-kksonde"    # sonde du retour à la première étape : sans route
 VPN_RUN_DIR   = Path("/run/katakomba-vpn")    # 0750 root:katakomba-vpn, volatil
 AUTH_TMP      = VPN_RUN_DIR / "auth.tmp"
 
@@ -62,6 +63,7 @@ DEFAULT_CONFIG = {
     # neuf (NEWNYM) et on retente, dans la limite de circuit_max_retries.
     "circuit_check":      True,
     "circuit_min_kbs":    250,   # 250 KB/s ≈ 2 Mbps
+    "primary_retry_min":  30,    # sonde de la première étape, en secours ; 0 : jamais
     "circuit_max_retries": 3,
     "lan_iface":         "",
     "lan_gateway":       "10.0.0.1",

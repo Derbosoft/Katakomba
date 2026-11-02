@@ -95,6 +95,21 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.5.0" date="2026-11-02">
+      <description>
+        <p>A fallback now returns to the first stage by itself, and says so.</p>
+        <ul>
+          <li>On a fallback, the first WireGuard stage is tested every 30 minutes next to the tunnel, without cutting it; the tunnel is only replaced after a successful handshake</li>
+          <li>katakomba doctor and the status socket show the stage, the fallback, its reason and the account's expiry date, with a warning 14 days before</li>
+          <li>Mullvad: on a full account the key changes on the same device, so an API failure no longer costs the PC its slot</li>
+          <li>An expired account is set aside at once: it could keep the next stage from ever taking over</li>
+          <li>New: katakomba provider devices, device names in the log and in doctor</li>
+          <li>With random-account off, managed accounts are tried in list order</li>
+          <li>The installer checks python3-cryptography with KATAKOMBA_SKIP_APT=1</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.5.0</url>
+    </release>
     <release version="4.4.3" date="2026-11-01">
       <description>
         <p>WireGuard connects five seconds faster.</p>

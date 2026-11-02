@@ -13,6 +13,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 import console
@@ -136,6 +137,32 @@ class FournisseurTest(Console):
         code, _, err = self.ajouter(nom="IVPN")
         self.assertEqual(code, 1)
         self.assertIn("existe déjà", err)
+
+    def test_inventaire_mullvad(self):
+        self.lancer("provider", "managed", "mullvad", "--name", "mv", "--stdin",
+                    entree="1234567812345670\n")
+        vu = []
+
+        def appareils(numero):
+            vu.append(numero)
+            return {"ok": True, "jusqua": 1893456000, "appareils": [
+                {"jeton": "x", "cree": 1790000000, "nom": "Happy Seal"}]}
+        with mock.patch.object(modele, "appareils_mullvad", appareils):
+            code, sortie, erreurs = self.lancer("provider", "devices", "mv")
+        self.assertEqual(code, 0, erreurs)
+        self.assertEqual(vu, ["1234567812345670"])
+        self.assertIn("•••• 5670 : 1/5 places, échéance 2030", sortie)
+        self.assertIn("Happy Seal", sortie)
+        self.assertNotIn("12345678", sortie)
+
+    def test_inventaire_ivpn_refuse(self):
+        self.lancer("provider", "managed", "ivpn", "--name", "iv", "--stdin",
+                    entree="i-AAAA-BBBB-CCCC\n")
+        with mock.patch.object(modele, "appareils_mullvad") as appel:
+            code, _sortie, erreurs = self.lancer("provider", "devices", "iv")
+        self.assertNotEqual(code, 0)
+        self.assertIn("IVPN", erreurs)
+        appel.assert_not_called()
 
     def test_liste_priorite_retrait(self):
         self.ajouter("a")

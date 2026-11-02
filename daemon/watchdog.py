@@ -345,6 +345,9 @@ class WatchdogMixin:
             if self._tunnel_up:
                 self._light_restart_at = 0.0     # la relance légère a abouti
 
+            if self._retour_du():
+                self._lancer_sonde()
+
             conn_tick += 1
             if conn_tick < 3:   # vérifier toutes les 9s (3 × 3s)
                 continue

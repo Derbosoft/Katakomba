@@ -28,7 +28,12 @@ Principe, pour un parc de PC qui partagent des comptes :
 - la clé est renouvelée toutes les semaines.  IVPN : sur la même session.
   Mullvad : par un appareil neuf, l'ancien supprimé ensuite ; l'API ne
   donnant que la date de création d'un appareil, elle devient sa preuve de
-  vie ;
+  vie.  Compte plein : clé changée sur le même appareil (rien à perdre si
+  l'API cède), sans rafraîchir cette date ; les comptes réservés remplacent
+  donc l'appareil avant qu'il passe pour mort (voir PREUVE_DE_VIE) ;
+- l'échéance du compte est relevée à l'ouverture d'une place et à chaque
+  renouvellement, sans appel de plus au redémarrage ; un compte expiré est
+  écarté dès l'ouverture, sinon il serait repris à chaque nouvel essai ;
 - compte plein : le suivant.  Si les comptes sont réservés à Katakomba, une
   place se récupère : Mullvad, appareils de plus de 3 semaines supprimés
   (PC disparus) ; IVPN, qui ne montre pas les autres sessions, remise à
@@ -73,10 +78,27 @@ ROTATION_REPORT = 6 * 3600       # renouvellement refusé : nouvel essai
 # Mullvad : un appareil plus vieux a manqué trois renouvellements ; son PC a
 # disparu (réinstallé, jeté, éteint depuis des semaines).
 APPAREIL_MORT = 3 * ROTATION + ROTATION_ALEA
+# Compte réservé et plein : au-delà de cet âge, un appareil est remplacé et non
+# plus seulement rekeyé.  Le renouvellement suivant arriverait trop tard, à
+# trois semaines : un autre PC le supprimerait comme appareil mort.
+PREUVE_DE_VIE = 2 * ROTATION
 PAUSE_API = 15 * 60              # API sans réponse utile : pas de nouvel appel avant
 PAUSE_CAPTCHA = 60 * 60
 API_DELAI = 150                  # secondes, assistant compris (Tor peut être lent)
 LISTE_MAX = 2_000_000            # octets de la liste des serveurs en cache
+
+# Pourquoi une étape a été quittée : codes stables, lus par une supervision
+# sur le socket de statut (« fallback.reason »).
+CAUSE_MODULE   = "module_missing"        # wireguard, wg, openvpn, python3-cryptography
+CAUSE_PLEINS   = "accounts_full"
+CAUSE_API      = "api_unreachable"
+CAUSE_CAPTCHA  = "captcha"
+CAUSE_EXPIRE   = "subscription_expired"
+CAUSE_COMPTES  = "accounts_refused"      # identifiants refusés, aucun compte utilisable
+CAUSE_SERVEURS = "servers_silent"        # aucune poignée de main
+CAUSE_COUPURES = "connection_lost"       # le tunnel monte, puis ne tient pas
+CAUSE_CONFIG   = "config_refused"        # .ovpn ou .conf refusé par la validation
+CAUSE_INCONNUE = "unknown"
 
 
 def service_gere(fournisseur: dict) -> str:
@@ -214,6 +236,7 @@ class GestionWgMixin:
             self._log(f"{nom} : python3-cryptography manque pour créer une clé "
                       "WireGuard (sudo apt install python3-cryptography).", "ERROR")
             self._wg_code = ivpn.RESEAU
+            self._wg_cause = CAUSE_MODULE
             return None
         r = self._api_wg(service, {"action": "nouvelle", "compte": compte,
                                    "publique": publique, "force": force})
@@ -223,11 +246,24 @@ class GestionWgMixin:
             self._log(f"{nom}, compte {i+1} : {r.get('message', 'réponse inattendue')}.",
                       "WARN")
             return None
+        # Un compte expiré accepte encore un appareil (Mullvad) : sans ce
+        # contrôle, il serait repris à chaque essai, sans fin, et le secours
+        # ne prendrait jamais le relais.
+        statut = self._wg_statut(service, r["jeton"], compte)
+        if statut and not statut.get("actif"):
+            self._log(f"{nom}, compte {i+1} : abonnement expiré — place rendue, "
+                      "autre compte.", "WARN")
+            self._api_wg(service, {"action": "fermer", "jeton": r["jeton"],
+                                   "compte": compte})
+            self._wg_code = ivpn.NON_AUTORISE
+            self._wg_cause = CAUSE_EXPIRE
+            return None
         maintenant = time.time()
         etat = {"machine": self._machine(), "compte": empreinte(compte),
                 "jeton": r["jeton"], "cle": privee, "publique": publique,
-                "adresse": r["adresse"], "cle_du": maintenant,
-                "rotation": _prochaine_rotation(maintenant)}
+                "adresse": r["adresse"], "cle_du": maintenant, "appareil_du": maintenant,
+                "rotation": _prochaine_rotation(maintenant),
+                "jusqua": statut.get("jusqua", 0), "nom": mullvad.nom_sur(r.get("nom"))}
         if not self._wg_ecrire(service, etat):
             # Une place qu'on ne retrouverait pas au prochain démarrage
             # resterait prise pour rien : on la rend tout de suite.
@@ -236,9 +272,16 @@ class GestionWgMixin:
             self._wg_code = ivpn.RESEAU
             return None
         if not renouvellement:
-            self._log(f"{nom} : session ouverte sur le compte {i+1} — une place "
+            quel = f" (appareil « {etat['nom']} »)" if etat["nom"] else ""
+            self._log(f"{nom} : session ouverte sur le compte {i+1}{quel} — une place "
                       "d'appareil, gardée par ce PC jusqu'à sa désinstallation.", "OK")
         return etat
+
+    def _wg_statut(self, service: str, jeton: str, compte: str) -> dict:
+        """Abonnement vu par l'API ({"actif", "jusqua"}) ; {} si elle ne dit
+        rien : un doute n'écarte jamais un compte."""
+        r = self._api_wg(service, {"action": "statut", "jeton": jeton, "compte": compte})
+        return r if r["ok"] and isinstance(r.get("jusqua"), int) else {}
 
     def _wg_nettoyer(self, i: int, compte: str) -> int:
         """Mullvad, comptes réservés : supprime les appareils du compte qui
@@ -262,11 +305,14 @@ class GestionWgMixin:
 
     def _wg_enregistrer(self, p: dict, service: str):
         """Une place sur l'un des comptes, tirés au hasard (un parc se
-        répartit ainsi de lui-même).  None si aucun ne l'accepte."""
+        répartit ainsi de lui-même), ou dans l'ordre de la configuration si
+        random_account est désactivé : un parc déployé par script y met le
+        compte préféré de chaque PC en tête.  None si aucun ne l'accepte."""
         nom = NOMS[service]
         reserves = bool(p["wg_auto"].get("reserved_accounts"))
         comptes = [(i, c) for i, c in self._comptes_wg(p) if c]
-        random.shuffle(comptes)
+        if self.config.get("random_account", True):
+            random.shuffle(comptes)
         pleins = []
         for i, compte in comptes:
             etat = self._wg_ouvrir(service, i, compte)
@@ -280,10 +326,12 @@ class GestionWgMixin:
                 pleins.append((i, compte))
             elif self._wg_code in ivpn.CAPTCHA:
                 self._wg_pauses[service] = time.time() + PAUSE_CAPTCHA
+                self._wg_cause = CAUSE_CAPTCHA
                 return None
             elif self._wg_code == ivpn.RESEAU:
                 # API injoignable : les autres comptes ne feraient pas mieux.
                 self._wg_pauses[service] = time.time() + PAUSE_API
+                self._wg_cause = self._wg_cause or CAUSE_API
                 return None
         if pleins and reserves and service == "ivpn":
             i, compte = random.choice(pleins)
@@ -301,47 +349,79 @@ class GestionWgMixin:
                       f"compte, libérez une place sur le site de {nom}, ou, si ces "
                       "comptes ne servent qu'à Katakomba, cochez « Comptes réservés "
                       "à Katakomba ».", "ERROR")
+        self._wg_cause = CAUSE_PLEINS if pleins else self._wg_cause or CAUSE_COMPTES
         self._wg_pauses[service] = time.time() + PAUSE_API
         return None
 
-    def _wg_renouveler(self, service: str, etat: dict, i: int, compte: str):
+    def _wg_changer_cle(self, service: str, etat: dict, compte: str) -> tuple:
+        """Nouvelle clé sur la même place : (état neuf, réponse), ou (None,
+        réponse).  L'échéance est relevée au passage."""
+        try:
+            privee, publique = ivpn.generer_cles()
+        except ImportError:
+            return None, {"message": "python3-cryptography manque"}
+        r = self._api_wg(service, {"action": "cle", "jeton": etat["jeton"],
+                                   "publique": publique, "active": etat["publique"],
+                                   "compte": compte})
+        if not r["ok"] or not isinstance(r.get("adresse"), str):
+            return None, r
+        maintenant = time.time()
+        neuf = {**etat, "cle": privee, "publique": publique, "adresse": r["adresse"],
+                "cle_du": maintenant, "appareil_du": etat.get("appareil_du", etat["cle_du"]),
+                "rotation": _prochaine_rotation(maintenant)}
+        neuf["jusqua"] = self._wg_statut(service, etat["jeton"], compte).get(
+            "jusqua", etat.get("jusqua", 0))
+        # Clé changée chez le fournisseur mais pas sur le disque (disque
+        # plein) : la vérification qui suit un échec la resynchronise.
+        self._wg_ecrire(service, neuf)
+        return neuf, r
+
+    def _wg_renouveler(self, service: str, etat: dict, i: int, compte: str,
+                       reserves=False):
         """Nouvelle clé : l'état (nouveau, ou l'ancien si le renouvellement
         est reporté), ou None si la place n'existe plus.
 
         IVPN : clé changée sur la même session.  Mullvad : appareil neuf,
-        puis l'ancien supprimé — sa date de création prouve que ce PC vit."""
+        puis l'ancien supprimé — sa date de création prouve que ce PC vit.
+
+        Mullvad, compte plein : l'ancien ne peut plus être supprimé d'abord
+        sans risque (l'API qui cède entre les deux coûterait sa place au PC).
+        La clé change donc sur le même appareil, sauf sur des comptes
+        réservés une fois l'appareil trop vieux : aucun autre PC ne doit le
+        prendre pour mort.  L'appareil est alors remplacé, et le renouvellement
+        reporté si sa suppression échoue, pour ne pas laisser un fantôme."""
         nom = NOMS[service]
         maintenant = time.time()
         if service == "mullvad":
             neuf = self._wg_ouvrir(service, i, compte, renouvellement=True)
-            if neuf is None and self._wg_code == ivpn.COMPTE_PLEIN:
-                # Pas de place pour les deux : l'ancien d'abord.
-                self._api_wg(service, {"action": "fermer", "jeton": etat["jeton"],
-                                       "compte": compte})
-                self._wg_effacer(service)
-                return None
             if neuf is not None:
-                self._api_wg(service, {"action": "fermer", "jeton": etat["jeton"],
-                                       "compte": compte})
-                self._log("Mullvad : clé WireGuard renouvelée (appareil neuf, "
-                          "l'ancien supprimé).", "OK")
+                r = self._api_wg(service, {"action": "fermer", "jeton": etat["jeton"],
+                                           "compte": compte})
+                if not r["ok"]:
+                    self._log("Mullvad : ancien appareil non supprimé "
+                              f"({r.get('message', '?')}), sa place reste prise.", "WARN")
+                self._log("Mullvad : clé WireGuard renouvelée (appareil neuf"
+                          + (f" « {neuf['nom']} »" if neuf.get("nom") else "")
+                          + ", l'ancien supprimé).", "OK")
                 return neuf
-            r = {"code": self._wg_code, "message": "appareil neuf refusé"}
+            if self._wg_code != ivpn.COMPTE_PLEIN:
+                r = {"code": self._wg_code, "message": "appareil neuf refusé"}
+            elif (reserves and maintenant - etat.get("appareil_du", etat["cle_du"])
+                    >= PREUVE_DE_VIE):
+                r = self._api_wg(service, {"action": "fermer", "jeton": etat["jeton"],
+                                           "compte": compte})
+                if r["ok"]:
+                    self._wg_effacer(service)
+                    return None
+            else:
+                neuf, r = self._wg_changer_cle(service, etat, compte)
+                if neuf:
+                    self._log("Mullvad : clé WireGuard renouvelée (compte plein : "
+                              "même appareil).", "OK")
+                    return neuf
         else:
-            try:
-                privee, publique = ivpn.generer_cles()
-            except ImportError:
-                return etat
-            r = self._api_wg(service, {"action": "cle", "jeton": etat["jeton"],
-                                       "publique": publique, "active": etat["publique"],
-                                       "compte": compte})
-            if r["ok"] and isinstance(r.get("adresse"), str):
-                neuf = {**etat, "cle": privee, "publique": publique,
-                        "adresse": r["adresse"], "cle_du": maintenant,
-                        "rotation": _prochaine_rotation(maintenant)}
-                # Clé changée chez IVPN mais pas sur le disque (disque plein) :
-                # la vérification qui suit un échec la resynchronise.
-                self._wg_ecrire(service, neuf)
+            neuf, r = self._wg_changer_cle(service, etat, compte)
+            if neuf:
                 self._log("IVPN : clé WireGuard renouvelée (même session, même "
                           "place d'appareil).", "OK")
                 return neuf
@@ -376,7 +456,9 @@ class GestionWgMixin:
             self._wg_effacer(service)
             etat = None
         if etat and time.time() >= etat["rotation"]:
-            etat = self._wg_renouveler(service, etat, *comptes[etat["compte"]])
+            etat = self._wg_renouveler(
+                service, etat, *comptes[etat["compte"]],
+                reserves=bool(p["wg_auto"].get("reserved_accounts")))
         if etat is None:
             etat = self._wg_enregistrer(p, service)
         if etat is not None:
@@ -431,11 +513,13 @@ class GestionWgMixin:
             self._log(f"{nom_service} : API en pause après un échec, nouvel essai "
                       f"dans {int(reste) // 60 + 1} min.", "INFO")
             return None, "", "indisponible"
+        self._wg_cause = ""
         etat = self._wg_session(p, service)
         if etat is None:
             return None, "", "indisponible"
         liste = self._wg_serveurs(service)
         if liste is None:
+            self._wg_cause = CAUSE_API
             return None, "", "indisponible"
         if not self._wg_hotes:
             pays = p["wg_auto"].get("countries") or []
@@ -454,6 +538,7 @@ class GestionWgMixin:
             else:
                 self._log(f"{nom_service} : aucun serveur utilisable dans la liste.",
                           "WARN")
+            self._wg_cause = CAUSE_SERVEURS
             return None, "", "indisponible"
         hote = self._wg_hotes[idx]
         try:
@@ -469,6 +554,30 @@ class GestionWgMixin:
         if refus:
             return None, nom, "refus"
         return reglages, nom, ""
+
+    def _wg_gere_sonde(self, p: dict):
+        """(réglages, hôte) d'un serveur tiré pour une sonde, ou None : même
+        chemin qu'une connexion (place, renouvellement dû, pauses de l'API),
+        sans toucher aux serveurs de l'étape en cours.  Aucun appel à l'API
+        tant que ce PC a sa place et sa liste."""
+        service = service_gere(p)
+        module = SERVICES[service]
+        if self._wg_pauses.get(service, 0.0) > time.time():
+            return None
+        etat = self._wg_session(p, service)
+        liste = self._wg_serveurs(service) if etat else None
+        if liste is None:
+            self._wg_cause = self._wg_cause or CAUSE_API
+            return None
+        pays = [c for c in p["wg_auto"].get("countries") or [] if isinstance(c, str)]
+        hotes = module.choisir_hotes(liste, pays, 1)
+        try:
+            texte = module.config_wg(etat["cle"], etat["adresse"], liste, *hotes[0])
+        except (IndexError, ivpn.ErreurIvpn, KeyError, TypeError, AttributeError):
+            self._wg_cause = CAUSE_SERVEURS
+            return None
+        reglages, refus, _avert = analyser_wg(texte)
+        return None if refus else (reglages, hotes[0])
 
     def _wg_gere_echec(self, p: dict) -> bool:
         """Connexion sans poignée de main sur un fournisseur géré : la place
@@ -491,9 +600,13 @@ class GestionWgMixin:
                 self._wg_pauses[service] = 0.0
                 return True
             return False
+        if isinstance(r.get("jusqua"), int) and r["jusqua"] != etat.get("jusqua"):
+            etat = {**etat, "jusqua": r["jusqua"]}
+            self._wg_ecrire(service, etat)
         if not r.get("actif"):
             self._log(f"{nom} : abonnement du compte inactif — session fermée, "
                       "un autre compte va être essayé.", "WARN")
+            self._wg_cause = CAUSE_EXPIRE
             self._api_wg(service, {"action": "fermer", "jeton": etat["jeton"],
                                    "compte": compte})
             self._wg_effacer(service)
@@ -540,6 +653,35 @@ class GestionWgMixin:
                 self._log(f"{nom} : WireGuard géré désactivé — session fermée, place "
                           "rendue au compte.", "OK")
             self._wg_effacer(service)
+
+    def _wg_charger_etats(self):
+        """Places connues au démarrage, pour le statut : l'échéance doit se
+        lire même sur le secours, sans avoir essayé le fournisseur géré."""
+        for p in self.config.get("providers", []):
+            service = service_gere(p)
+            if service and service not in self._wg_etats:
+                etat = self._wg_lire(service)
+                if etat and etat["machine"] == self._machine():
+                    self._wg_etats[service] = etat
+
+    def _wg_comptes_statut(self) -> list:
+        """Une ligne par fournisseur géré, même hors de l'étape en cours :
+        place de ce PC, 4 derniers chiffres du compte, appareil, échéance.
+        account vaut 0 tant que ce PC n'a pas de place."""
+        lignes = []
+        for p in self.config.get("providers", []):
+            service = service_gere(p)
+            if not service:
+                continue
+            ligne = {"service": service, "provider": p.get("name", ""), "account": 0,
+                     "tail": "", "device": "", "expires": 0}
+            etat = self._wg_etats.get(service)
+            for i, compte in self._comptes_wg(p) if etat else []:
+                if compte and empreinte(compte) == etat.get("compte"):
+                    ligne.update(account=i + 1, tail=compte[-4:] if len(compte) > 4 else "",
+                                 device=etat.get("nom", ""), expires=int(etat.get("jusqua", 0)))
+            lignes.append(ligne)
+        return lignes
 
     def _wg_gere_statut(self) -> dict:
         """Pour le statut : fournisseur géré en cours, numéro affiché du

@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from constants import (                                        # noqa: E402
     CONFIG_DIR, CONFIG_FILE, AUTH_TMP,
     DEFAULT_CONFIG, VERSION, RUN_DIR, STATE_DIR,
-    TUN_IFACE, VPN_RUN_DIR,
+    TUN_IFACE, TUN_SONDE, VPN_RUN_DIR,
 )
 # Inutilisés ici : réexportés pour les mixins (« from .core import … »).
 from constants import PROVIDERS_DIR, SCRIPT_DIR, TORRC_FILE, VPN_USER  # noqa: E402, F401
@@ -40,6 +40,10 @@ WG_CONF_RUN       = Path("/etc/wireguard") / "katakomba-wg.conf"
 # Écoute UDP du pont WireGuard, que WireGuard prend pour son serveur.  Port
 # peu courant : un WireGuard de la machine écoute souvent sur 51820.
 PONT_ECOUTE       = "127.0.0.1:51871"
+# Sonde du retour à la première étape (RetourMixin) : une seconde interface et
+# un second pont, à côté du tunnel en service, qui n'en voit rien.
+PONT_SONDE        = "127.0.0.1:51872"
+WG_CONF_SONDE     = Path("/etc/wireguard") / "katakomba-sonde.conf"
 # MTU du tunnel WireGuard quand le .conf n'en donne pas.  Les paquets voyagent
 # dans un flux TCP : la taille n'y est pas limitée, mais 1320 reste sûr
 # partout (valeur du client tiers pvpn pour Proton Stealth).  Mesuré à travers
@@ -60,6 +64,7 @@ REPRISES_MEMOIRE  = 900   # s : au-delà, une ancienne panne ne compte plus
 # couper un autre VPN de la machine, ou le Tor de Tor Browser.
 OPENVPN_PATTERN   = r"^openvpn .*--auth-user-pass [^ ]*katakomba(-vpn)?/auth\.tmp"
 PONT_PATTERN      = r"pont_wg\.py .*--ecoute 127\.0\.0\.1:51871"
+PONT_SONDE_PATTERN = r"pont_wg\.py .*--ecoute 127\.0\.0\.1:51872"
 TOR_PATTERN       = r"^tor .*katakomba/tor(rc|_data)"
 
 # Sortie « aucun fournisseur configuré » : systemd ne relance pas
@@ -277,9 +282,19 @@ class DaemonCore:
         self._wg_dernier           = ""
         self._wg_liste_douteuse    = False
         self._wg_code              = 0
+        self._wg_cause             = ""     # code de raison pour le statut
+        self._wg_verrou            = threading.Lock()   # boucle VPN et sonde
         self._wg_pauses            = {}
         self._wg_resynchro         = False
         self._wg_menage_fait       = False
+        # Secours et retour à la première étape (RetourMixin) : première cause
+        # d'un départ de l'étape 1, depuis quand on tourne plus bas, prochaine
+        # sonde, sonde en cours, retour décidé par la sonde.
+        self._cause_etape          = ""
+        self._secours_depuis       = 0.0
+        self._retour_prochain      = 0.0
+        self._retour_en_cours      = False
+        self._retour_vers          = None
         # Ordre de passage des comptes de l'étape courante : indices de
         # `accounts` (OpenVPN) ou de `wireguard`, tirés au hasard si
         # config["random_account"].  On garde un
@@ -478,17 +493,20 @@ class DaemonCore:
         # Pont WireGuard d'une session précédente (daemon tué sans nettoyage) :
         # il garderait son port, et le pont suivant ne pourrait pas démarrer.
         _run("pkill", "-f", PONT_PATTERN)
+        _run("pkill", "-f", PONT_SONDE_PATTERN)
         # Clé privée WireGuard laissée par un arrêt brutal entre son écriture
         # et la lecture par wg.
-        try:
-            WG_CONF_RUN.unlink(missing_ok=True)
-        except OSError:
-            pass
+        for fichier in (WG_CONF_RUN, WG_CONF_SONDE):
+            try:
+                fichier.unlink(missing_ok=True)
+            except OSError:
+                pass
 
         self._cleanup_tor_routes()
         # Interface tunnel d'une session précédente : la supprimer emporte
         # son adresse et ses routes.
         _run("ip", "link", "del", "dev", TUN_IFACE)
+        _run("ip", "link", "del", "dev", TUN_SONDE)
         self._retour_entrant_off(force=True)
         self._log("Nettoyage terminé.", "OK")
 

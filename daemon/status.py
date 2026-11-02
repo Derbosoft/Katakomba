@@ -4,8 +4,9 @@ Statut : socket Unix en lecture seule exposant l'état du daemon en JSON.
 Protocole volontairement minimal : à chaque connexion, le daemon écrit un
 objet JSON suivi d'un saut de ligne puis ferme.  Aucune commande n'est
 acceptée (pas de surface d'attaque en écriture).  Le socket n'expose aucun
-secret (ni identifiant ni mot de passe), mais l'état décrit l'usage de la
-machine : relais d'entrée Tor, fournisseur, compte.  Connaître les guards de
+secret (ni identifiant ni mot de passe ; d'un numéro de compte géré, les 4
+derniers chiffres seulement), mais l'état décrit l'usage de la machine :
+relais d'entrée Tor, fournisseur, compte.  Connaître les guards de
 quelqu'un aide à le désanonymiser.  Il est donc réservé à des groupes (0660) :
 
 - /run/katakomba.sock, groupe katakomba : le GUI et `katakomba doctor`,
@@ -65,9 +66,19 @@ class StatusMixin:
             # Transport de l'étape en cours (v4.0.0) : « wireguard » ou
             # « openvpn » ; vide si le fournisseur n'en sert aucun.
             "transport":      self._transport,
+            # Rang de l'étape en cours parmi toutes les étapes (v4.5.0), 1
+            # pour la première ; 0 si elle n'en est plus une.
+            "stage_rank":     self._rang_etape(),
+            "stage_count":    len(self._etapes()),
+            # Tunnel monté sur une étape de rang inférieur (v4.5.0) : depuis
+            # quand, code de raison, prochaine sonde de la première étape.
+            "fallback":       self._statut_secours(),
             # WireGuard géré (v4.2.0) : fournisseur, numéro du compte qui
             # porte la session de ce PC, date de la clé ; vide sinon.
             "wg_managed":     self._wg_gere_statut(),
+            # Tous les fournisseurs gérés, même hors de l'étape en cours
+            # (v4.5.0) : fin de numéro de compte, appareil, échéance.
+            "wg_accounts":    self._wg_comptes_statut(),
             "account_index":  self._current_account_idx,
             # Comptes de l'étape courante (fournisseur et transport) écartés
             # temporairement après un refus d'authentification ou une

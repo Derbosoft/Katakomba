@@ -113,11 +113,25 @@ class Api(unittest.TestCase):
             self.assertFalse(mullvad.statut_appareil("aucun", "1234", APPAREIL["id"])["actif"])
 
     def test_liste_d_appareils_a_l_heure_du_serveur(self):
-        with reponses((200, {"access_token": "t"}), (200, [APPAREIL])):
+        with reponses((200, {"access_token": "t"}), (200, [APPAREIL]),
+                      (200, {"expiry": "2027-01-01T00:00:00+00:00"})):
             r = mullvad.appareils("aucun", "1234")
         self.assertEqual(r["maintenant"], 1793038800)
         self.assertEqual(r["appareils"][0]["jeton"], APPAREIL["id"])
         self.assertGreater(r["appareils"][0]["cree"], 0)
+        self.assertEqual(r["appareils"][0]["nom"], "wise poodle")
+        self.assertGreater(r["jusqua"], r["maintenant"])
+
+    def test_liste_d_appareils_sans_echeance(self):
+        """L'échéance est un plus : sans elle, la liste sert toujours au ménage."""
+        with reponses((200, {"access_token": "t"}), (200, [APPAREIL]), (500, {})):
+            r = mullvad.appareils("aucun", "1234")
+        self.assertEqual((len(r["appareils"]), r["jusqua"]), (1, 0))
+
+    def test_nom_d_appareil_venu_du_reseau(self):
+        for piege in ("x\n[ERROR] faux", "a" * 41, "", None, 3, "€uro", "-x"):
+            self.assertEqual(mullvad.nom_sur(piege), "", piege)
+        self.assertEqual(mullvad.nom_sur("Happy Seal"), "Happy Seal")
 
     def test_liste_des_relais_allegee(self):
         brut = {"locations": LISTE["locations"], "openvpn": {}, "wireguard": {

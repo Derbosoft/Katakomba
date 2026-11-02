@@ -21,6 +21,7 @@ leurs équivalents français ; messages dans la langue de l'utilisateur.
 import getpass
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -42,7 +43,9 @@ REGLAGES = {
     "circuit-check":   ("circuit_check", "bool"),
     "circuit-min-kbs": ("circuit_min_kbs", "int"),
     "circuit-retries": ("circuit_max_retries", "int"),
+    "primary-retry-min": ("primary_retry_min", "int"),
 }
+PLACES_MULLVAD = 5
 OUI = ("on", "yes", "true", "1", "oui")
 NON = ("off", "no", "false", "0", "non")
 
@@ -258,6 +261,11 @@ def fournisseur(action: str, args: list):
         _enregistrer(config)
         return
 
+    if action == "devices":
+        _attendre(args, 1, _("katakomba provider devices <nom>"))
+        _appareils(_fournisseur(config, args[0]))
+        return
+
     if action == "managed":
         opts, reste = _options(args, {"--name": True, "--stdin": False})
         if len(reste) != 1 or reste[0].lower() not in modele.SERVICES_GERES:
@@ -278,6 +286,30 @@ def fournisseur(action: str, args: list):
         _rappel_demarrage()
         return
     raise Erreur(_("Action inconnue : {action}").format(action=action))
+
+
+def _appareils(p: dict):
+    """Inventaire d'un fournisseur Mullvad géré : pour chaque compte, sa fin
+    de numéro, son échéance et ses appareils, par Tor (service démarré)."""
+    if modele.service_gere(p) != "mullvad":
+        raise Erreur(_("Inventaire réservé aux fournisseurs Mullvad gérés : l'API "
+                       "d'IVPN ne montre pas les sessions d'un compte."))
+    for a in p.get("accounts", []):
+        numero = modele.deobf(a.get("u", "")).strip()
+        r = modele.appareils_mullvad(numero)
+        masque = modele.masquer_numero(numero)
+        if not r.get("ok"):
+            print(_("{compte} : injoignable ({raison})").format(
+                compte=masque, raison=r.get("message", "?")))
+            continue
+        liste = sorted((x for x in r.get("appareils", []) if isinstance(x, dict)),
+                       key=lambda x: x.get("cree", 0))
+        fin = time.strftime("%Y-%m-%d", time.localtime(r["jusqua"])) if r.get("jusqua") else "?"
+        print(_("{compte} : {n}/{places} places, échéance {date}").format(
+            compte=masque, n=len(liste), places=PLACES_MULLVAD, date=fin))
+        for x in liste:
+            cree = time.strftime("%Y-%m-%d", time.localtime(x.get("cree", 0)))
+            print(f"    {x.get('nom') or '?':<24} {cree}")
 
 
 def _wg_auto(config: dict, args: list):
@@ -604,6 +636,8 @@ def aide():
             (_("provider wg-auto <nom> on|off"),
              _("WireGuard géré : clé enregistrée par Katakomba (IVPN, Mullvad)")),
             (_("provider wg-auto <nom> countries <NL,CH|europe|all> | reserved on|off"), ""),
+            (_("provider devices <nom>"),
+             _("Mullvad : appareils et échéance de chaque compte")),
             (_("account list <fournisseur> | add <fournisseur> [--stdin]"), ""),
             (_("account add <fournisseur> <fichier.conf>…"),
              _("Fichiers WireGuard (Proton, Mullvad, IVPN)")),

@@ -122,7 +122,7 @@ class SessionTest(Base):
         self.assertEqual(issue, "", d.log_dump())
         self.assertEqual((reglages["emballage"], reglages["adresse"]), ("ivpn", "172.30.0.1"))
         self.assertTrue(nom.startswith("IVPN "))
-        self.assertEqual(api.actions(), ["nouvelle", "serveurs"])
+        self.assertEqual(api.actions(), ["nouvelle", "statut", "serveurs"])
         self.assertEqual(len(api.sessions), 1)
         brut = m_gestion_wg.fichier_session("ivpn").read_text()
         self.assertEqual(stat.S_IMODE(os.stat(m_gestion_wg.fichier_session("ivpn")).st_mode), 0o600)
@@ -226,7 +226,7 @@ class SessionTest(Base):
         api.appels.clear()
         with mock.patch("random.shuffle"):
             self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
-        self.assertEqual(api.actions(), ["nouvelle"])
+        self.assertEqual(api.actions(), ["nouvelle", "statut"])
         self.assertEqual(len(api.sessions), 2)
         self.assertTrue(d2.has_log("autre machine", "WARN"))
 
@@ -257,7 +257,7 @@ class RenouvellementTest(Base):
     def test_nouvelle_cle_meme_session(self):
         api, d, p, avant = self._session()
         d._wg_gere_reglages(p, 0)
-        self.assertEqual(api.actions(), ["cle"])
+        self.assertEqual(api.actions(), ["cle", "statut"])
         self.assertEqual(api.appels[0]["active"], avant["publique"])
         apres = json.loads(m_gestion_wg.fichier_session("ivpn").read_text())
         self.assertEqual(apres["jeton"], avant["jeton"])
@@ -271,7 +271,7 @@ class RenouvellementTest(Base):
         api.sessions.clear()
         api.places[compte(0)] = 1
         self.assertEqual(d._wg_gere_reglages(p, 0)[2], "")
-        self.assertEqual(api.actions(), ["cle", "nouvelle"])
+        self.assertEqual(api.actions(), ["cle", "nouvelle", "statut"])
 
     def test_refus_reporte(self):
         api, d, p, avant = self._session()
@@ -440,14 +440,17 @@ JOUR = 24 * 3600
 class FauxMullvad:
     """Le service Mullvad : 5 appareils par compte, date de création."""
 
-    def __init__(self, comptes, actif=True):
+    def __init__(self, comptes, actif=True, jusqua=0):
         self.appareils = {c: [] for c in comptes}   # compte → [[id, clé, créé, adresse]]
         self.actif, self.appels, self.n = actif, [], 0
+        self.jusqua, self.expires, self.pannes = jusqua, set(), set()
         self.maintenant = time.time()
 
     def __call__(self, q):
         self.appels.append(q)
         a = q["action"]
+        if a in self.pannes:
+            return {"ok": False, "code": ivpn.RESEAU, "message": "API injoignable"}
         if a == "serveurs":
             return {"ok": True, "liste": json.loads(json.dumps(RELAIS))}
         compte = q.get("compte")
@@ -461,7 +464,8 @@ class FauxMullvad:
             ident = f"00000000-0000-4000-8000-{self.n:012d}"
             liste.append([ident, q["publique"], self.maintenant, f"10.64.0.{self.n}/32"])
             return {"ok": True, "jeton": ident, "adresse": f"10.64.0.{self.n}/32",
-                    "publique": q["publique"], "cree": int(self.maintenant)}
+                    "publique": q["publique"], "cree": int(self.maintenant),
+                    "nom": "Happy Seal"}
         if a == "appareils":
             return {"ok": True, "maintenant": int(self.maintenant),
                     "appareils": [{"jeton": x[0], "cree": int(x[2])} for x in liste]}
@@ -473,7 +477,8 @@ class FauxMullvad:
         if not trouve:
             return {"ok": False, "code": 601, "message": "appareil inconnu"}
         if a == "statut":
-            return {"ok": True, "actif": self.actif, "jusqua": 0, "publique": trouve[0][1]}
+            return {"ok": True, "actif": self.actif and compte not in self.expires,
+                    "jusqua": self.jusqua, "publique": trouve[0][1]}
         if a == "cle":
             trouve[0][1] = q["publique"]
             return {"ok": True, "adresse": trouve[0][3]}
@@ -547,10 +552,10 @@ class MullvadTest(Base):
         d2, _ = self.daemon(api, p)
         self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
         apres = self.etat()
-        self.assertEqual(api.actions(), ["nouvelle", "fermer"])
+        self.assertEqual(api.actions(), ["nouvelle", "statut", "fermer"])
         self.assertNotEqual(apres["jeton"], avant["jeton"])
         self.assertEqual(api.total(), 1)
-        self.assertTrue(d2.has_log("appareil neuf, l'ancien supprimé", "OK"))
+        self.assertTrue(d2.has_log("l'ancien supprimé", "OK"))
         self.assertFalse(d2.has_log("session ouverte"), "renouvellement annoncé comme nouveau")
 
     def test_renouvellement_compte_plein(self):
@@ -565,8 +570,8 @@ class MullvadTest(Base):
         d2, _ = self.daemon(api, p)
         self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
         ids = [x[0] for x in api.appareils[numero(0)]]
-        self.assertNotIn(avant["jeton"], ids)
-        self.assertIn(self.etat()["jeton"], ids)
+        self.assertEqual(self.etat()["jeton"], avant["jeton"], "place risquée pour rien")
+        self.assertIn(avant["jeton"], ids)
         self.assertEqual(len(ids), 5)
 
     def test_compte_plein_appareils_morts_supprimes(self):
@@ -610,11 +615,166 @@ class MullvadTest(Base):
         self.assertEqual(api.actions(), ["statut"])
 
     def test_compte_expire(self):
-        api = FauxMullvad([numero(0)], actif=False)
+        api = FauxMullvad([numero(0)])
         d, p = self.daemon(api)
         d._wg_gere_reglages(p, 0)
+        api.actif = False
         self.assertTrue(d._wg_gere_echec(p))
         self.assertEqual(api.total(), 0, "appareil du compte expiré laissé en place")
+        self.assertEqual(d._wg_cause, m_gestion_wg.CAUSE_EXPIRE)
+
+    def test_compte_expire_ecarte_des_l_ouverture(self):
+        """Mullvad accepte un appareil sur un compte expiré : repris à chaque
+        essai, il empêcherait le secours de prendre jamais le relais."""
+        api = FauxMullvad([numero(0)], actif=False)
+        d, p = self.daemon(api)
+        self.assertEqual(d._wg_gere_reglages(p, 0)[2], "indisponible")
+        self.assertEqual(api.total(), 0)
+        self.assertEqual(d._wg_cause, m_gestion_wg.CAUSE_EXPIRE)
+        self.assertGreater(d._wg_pauses["mullvad"], time.time())
+
+    def test_compte_expire_le_suivant_sert(self):
+        api = FauxMullvad([numero(0), numero(1)])
+        api.expires = {numero(0)}
+        d, p = self.daemon(api, mullvad(2))
+        self.assertEqual(d._wg_gere_reglages(p, 0)[2], "", d.log_dump())
+        self.assertEqual((len(api.appareils[numero(0)]), len(api.appareils[numero(1)])), (0, 1))
+
+    def test_echeance_et_nom_gardes(self):
+        api = FauxMullvad([numero(0)], jusqua=1893456000)
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        etat = self.etat()
+        self.assertEqual((etat["jusqua"], etat["nom"]), (1893456000, "Happy Seal"))
+        self.assertTrue(d.has_log("appareil « Happy Seal »", "OK"))
+
+    def test_ordre_de_la_config_si_tirage_desactive(self):
+        """Un parc déployé par script met le compte préféré du PC en tête."""
+        api = FauxMullvad([numero(0), numero(1), numero(2)])
+        d, p = self.daemon(api, mullvad(3), random_account=False)
+        with mock.patch("random.shuffle", side_effect=AssertionError("tirage")):
+            d._wg_gere_reglages(p, 0)
+        self.assertEqual(len(api.appareils[numero(0)]), 1)
+
+    def _rotation_due(self, age_appareil=0.0):
+        avant = self.etat()
+        avant["rotation"] = time.time() - 1
+        avant["appareil_du"] = time.time() - age_appareil
+        m_gestion_wg.fichier_session("mullvad").write_text(json.dumps(avant))
+        return avant
+
+    def _compte_plein(self, api):
+        for k in range(4):
+            api.appareils[numero(0)].append([f"autre{k}", "x", time.time(), "10.9.9.9/32"])
+
+    def test_compte_plein_cle_changee_sans_perdre_la_place(self):
+        """L'API qui cède à ce moment ne doit rien coûter au PC."""
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        self._compte_plein(api)
+        avant = self._rotation_due()
+        d2, _ = self.daemon(api, p)
+        self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
+        apres = self.etat()
+        self.assertEqual(apres["jeton"], avant["jeton"])
+        self.assertNotEqual(apres["cle"], avant["cle"])
+        self.assertEqual(apres["appareil_du"], avant["appareil_du"], "preuve de vie falsifiée")
+        self.assertEqual(api.total(), 5)
+        self.assertNotIn("fermer", api.actions())
+
+    def test_compte_plein_api_qui_cede_rien_de_perdu(self):
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        self._compte_plein(api)
+        avant = self._rotation_due()
+        d2, _ = self.daemon(api, p)
+        api.pannes = {"cle"}
+        self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
+        apres = self.etat()
+        self.assertEqual((apres["jeton"], apres["cle"]), (avant["jeton"], avant["cle"]))
+        self.assertGreater(apres["rotation"], time.time())
+
+    def test_compte_reserve_plein_appareil_vieux_remplace(self):
+        """Clé seule, il passerait pour mort à 3 semaines et un autre PC le
+        supprimerait : à 2 semaines, il est remplacé."""
+        api = FauxMullvad([numero(0)])
+        p = mullvad(reserved_accounts=True)
+        d, _ = self.daemon(api, p)
+        d._wg_gere_reglages(p, 0)
+        self._compte_plein(api)
+        avant = self._rotation_due(m_gestion_wg.PREUVE_DE_VIE + 1)
+        d2, _ = self.daemon(api, p)
+        self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
+        apres = self.etat()
+        self.assertNotEqual(apres["jeton"], avant["jeton"])
+        self.assertAlmostEqual(apres["appareil_du"], time.time(), delta=60)
+        self.assertEqual(api.total(), 5)
+
+    def test_compte_reserve_jeune_cle_seule(self):
+        api = FauxMullvad([numero(0)])
+        p = mullvad(reserved_accounts=True)
+        d, _ = self.daemon(api, p)
+        d._wg_gere_reglages(p, 0)
+        self._compte_plein(api)
+        avant = self._rotation_due(m_gestion_wg.ROTATION)
+        d2, _ = self.daemon(api, p)
+        d2._wg_gere_reglages(p, 0)
+        self.assertEqual(self.etat()["jeton"], avant["jeton"])
+
+    def test_preuve_de_vie_avant_le_menage(self):
+        """Le remplacement doit toujours précéder l'âge où un appareil est
+        supprimé par un autre PC, renouvellement le plus tardif compris."""
+        pire = (m_gestion_wg.PREUVE_DE_VIE - 1 + m_gestion_wg.ROTATION
+                + m_gestion_wg.ROTATION_ALEA)
+        self.assertLess(pire, m_gestion_wg.APPAREIL_MORT)
+
+    def test_suppression_refusee_aucun_fantome(self):
+        """Suppression refusée : le PC garde sa place au lieu d'oublier un
+        appareil que plus personne ne pourrait supprimer."""
+        api = FauxMullvad([numero(0)])
+        p = mullvad(reserved_accounts=True)
+        d, _ = self.daemon(api, p)
+        d._wg_gere_reglages(p, 0)
+        self._compte_plein(api)
+        avant = self._rotation_due(m_gestion_wg.PREUVE_DE_VIE + 1)
+        d2, _ = self.daemon(api, p)
+        api.pannes = {"fermer"}
+        self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
+        self.assertEqual(self.etat()["jeton"], avant["jeton"])
+        self.assertTrue(d2.has_log("reporté", "WARN"))
+
+    def test_ancien_etat_sans_date_d_appareil(self):
+        """État d'une version antérieure : la clé y datait de l'appareil."""
+        api = FauxMullvad([numero(0)])
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        self._compte_plein(api)
+        avant = self._rotation_due()
+        del avant["appareil_du"]
+        m_gestion_wg.fichier_session("mullvad").write_text(json.dumps(avant))
+        d2, _ = self.daemon(api, p)
+        self.assertEqual(d2._wg_gere_reglages(p, 0)[2], "")
+        self.assertEqual(self.etat()["appareil_du"], avant["cle_du"])
+
+    def test_statut_meme_sur_le_secours(self):
+        """L'échéance se lit sans être sur l'étape gérée."""
+        api = FauxMullvad([numero(0)], jusqua=1893456000)
+        d, p = self.daemon(api, mullvad(1))
+        d._wg_gere_reglages(p, 0)
+        d2, _ = self.daemon(api, p)
+        d2._current_provider_idx = 7
+        d2._wg_charger_etats()
+        ligne = d2._wg_comptes_statut()[0]
+        self.assertEqual((ligne["account"], ligne["tail"], ligne["device"], ligne["expires"]),
+                         (1, "5670", "Happy Seal", 1893456000))
+        self.assertNotIn("12345678", json.dumps(d2._wg_comptes_statut()))
+
+    def test_statut_sans_place(self):
+        api = FauxMullvad([numero(0)])
+        d, _ = self.daemon(api)
+        self.assertEqual(d._wg_comptes_statut()[0]["account"], 0)
 
     def test_menage_supprime_l_appareil(self):
         api = FauxMullvad([numero(0)])
@@ -654,7 +814,7 @@ class MullvadTest(Base):
         for avant, apres in zip(serveurs, serveurs[1:]):
             self.assertNotEqual(avant, apres, serveurs)
         self.assertTrue(d.has_log("reconnexion sur un autre serveur", "WARN"))
-        self.assertEqual(api.actions(), ["nouvelle", "serveurs"])   # au démarrage seulement
+        self.assertEqual(api.actions(), ["nouvelle", "statut", "serveurs"])   # au démarrage seulement
 
     def test_nouveau_tirage_sans_le_serveur_precedent(self):
         api = FauxMullvad([numero(0)])

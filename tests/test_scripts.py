@@ -262,6 +262,7 @@ class InstallServiceUnitTest(unittest.TestCase):
         bloc = INSTALL[INSTALL.index("KATAKOMBA_SKIP_APT"):
                        INSTALL.index("[2/7]")]
         self.assertIn("command -v", bloc, "aucune vérification des binaires")
+        self.assertIn("import cryptography", bloc, "module Python non vérifié")
         self.assertIn("gui_disponible", bloc, "interface graphique non vérifiée")
         self.assertIn("exit 1", bloc, "n'échoue pas quand une dépendance manque")
 

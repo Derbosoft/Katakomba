@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.4.3
+# Katakomba — v4.5.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.4.3-blue)
+![Version](https://img.shields.io/badge/Version-4.5.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -95,7 +95,7 @@ The GUI and the daemon are **fully decoupled**: the GUI only writes config files
 | tor | — | SOCKS5 proxy and Tor network |
 | openvpn | 2.4+ | Encrypted tunnel to VPN provider (OpenVPN transport) |
 | wireguard-tools + `wireguard` kernel module | — | WireGuard transport (module in every Linux kernel ≥ 5.6) |
-| python3-cryptography | — | VMess wrapping of the WireGuard bridge and managed WireGuard keys (IVPN only) |
+| python3-cryptography | — | VMess wrapping of the WireGuard bridge and managed WireGuard keys (IVPN, Mullvad) |
 | dnsmasq | — | **Optional** — DHCP server, only for LAN sharing |
 | curl | — | Throughput measurement and connectivity tests |
 | systemd + systemd-resolved | — | Service management and DNS |
@@ -278,12 +278,13 @@ Run as root, or as a member of the `katakomba` group (no `sudo` needed, like the
 | `provider remove <name>` | Removes it (its files stay on disk) |
 | `provider priority <name> <rank>` | Moves it in the failover order |
 | `provider managed <mullvad\|ivpn> [--name NAME] [--stdin]` | Provider without files, by account number, with managed WireGuard |
+| `provider devices <name>` | Mullvad: each account's devices, slots used and expiry date, through Tor (v4.5.0) |
 | `provider wg-auto <name> on\|off` | Managed WireGuard (IVPN, Mullvad): key registered by Katakomba; `countries NL,CH\|all`, `reserved on\|off` |
 | `provider transports <name> <order\|default>` | Transport order for this provider only (`openvpn,wireguard`…), or `default` to follow the general setting |
 | `account list\|add\|remove <provider> …` | Accounts of a provider: `add` asks for the OpenVPN credentials, or adds the `.conf` files given as arguments; `remove <provider> wg2` removes a WireGuard file |
 | `exclude list\|add\|remove <address\|network\|domain>` | Exclusions from the tunnel and local domains, same checks as the interface |
 | `set` | Current settings |
-| `set <setting> <value>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (address or `none`), `circuit-check`, `circuit-min-kbs`, `circuit-retries` |
+| `set <setting> <value>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (address or `none`), `circuit-check`, `circuit-min-kbs`, `circuit-retries`, `primary-retry-min` (minutes, `0` = never) |
 | `backup export\|restore <file.zip>` | Same format as the interface's backup; the export is mode `600` (it holds the credentials) |
 
 Messages and help (`katakomba help`) follow the system language. French command names work too (`fournisseur ajouter`, `exclusion retirer`, `start --essai`…).
@@ -348,9 +349,10 @@ With nothing but **account numbers**, Katakomba registers its WireGuard key **it
 | Reboot, reconnection | **No API call**: same slot, same key. |
 | Every connection *(v4.4.0)* | **A server drawn at random** in the chosen countries, never the one of the previous connection: at start-up and at every reconnection after a drop, like OpenVPN's `remote-random`. The server list (about 100 KB, through Tor, no account) is only downloaded at connection time, and only when the copy is more than 7 days old, or more than 24 h after a silent server *(v4.4.1)*; no `.conf` file is stored. |
 | Server not answering | **Another server** (three, in different cities), never another account: the key works everywhere. |
-| After a week | Key renewed, spread at random over a day. IVPN: **on the same session**. Mullvad: **new device, old one deleted** — Mullvad's API only gives a device's creation date, which becomes its **proof of life**. |
+| After a week | Key renewed, spread at random over a day. IVPN: **on the same session**. Mullvad: **new device, old one deleted** — Mullvad's API only gives a device's creation date, which becomes its **proof of life**. Full account *(v4.5.0)*: the key changes **on the same device**, so an API failure costs nothing; on reserved accounts the device is still replaced every two weeks, otherwise it would look dead to other PCs. |
 | Slot deleted elsewhere (account reset, website, another PC) | Noticed after a failed connection: registers again, automatically. |
-| Subscription expired | Noticed after a failed connection: slot given back, another account is tried. |
+| Subscription expired | Noticed when a slot is opened, and after a failed connection: slot given back, another account is tried; if none is left, the next stage takes over *(v4.5.0)*. |
+| Expiry date *(v4.5.0)* | Read when a slot is opened and at each renewal, no extra call at reboot. `katakomba doctor` warns 14 days before. |
 | Every account full | Says so and falls back to OpenVPN (IVPN; Mullvad has none any more), or, if the accounts are **reserved for Katakomba**, wins a slot back: Mullvad, devices **older than 3 weeks** are deleted (vanished PCs: a live PC renews its own every week); IVPN, which does not show other sessions, resets an account (its other devices are logged out; Katakomba PCs register again on their own). |
 | API unreachable, captcha | The next stage takes over; the API is only called again after 15 min (1 h for a captcha). |
 | Cloned disk image | The slot is tied to `/etc/machine-id`: the clone opens its own and leaves the original's alone. |
@@ -374,7 +376,7 @@ katakomba provider wg-auto mullvad reserved on       # win back the slots of van
 - **Two-factor authentication (IVPN)** must be off on these accounts, otherwise no session can open without you (the log says so).
 - **Slots**: Mullvad, 5 devices per account; IVPN, 5 on Standard and Plus, 10 on Pro Suite. Keep a margin.
 - **Privilege separation**: API exchanges go through `ivpn.py` or `mullvad.py`, run **without any privilege** (they parse what the network sends); the account number reaches them on standard input, never as an argument, and they never see the private key. The slot (identifier, private key) lives in `/var/lib/katakomba/<service>-session.json`, mode 0600, root; the account number is only stored as a hash. The generated `.conf` goes through the same validation as an imported file.
-- `katakomba doctor` shows which account holds the slot and the key's date. The provider's `.conf` files, if any, are ignored while management is on.
+- `katakomba doctor` shows which account holds the slot, its last 4 digits, Mullvad's name for the device (the one on mullvad.net; also in the log) and the expiry date. The provider's `.conf` files, if any, are ignored while management is on.
 
 ### Adding WireGuard files
 
@@ -405,6 +407,25 @@ A provider with a single transport uses that one: a configuration from before v4
 - **WireGuard missing from the machine** (kernel module, `wg`): the OpenVPN stage takes over at once.
 
 The tunnel counts as up at the first WireGuard handshake, and dead when the bridge stops or handshakes cease (over 200 s).
+
+### Fallback and return to the first stage
+
+*(v4.5.0)* A brief hiccup at start-up (API unreachable, silent servers) must not leave a PC on its fallback until the next reboot. While the daemon runs on a lower stage, it tests the best-ranked WireGuard stage every 30 min (40 at most: the moment is random, so a fleet does not go all at once). `katakomba set primary-retry-min <minutes>`, or the Settings page; `0` turns it off, and so does `auto-reconnect off`.
+
+The test runs **next to the tunnel in service, never in its place**: a second WireGuard interface (`tun-kksonde`, no address, no route) and a second bridge. Cutting the tunnel to try would cost its open connections every 30 minutes, for nothing if the first stage is still down. The tunnel is only replaced after a **handshake that succeeded**, on the server that has just answered: a single cut, when it is worth it. If that server stops answering, the stage fails quickly and the fallback takes over again.
+
+In managed mode, a test makes no API call as long as the PC has its slot and its server list. OpenVPN stages are not tested: trying one would take a slot on the account, and proves far more than a handshake can.
+
+`katakomba doctor` warns while on a fallback, with the stage, since when, the reason and the next try. The status socket gives the same to monitoring:
+
+```json
+{"provider": "ivpn", "transport": "openvpn", "stage_rank": 2, "stage_count": 2,
+ "fallback": {"since": 1793500000, "reason": "accounts_full", "next_try": 1793501800},
+ "wg_accounts": [{"service": "mullvad", "provider": "mullvad", "account": 3,
+                  "tail": "0693", "device": "Happy Seal", "expires": 1801000000}]}
+```
+
+`fallback` is empty off fallback. `reason`: `module_missing`, `accounts_full`, `api_unreachable`, `captcha`, `subscription_expired`, `accounts_refused`, `servers_silent`, `connection_lost`, `config_refused`, `unknown`.
 
 ### What stays the same
 
@@ -1398,16 +1419,33 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 | `excluded_domains` | list | Domains routed to local DNS |
 | `local_dns` | string | Local DNS server IP |
 | `kill_switch` | bool | Block all traffic outside the tunnel while the service runs (see [Kill switch](#kill-switch--katakomba_kill-v380)) |
+| `primary_retry_min` | int | On a fallback, minutes between two tests of the first WireGuard stage (default 30, 5 minimum, 0 = never) (v4.5.0) |
 | `random_account` | bool | Account order drawn at random within each provider (provider order stays the list's priority) |
 | `circuit_check` | bool | Measure throughput on connect + re-draw if the circuit is slow |
 | `circuit_min_kbs` | int | Threshold in KB/s (250 ≈ 2 Mbps; 0 = disabled) |
 | `circuit_max_retries` | int | Max re-draws before keeping the circuit |
 
+### Managed provider, deployed by script
+
+*(stable since v4.5.0)* A playbook can write a managed provider directly; this format will not change without a migration:
+
+```json
+{
+  "name": "mullvad",
+  "ovpn_file": "",
+  "wireguard": [],
+  "accounts": [{ "u": "<base64 of the account number>", "p": "" }],
+  "wg_auto": { "service": "mullvad", "countries": ["NL", "DE"], "reserved_accounts": true }
+}
+```
+
+`u` holds the account number, in base64; `p` is empty for Mullvad, and holds the OpenVPN password for IVPN if its OpenVPN stage is used. With `"random_account": false`, accounts are tried in list order: a playbook puts each PC's preferred account first, so a fleet avoids trying full accounts one after the other.
+
 ---
 
 ## Tests
 
-The project is covered by a suite of **1106 tests** (`unittest`, no external dependency):
+The project is covered by a suite of **1155 tests** (`unittest`, no external dependency):
 
 ```bash
 bash run-tests.sh                      # everything
