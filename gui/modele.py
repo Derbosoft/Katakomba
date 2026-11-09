@@ -238,6 +238,15 @@ def ordre_general(config: dict) -> tuple:
     return ordre if ordre in ORDRES_TRANSPORTS else ORDRES_TRANSPORTS[0]
 
 
+def regler_hasard(p: dict, valeur) -> None:
+    """Ordre des comptes propre au fournisseur `p` : True (au hasard), False
+    (ordre de la liste) ; None : il suit le réglage général."""
+    if valeur is None:
+        p.pop("random_account", None)
+    else:
+        p["random_account"] = bool(valeur)
+
+
 def regler_transports(p: dict, ordre) -> None:
     """Ordre propre au fournisseur `p` ; None : il suit le réglage général."""
     if ordre is None:
@@ -439,6 +448,17 @@ def erreurs_config(config: dict) -> list:
     except (TypeError, ValueError):
         erreurs.append(_("Retour à la première étape : 0 (jamais), ou de 5 à 1440 "
                          "minutes."))
+    try:
+        remesure = int(config.get("circuit_recheck_min", 0))
+        if remesure != 0 and not 5 <= remesure <= 1440:
+            raise ValueError
+    except (TypeError, ValueError):
+        erreurs.append(_("Nouvelle mesure du circuit : 0 (une par démarrage), ou "
+                         "de 5 à 1440 minutes entre deux mesures."))
+    for p in config.get("providers", []):
+        if isinstance(p, dict) and not isinstance(p.get("random_account", True), bool):
+            erreurs.append(_("« {nom} » : random_account vaut true ou false.").format(
+                nom=p.get("name", "?")))
     if config.get("transports", ["wireguard", "openvpn"]) not in [list(o) for o in ORDRES_TRANSPORTS]:
         erreurs.append(_("Transports : wireguard, openvpn, ou les deux dans "
                          "l'ordre voulu."))

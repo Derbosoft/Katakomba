@@ -95,6 +95,17 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.6.0" date="2026-11-09">
+      <description>
+        <p>Every new circuit can be measured again, and a fleet can mix account orders.</p>
+        <ul>
+          <li>New setting circuit-recheck-min: the circuit is measured again after a reconnection, a watchdog restart or a recovery of the WireGuard bridge, at most once per interval; 0, the default, keeps one measurement per start</li>
+          <li>A managed slot opened before 4.5.0 gets its expiry date and device name at start-up, with a single request</li>
+          <li>random_account can be set per provider: katakomba provider random</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.6.0</url>
+    </release>
     <release version="4.5.0" date="2026-11-02">
       <description>
         <p>A fallback now returns to the first stage by itself, and says so.</p>

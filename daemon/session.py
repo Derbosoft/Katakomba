@@ -37,6 +37,9 @@ from .gestion_wg import (
 )
 
 TRANSPORTS = ("wireguard", "openvpn")
+# Plancher de circuit_recheck_min, en minutes : config.json est modifiable par
+# le groupe, et chaque mesure télécharge 4,5 Mo.
+REMESURE_MIN = 5
 NOMS_TRANSPORT = {"wireguard": "WireGuard", "openvpn": "OpenVPN"}
 # Échecs de connexion WireGuard d'affilée (aucune poignée de main) sur un
 # même .conf avant de passer au suivant.
@@ -194,6 +197,15 @@ class SessionMixin:
         self._account_cooldown[self._cle_compte(account_idx)] = \
             time.time() + AUTH_COOLDOWN
 
+    def _au_hasard(self, fournisseur: dict) -> bool:
+        """Ordre des comptes tiré au hasard ?  Le réglage du fournisseur s'il
+        en a un (v4.6.0), sinon le réglage général : un parc tire ses comptes
+        IVPN au hasard tout en gardant le compte Mullvad préféré de chaque PC."""
+        for source in (fournisseur, self.config):
+            if isinstance(source.get("random_account"), bool):
+                return source["random_account"]
+        return True
+
     def _plan_accounts(self):
         """Fixe l'ordre de passage des comptes de l'étape courante.
 
@@ -213,7 +225,7 @@ class SessionMixin:
         n = len(self._comptes())
         libres  = [i for i in range(n) if not self._cooldown_restant(i)]
         punis   = [i for i in range(n) if self._cooldown_restant(i)]
-        if self.config.get("random_account", True):
+        if self._au_hasard(p):
             random.shuffle(libres)
             random.shuffle(punis)
         # Les deux groupes concaténés : l'ordre reste une permutation complète,
@@ -223,7 +235,7 @@ class SessionMixin:
         # WireGuard géré : pas de .conf, le serveur est tiré à la connexion
         # (et nommé à ce moment-là) ; cet ordre interne n'apprend rien.
         gere = self._transport == "wireguard" and service_gere(p)
-        if n > 1 and self.config.get("random_account", True) and not gere:
+        if n > 1 and self._au_hasard(p) and not gere:
             self._log(f"[provider] {p.get('name','?')} : ordre {quoi} tiré "
                       f"au hasard → {' '.join(str(i+1) for i in ordre)}", "INFO")
         if punis:
@@ -293,6 +305,9 @@ class SessionMixin:
         # Nouveau circuit : la mesure du précédent ne le décrit plus.  Remise
         # à zéro, sauf si aucune autre ne suivra (une mesure par démarrage) :
         # elle reste alors consultable, signalée comme celle d'un autre circuit.
+        if self._circuit_a_remesurer():
+            self._circuit_controle_fait = False
+            self._circuit_attempts = 0
         if self._circuit_controle_fait:
             self._circuit_mesure_passee = self._last_circuit_at > 0
         else:
@@ -442,7 +457,9 @@ class SessionMixin:
         Une fois par démarrage du daemon (v4.4.1) : une fois le contrôle
         conclu, les reconnexions suivantes (coupure, relance par la
         surveillance) ne mesurent plus.  Chaque mesure télécharge 4,5 Mo
-        vers un tiers, et sature le circuit pendant jusqu'à 75 s."""
+        vers un tiers, et sature le circuit pendant jusqu'à 75 s.  Sauf
+        avec circuit_recheck_min (v4.6.0) : chaque nouveau circuit est alors
+        mesuré, au plus une fois par intervalle (_circuit_a_remesurer)."""
         if not self.config.get("circuit_check", True):
             return
         if self._circuit_controle_fait:
@@ -486,7 +503,7 @@ class SessionMixin:
         if kbs < 0:
             self._log("[circuit] Mesure du débit impossible — "
                       "circuit conservé.", "WARN")
-            self._circuit_controle_fait = True
+            self._conclure_controle()
             return
         mbps = kbs * 8 / 1000
         # Mesure conservée pour le socket de statut : elle est prise une seule
@@ -500,11 +517,11 @@ class SessionMixin:
             self._log(f"[circuit] Débit OK : {kbs:.0f} KB/s "
                       f"(~{mbps:.1f} Mbps).", "OK")
             self._circuit_attempts = 0
-            self._circuit_controle_fait = True
+            self._conclure_controle()
             return
 
         if self._circuit_attempts >= max_try:
-            self._circuit_controle_fait = True
+            self._conclure_controle()
             self._log(
                 f"[circuit] Débit toujours faible ({kbs:.0f} KB/s) après "
                 f"{max_try} essais — circuit conservé (mieux vaut un tunnel "
@@ -524,6 +541,34 @@ class SessionMixin:
         self._reconnect_reason = "circuit Tor trop lent, nouveau tirage"
         if proc and proc.poll() is None:   # proc : celui qu'on vient de mesurer
             proc.terminate()   # sans _stop_vpn : la boucle reconnecte d'elle-même
+
+    def _conclure_controle(self):
+        self._circuit_controle_fait = True
+        self._circuit_conclu_at = time.time()
+
+    def _circuit_a_remesurer(self) -> bool:
+        """Un contrôle conclu est-il à refaire pour un nouveau circuit ?
+        Jamais avec circuit_recheck_min à 0 (le défaut, une mesure par
+        démarrage) ; sinon une fois l'intervalle écoulé depuis la conclusion :
+        une relance en rafale ne télécharge pas 4,5 Mo à chaque fois."""
+        n = self.config.get("circuit_recheck_min", 0)
+        if (isinstance(n, bool) or not isinstance(n, int) or n <= 0
+                or not self._circuit_controle_fait):
+            return False
+        return time.time() - self._circuit_conclu_at >= max(n, REMESURE_MIN) * 60
+
+    def _remesurer_circuit(self):
+        """Le pont WireGuard a rouvert sa connexion à travers Tor, le tunnel
+        restant en place : nouveau circuit, que rien d'autre ne mesurerait."""
+        if self._mesure_en_cours or not self._circuit_a_remesurer():
+            return
+        self._circuit_controle_fait = False
+        self._circuit_attempts = 0
+        self._last_circuit_kbs = 0.0
+        self._last_circuit_at = 0.0
+        self._circuit_mesure_passee = False
+        self._log("[circuit] Nouveau circuit sous le tunnel : nouvelle mesure.", "INFO")
+        threading.Thread(target=self._circuit_quality_check, daemon=True).start()
 
     # ── Boucle ───────────────────────────────────────────────────────────────
 

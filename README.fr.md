@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.5.0
+# Katakomba — v4.6.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.5.0-blue)
+![Version](https://img.shields.io/badge/Version-4.6.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -280,11 +280,12 @@ En root, ou en membre du groupe `katakomba` (sans `sudo`, comme l'interface). Le
 | `fournisseur managed <mullvad\|ivpn> [--name NOM] [--stdin]` | Fournisseur sans fichier, par numéro de compte, en WireGuard géré |
 | `fournisseur devices <nom>` | Mullvad : appareils, places prises et échéance de chaque compte, par Tor (v4.5.0) |
 | `fournisseur wg-auto <nom> on\|off` | WireGuard géré (IVPN, Mullvad) : clé enregistrée par Katakomba ; `countries NL,CH\|all`, `reserved on\|off` |
+| `fournisseur random <nom> on\|off\|default` | Ordre des comptes propre à ce fournisseur : au hasard, dans l'ordre de la liste, ou `default` pour suivre `random-account` (v4.6.0) |
 | `fournisseur transports <nom> <ordre\|default>` | Ordre des transports propre à ce fournisseur (`openvpn,wireguard`…), ou `default` pour suivre le réglage général |
 | `compte liste\|ajouter\|retirer <fournisseur> …` | Comptes d'un fournisseur : `ajouter` demande les identifiants OpenVPN, ou ajoute des `.conf` donnés en argument ; `retirer <fournisseur> wg2` retire un fichier WireGuard |
 | `exclusion liste\|ajouter\|retirer <adresse\|réseau\|domaine>` | Exclusions du tunnel et domaines locaux, mêmes contrôles que l'interface |
 | `reglage` | Réglages actuels |
-| `reglage <réglage> <valeur>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (adresse ou `aucun`), `circuit-check`, `circuit-min-kbs`, `circuit-retries`, `primary-retry-min` (minutes, `0` = jamais) |
+| `reglage <réglage> <valeur>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (adresse ou `aucun`), `circuit-check`, `circuit-min-kbs`, `circuit-retries`, `circuit-recheck-min` (minutes, `0` = une fois par démarrage), `primary-retry-min` (minutes, `0` = jamais) |
 | `sauvegarde exporter\|restaurer <fichier.zip>` | Même format que la sauvegarde de l'interface ; l'export est en `600` (il contient les identifiants) |
 
 Messages et aide (`katakomba help`) suivent la langue du système. Les commandes existent aussi en anglais (`provider add`, `exclude remove`, `set`, `backup`, `start --trial`…), le nom sous lequel les présente l'aide.
@@ -352,7 +353,7 @@ Avec les seuls **numéros de compte**, Katakomba enregistre **lui-même** sa cl�
 | Après une semaine | Clé renouvelée, étalé au hasard sur une journée. IVPN : **sur la même session**. Mullvad : **appareil neuf, l'ancien supprimé** — l'API de Mullvad ne donnant que la date de création d'un appareil, elle devient sa **preuve de vie**. Compte plein *(v4.5.0)* : la clé change **sur le même appareil**, une panne de l'API ne coûte donc rien ; sur des comptes réservés, l'appareil reste remplacé toutes les deux semaines, sinon il passerait pour mort auprès des autres PC. |
 | Place supprimée ailleurs (compte remis à zéro, site, autre PC) | Constaté après un échec de connexion : nouvel enregistrement, automatique. |
 | Abonnement expiré | Constaté à l'ouverture d'une place et après un échec de connexion : place rendue, un autre compte est essayé ; s'il n'en reste aucun, l'étape suivante prend le relais *(v4.5.0)*. |
-| Échéance *(v4.5.0)* | Relevée à l'ouverture d'une place et à chaque renouvellement, sans appel de plus au redémarrage. `katakomba doctor` avertit 14 jours avant. |
+| Échéance *(v4.5.0)* | Relevée à l'ouverture d'une place et à chaque renouvellement. Une place ouverte avant la v4.5.0 est complétée au démarrage par une seule requête *(v4.6.0)*, même chez un fournisseur de secours. `katakomba doctor` avertit 14 jours avant. |
 | Tous les comptes pleins | Le dire et passer à OpenVPN (IVPN ; Mullvad n'en a plus), ou, si les comptes sont **réservés à Katakomba**, récupérer une place : Mullvad, appareils **de plus de 3 semaines** supprimés (PC disparus : un PC vivant renouvelle le sien chaque semaine) ; IVPN, qui ne montre pas les autres sessions, remise à zéro d'un compte (ses autres appareils sont déconnectés ; les PC Katakomba se réenregistrent seuls). |
 | API injoignable, captcha | L'étape suivante prend le relais ; l'API n'est rappelée qu'après 15 min (1 h pour un captcha). |
 | Image disque clonée | La place est liée à `/etc/machine-id` : le clone ouvre la sienne, sans toucher à celle de l'original. |
@@ -1164,7 +1165,7 @@ Deux points de conception importants :
 
 **Aucune surveillance continue** : ce test ne tourne pas en tâche de fond et ne consomme rien après la connexion.
 
-*(v4.4.1)* **Une seule fois par démarrage du daemon** : une fois le contrôle conclu (débit suffisant, mesure impossible ou plafond d'essais atteint), les reconnexions suivantes (coupure, relance par la surveillance) ne mesurent plus. Chaque mesure télécharge 4,5 Mo vers un tiers ; avec WireGuard, qui change de serveur à chaque reconnexion, elle se répétait sinon à chaque fois. **Pendant la mesure, la surveillance ne conclut pas à une panne** : la mesure sature le circuit, qui peut se taire plusieurs secondes sans être mort. Si le tunnel meurt vraiment, la mesure échoue et s'arrête au plus tard après 75 s. À travers Tor, un VPN voyage dans un flux TCP : les échantillons de 2 Mo passent l'essentiel de leur temps à monter en débit et sous-estiment ce qu'un long transfert obtient ; un seuil au-dessus de 250 KB/s fait rejeter la plupart des circuits.
+*(v4.4.1)* **Une seule fois par démarrage du daemon** : une fois le contrôle conclu (débit suffisant, mesure impossible ou plafond d'essais atteint), les reconnexions suivantes (coupure, relance par la surveillance) ne mesurent plus. Chaque mesure télécharge 4,5 Mo vers un tiers ; avec WireGuard, qui change de serveur à chaque reconnexion, elle se répétait sinon à chaque fois. **Pendant la mesure, la surveillance ne conclut pas à une panne** : la mesure sature le circuit, qui peut se taire plusieurs secondes sans être mort. Si le tunnel meurt vraiment, la mesure échoue et s'arrête au plus tard après 75 s. *(v4.6.0)* `katakomba set circuit-recheck-min <minutes>` (ou la page Réglages) mesure de nouveau **chaque nouveau circuit** : après une reconnexion ou une relance par la surveillance, et quand le pont WireGuard rouvre sa connexion à travers Tor sous un tunnel qui reste en place. Au plus une mesure par intervalle (5 minutes au minimum) ; `0`, le défaut, garde une seule mesure par démarrage. À travers Tor, un VPN voyage dans un flux TCP : les échantillons de 2 Mo passent l'essentiel de leur temps à monter en débit et sous-estiment ce qu'un long transfert obtient ; un seuil au-dessus de 250 KB/s fait rejeter la plupart des circuits.
 
 #### Comment la mesure est prise (v3.6.3)
 
@@ -1475,6 +1476,8 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 | `circuit_check` | bool | Mesure du débit à la connexion + re-tirage si circuit lent |
 | `circuit_min_kbs` | int | Seuil en KB/s (250 ≈ 2 Mbps ; 0 = désactivé) |
 | `circuit_max_retries` | int | Re-tirages max avant de conserver le circuit |
+| `circuit_recheck_min` | int | Mesurer de nouveau chaque nouveau circuit, au plus une fois par ce nombre de minutes (5 au minimum) ; `0` = une fois par démarrage, le défaut (v4.6.0) |
+| `providers[].random_account` | bool | Facultatif : ordre des comptes propre au fournisseur, qui remplace `random_account` (v4.6.0) |
 
 ### Fournisseur géré, déployé par script
 
@@ -1490,13 +1493,13 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 }
 ```
 
-`u` porte le numéro de compte, en base64 ; `p` est vide chez Mullvad, et porte le mot de passe OpenVPN chez IVPN si son étape OpenVPN sert. Avec `"random_account": false`, les comptes sont essayés dans l'ordre de la liste : un playbook met le compte préféré de chaque PC en tête, et le parc évite d'essayer l'un après l'autre des comptes pleins.
+`u` porte le numéro de compte, en base64 ; `p` est vide chez Mullvad, et porte le mot de passe OpenVPN chez IVPN si son étape OpenVPN sert. Avec `"random_account": false`, les comptes sont essayés dans l'ordre de la liste : un playbook met le compte préféré de chaque PC en tête, et le parc évite d'essayer l'un après l'autre des comptes pleins. Posé sur le fournisseur *(v4.6.0)*, il remplace le réglage général pour ce seul fournisseur : Mullvad dans l'ordre, IVPN au hasard, sur le même PC.
 
 ---
 
 ## Tests
 
-Le projet est couvert par une suite de **1155 tests** (`unittest`, aucune dépendance externe) :
+Le projet est couvert par une suite de **1174 tests** (`unittest`, aucune dépendance externe) :
 
 ```bash
 bash run-tests.sh                 # tout

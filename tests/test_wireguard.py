@@ -8,8 +8,10 @@ import os
 import pathlib
 import sys
 import tempfile
+import threading
 import time
 import unittest
+from unittest import mock
 
 import daemon.session as m_session
 import daemon.wireguard as m_wireguard
@@ -677,6 +679,83 @@ class BoucleTest(unittest.TestCase):
         d._etape_suivante = lambda cause="": False
         d._vpn_loop(0, 0)
         self.assertEqual(vu, [0])
+
+
+class RemesureTest(unittest.TestCase):
+    """circuit_recheck_min (v4.6.0) : chaque nouveau circuit sous le tunnel
+    est mesuré, au plus une fois par intervalle ; 0 garde la v4.4.1."""
+
+    def _daemon(self, minutes, conclu_il_y_a):
+        d = FakeDaemon(config={"circuit_recheck_min": minutes})
+        d._circuit_controle_fait = True
+        d._circuit_conclu_at = time.time() - conclu_il_y_a
+        return d
+
+    def test_une_mesure_par_demarrage_par_defaut(self):
+        self.assertFalse(self._daemon(0, 10 ** 6)._circuit_a_remesurer())
+
+    def test_intervalle_respecte(self):
+        self.assertFalse(self._daemon(30, 29 * 60)._circuit_a_remesurer())
+        self.assertTrue(self._daemon(30, 31 * 60)._circuit_a_remesurer())
+
+    def test_plancher(self):
+        self.assertFalse(self._daemon(1, 4 * 60)._circuit_a_remesurer())
+        self.assertTrue(self._daemon(1, 6 * 60)._circuit_a_remesurer())
+
+    def test_valeur_illisible(self):
+        for valeur in ("30", True, None, -5, 2.5):
+            self.assertFalse(self._daemon(valeur, 10 ** 6)._circuit_a_remesurer(), valeur)
+
+    def test_controle_en_cours_pas_de_remesure(self):
+        d = self._daemon(30, 10 ** 6)
+        d._circuit_controle_fait = False
+        self.assertFalse(d._circuit_a_remesurer())
+
+    def test_relance_du_tunnel_remesuree(self):
+        d = self._daemon(30, 31 * 60)
+        d._circuit_attempts = 2
+        for nom in ("_apply_vpn_dns", "_apply_dns_split", "_circuit_quality_check"):
+            setattr(d, nom, lambda: None)
+        d._tunnel_monte()
+        self.assertFalse(d._circuit_controle_fait)
+        self.assertEqual((d._circuit_attempts, d._last_circuit_kbs), (0, 0.0))
+
+    def test_reprise_du_pont_remesuree(self):
+        """Le tunnel reste monté : seul le « Connecté » du pont annonce le
+        nouveau circuit."""
+        d = self._daemon(30, 31 * 60)
+        d._tunnel_up = True
+        d.pont_process = proc = FakeProc("12:00:00 Connecté (udp-over-tcp).\n")
+        with mock.patch("threading.Thread") as thread:
+            d._journal_pont(proc, threading.Event())
+        thread.assert_called_once_with(target=d._circuit_quality_check, daemon=True)
+        self.assertFalse(d._circuit_controle_fait)
+
+    def test_premier_connecte_pas_de_remesure(self):
+        """Avant le montage, le contrôle normal suit de toute façon."""
+        d = self._daemon(30, 31 * 60)
+        d._tunnel_up = False
+        d.pont_process = proc = FakeProc("Connecté (udp-over-tcp).\n")
+        with mock.patch("threading.Thread") as thread:
+            d._journal_pont(proc, threading.Event())
+        thread.assert_not_called()
+
+    def test_sonde_jamais(self):
+        d = self._daemon(30, 31 * 60)
+        d._tunnel_up = True
+        proc = FakeProc("Connecté (udp-over-tcp).\n")
+        with mock.patch("threading.Thread") as thread:
+            d._journal_pont(proc, threading.Event(), sonde=True)
+        thread.assert_not_called()
+
+    def test_conclusion_datee(self):
+        d = FakeDaemon(config={"circuit_check": True, "circuit_min_kbs": 250})
+        d._tunnel_up, d._tun_iface, d._transport = True, "tun0", "wireguard"
+        d.pont_process = FakeProc(returncode=None)
+        d._measure_tunnel_speed = lambda iface="", still_valid=None: 400.0
+        with no_sleep(m_session, m_wireguard):
+            d._circuit_quality_check()
+        self.assertAlmostEqual(d._circuit_conclu_at, time.time(), delta=5)
 
 
 class CircuitQualityTest(unittest.TestCase):

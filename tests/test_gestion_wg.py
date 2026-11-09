@@ -33,6 +33,9 @@ LISTE = {
 }
 
 
+ECHEANCE = 1893456000                   # 2030-01-01
+
+
 class FausseApi:
     """Le service IVPN, vu par le daemon : _api_ivpn(requete) → réponse."""
 
@@ -76,7 +79,7 @@ class FausseApi:
         if s is None:
             return {"ok": False, "code": ivpn.SESSION_INCONNUE, "message": "session inconnue"}
         if a == "statut":
-            return {"ok": True, "actif": True, "jusqua": 0}
+            return {"ok": True, "actif": True, "jusqua": ECHEANCE}
         if a == "cle":
             s[1] = q["publique"]
             return {"ok": True, "adresse": s[2]}
@@ -334,6 +337,55 @@ class MenageTest(Base):
         d._wg_gere_reglages(p, 0)
         api.appels.clear()
         d._wg_gere_menage()
+        self.assertEqual(api.appels, [])
+
+
+    def test_place_d_avant_la_4_5_completee_au_demarrage(self):
+        """Ni échéance ni nom : une requête au démarrage, Tor prêt, même si
+        le fournisseur n'est pas l'étape en cours (place de secours)."""
+        api = FausseApi({compte(0): 1})
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        etat = json.loads(m_gestion_wg.fichier_session("ivpn").read_text())
+        del etat["jusqua"], etat["nom"]
+        m_gestion_wg.fichier_session("ivpn").write_text(json.dumps(etat))
+        d2, _ = self.daemon(api, p)
+        d2._current_provider_idx = 5
+        api.appels.clear()
+        d2._wg_gere_menage()
+        self.assertEqual(api.actions(), ["statut"])
+        apres = json.loads(m_gestion_wg.fichier_session("ivpn").read_text())
+        self.assertEqual(apres["jusqua"], ECHEANCE)
+        self.assertEqual(d2._wg_comptes_statut()[0]["expires"], ECHEANCE)
+        api.appels.clear()
+        d2._wg_menage_fait = False
+        d2._wg_gere_menage()
+        self.assertEqual(api.appels, [], "complétée, elle ne doit plus rien demander")
+
+    def test_completion_qui_echoue_rien_d_ecrit(self):
+        api = FausseApi({compte(0): 1})
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        etat = json.loads(m_gestion_wg.fichier_session("ivpn").read_text())
+        del etat["jusqua"]
+        m_gestion_wg.fichier_session("ivpn").write_text(json.dumps(etat))
+        api.reseau = True
+        d2, _ = self.daemon(api, p)
+        d2._wg_gere_menage()
+        self.assertNotIn("jusqua", json.loads(
+            m_gestion_wg.fichier_session("ivpn").read_text()))
+
+    def test_place_d_une_autre_machine_non_completee(self):
+        api = FausseApi({compte(0): 1})
+        d, p = self.daemon(api)
+        d._wg_gere_reglages(p, 0)
+        etat = json.loads(m_gestion_wg.fichier_session("ivpn").read_text())
+        del etat["jusqua"]
+        m_gestion_wg.fichier_session("ivpn").write_text(json.dumps(etat))
+        m_gestion_wg.MACHINE_ID.write_text("machine-b\n")
+        d2, _ = self.daemon(api, p)
+        api.appels.clear()
+        d2._wg_gere_menage()
         self.assertEqual(api.appels, [])
 
 
@@ -647,6 +699,17 @@ class MullvadTest(Base):
         etat = self.etat()
         self.assertEqual((etat["jusqua"], etat["nom"]), (1893456000, "Happy Seal"))
         self.assertTrue(d.has_log("appareil « Happy Seal »", "OK"))
+
+    def test_ordre_propre_au_fournisseur(self):
+        """random_account du fournisseur l'emporte sur le réglage général :
+        Mullvad dans l'ordre, IVPN au hasard, sur le même PC."""
+        api = FauxMullvad([numero(0), numero(1), numero(2)])
+        p = mullvad(3)
+        p["random_account"] = False
+        d, _ = self.daemon(api, p, random_account=True)
+        with mock.patch("random.shuffle", side_effect=AssertionError("tirage")):
+            d._wg_gere_reglages(p, 0)
+        self.assertEqual(len(api.appareils[numero(0)]), 1)
 
     def test_ordre_de_la_config_si_tirage_desactive(self):
         """Un parc déployé par script met le compte préféré du PC en tête."""

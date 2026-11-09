@@ -104,6 +104,13 @@ class PageReglages(Adw.PreferencesPage):
                                    "vaut un tunnel lent qu'une boucle de reconnexions."))
         self.essais.connect("notify::value", self._essais_change)
         self.circuit.add(self.essais)
+        self.remesure = Adw.SpinRow.new_with_range(0, 1440, 5)
+        self.remesure.set_title(_("Mesurer chaque nouveau circuit (minutes)"))
+        self.remesure.set_subtitle(_("Après une relance ou une reprise du pont, au plus "
+                                     "une mesure par intervalle. 0 : une seule mesure "
+                                     "par démarrage."))
+        self.remesure.connect("notify::value", self._remesure_change)
+        self.circuit.add(self.remesure)
         self.add(self.circuit)
 
         g = Adw.PreferencesGroup(title=_("Fournisseur de secours"))
@@ -157,6 +164,7 @@ class PageReglages(Adw.PreferencesPage):
             self.seuil.set_value(int(c.get("circuit_min_kbs", 250)))
             self.essais.set_value(int(c.get("circuit_max_retries", 3)))
             self.retour.set_value(int(c.get("primary_retry_min", 30)))
+            self.remesure.set_value(int(c.get("circuit_recheck_min", 0)))
             self.demarrage.set_active(c.get("autostart", False))
             p = self.fen.prefs
             self.langue.set_selected(CODES_LANGUE.index(p["langue"]))
@@ -204,6 +212,11 @@ class PageReglages(Adw.PreferencesPage):
     def _essais_change(self, *_args):
         if not self._charge:
             self.fen.config["circuit_max_retries"] = int(self.essais.get_value())
+            self.fen.reglage_modifie()
+
+    def _remesure_change(self, *_args):
+        if not self._charge:
+            self.fen.config["circuit_recheck_min"] = int(self.remesure.get_value())
             self.fen.reglage_modifie()
 
     def _retour_change(self, *_args):

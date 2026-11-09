@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "4.5.0"
+VERSION       = "4.6.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")
@@ -65,6 +65,9 @@ DEFAULT_CONFIG = {
     "circuit_min_kbs":    250,   # 250 KB/s ≈ 2 Mbps
     "primary_retry_min":  30,    # sonde de la première étape, en secours ; 0 : jamais
     "circuit_max_retries": 3,
+    # Nouvelle mesure à chaque nouveau circuit sous le tunnel (relance,
+    # reprise du pont), au plus une par intervalle ; 0 : une par démarrage.
+    "circuit_recheck_min": 0,
     "lan_iface":         "",
     "lan_gateway":       "10.0.0.1",
     "lan_subnet":        "10.0.0.0/24",

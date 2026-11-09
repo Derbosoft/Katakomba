@@ -311,7 +311,7 @@ class GestionWgMixin:
         nom = NOMS[service]
         reserves = bool(p["wg_auto"].get("reserved_accounts"))
         comptes = [(i, c) for i, c in self._comptes_wg(p) if c]
-        if self.config.get("random_account", True):
+        if self._au_hasard(p):
             random.shuffle(comptes)
         pleins = []
         for i, compte in comptes:
@@ -602,6 +602,8 @@ class GestionWgMixin:
             return False
         if isinstance(r.get("jusqua"), int) and r["jusqua"] != etat.get("jusqua"):
             etat = {**etat, "jusqua": r["jusqua"]}
+            if service == "mullvad":
+                etat["nom"] = mullvad.nom_sur(r.get("nom"))
             self._wg_ecrire(service, etat)
         if not r.get("actif"):
             self._log(f"{nom} : abonnement du compte inactif — session fermée, "
@@ -627,14 +629,36 @@ class GestionWgMixin:
                 return True
         return False
 
+    def _wg_completer(self, service: str):
+        """Place ouverte avant la v4.5.0 : ni échéance ni nom d'appareil.
+        Une requête, une fois par démarrage, plutôt que d'attendre le
+        renouvellement de la clé : l'alerte d'échéance en dépend, et une place
+        de secours peut rester des semaines sans être renouvelée."""
+        etat = self._wg_lire(service)
+        if (not etat or etat["machine"] != self._machine()
+                or (etat.get("jusqua") and (service != "mullvad" or "nom" in etat))):
+            return
+        r = self._wg_statut(service, etat["jeton"],
+                            self._compte_par_empreinte(etat["compte"]))
+        if not r:
+            return
+        neuf = {**etat, "jusqua": r["jusqua"]}
+        if service == "mullvad":
+            neuf["nom"] = mullvad.nom_sur(r.get("nom"))
+        self._wg_ecrire(service, neuf)
+
     def _wg_gere_menage(self):
         """Une fois par démarrage, Tor prêt : une place gérée dont plus aucun
         fournisseur ne veut (gestion désactivée, fournisseur retiré) est
-        rendue au compte."""
+        rendue au compte ; celles qui servent sont complétées au besoin
+        (_wg_completer)."""
         if self._wg_menage_fait:
             return
         self._wg_menage_fait = True
         geres = {service_gere(p) for p in self.config.get("providers", [])}
+        for service in sorted(geres - {""}):
+            with self._wg_verrou:
+                self._wg_completer(service)
         for service in SERVICES:
             if service in geres:
                 continue

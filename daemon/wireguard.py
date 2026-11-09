@@ -225,6 +225,11 @@ class WireGuardMixin:
             if ligne:
                 if ligne.startswith("Écoute UDP"):
                     pret.set()
+                # Reprise du pont sous un tunnel déjà monté : nouveau circuit
+                # Tor.  Un premier « Connecté » précède toujours le montage.
+                if (not sonde and ligne.startswith("Connecté") and self._tunnel_up
+                        and proc is self.pont_process):
+                    self._remesurer_circuit()
                 # Une sonde qui échoue n'est pas une panne : le tunnel en
                 # service n'y est pour rien.
                 grave = not sonde and ligne.startswith(("Échec", "Connexion perdue"))

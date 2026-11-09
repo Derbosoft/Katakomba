@@ -7,6 +7,7 @@ test_wireguard.py."""
 import json
 import time
 import unittest
+import unittest.mock
 
 import daemon.session as m_session
 from tests.helpers import FakeDaemon, FakeProc, no_sleep, provider, provider_wg
@@ -263,3 +264,27 @@ class EtapeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HasardParFournisseurTest(unittest.TestCase):
+
+    def ordre(self, general, propre):
+        p = provider("a", 4)
+        if propre is not None:
+            p["random_account"] = propre
+        d = FakeDaemon(config={"providers": [p], "random_account": general})
+        d._current_provider_idx, d._transport = 0, "openvpn"
+        with unittest.mock.patch("random.shuffle") as tirage:
+            d._plan_accounts()
+        return tirage.called
+
+    def test_reglage_general_par_defaut(self):
+        self.assertTrue(self.ordre(True, None))
+        self.assertFalse(self.ordre(False, None))
+
+    def test_le_fournisseur_l_emporte(self):
+        self.assertFalse(self.ordre(True, False))
+        self.assertTrue(self.ordre(False, True))
+
+    def test_valeur_illisible_ignoree(self):
+        self.assertTrue(self.ordre(True, "non"))

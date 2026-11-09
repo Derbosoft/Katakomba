@@ -44,6 +44,7 @@ REGLAGES = {
     "circuit-min-kbs": ("circuit_min_kbs", "int"),
     "circuit-retries": ("circuit_max_retries", "int"),
     "primary-retry-min": ("primary_retry_min", "int"),
+    "circuit-recheck-min": ("circuit_recheck_min", "int"),
 }
 PLACES_MULLVAD = 5
 OUI = ("on", "yes", "true", "1", "oui")
@@ -177,7 +178,9 @@ def fournisseur(action: str, args: list):
         for i, p in enumerate(fournisseurs, 1):
             print(f"  {i}. {p.get('name', '?'):<20} {modele.resume_comptes(p)}"
                   + (f"   {p['ovpn_file']}" if p.get("ovpn_file") else "")
-                  + (f"   [{','.join(p['transports'])}]" if p.get("transports") else ""))
+                  + (f"   [{','.join(p['transports'])}]" if p.get("transports") else "")
+                  + (f"   [random-account {'on' if p['random_account'] else 'off'}]"
+                     if isinstance(p.get("random_account"), bool) else ""))
         return
 
     _verifier_droits()
@@ -258,6 +261,22 @@ def fournisseur(action: str, args: list):
 
     if action == "wg-auto":
         _wg_auto(config, args)
+        _enregistrer(config)
+        return
+
+    if action == "random":
+        _attendre(args, 2, _("katakomba provider random <nom> on|off|default"))
+        p = _fournisseur(config, args[0])
+        choix = args[1].strip().lower()
+        if choix in ("default", "defaut", "défaut"):
+            modele.regler_hasard(p, None)
+            print(_("« {nom} » suit le réglage général (random-account {etat}).").format(
+                nom=p["name"], etat="on" if config.get("random_account", True) else "off"))
+        elif choix in OUI + NON:
+            modele.regler_hasard(p, choix in OUI)
+            print(f"{p['name']} : random-account {'on' if p['random_account'] else 'off'}")
+        else:
+            raise Erreur(_("Valeur attendue : on, off ou default."))
         _enregistrer(config)
         return
 
@@ -538,7 +557,7 @@ def reglage(args: list):
     config = modele.charger_config()
     if not args:
         for nom, (cle, genre) in REGLAGES.items():
-            print(f"  {nom:<17} {_afficher(config.get(cle), genre)}")
+            print(f"  {nom:<19} {_afficher(config.get(cle), genre)}")
         return
     _attendre(args, 2, _("katakomba set <réglage> <valeur>"))
     nom, brut = args[0], args[1].strip()
@@ -636,6 +655,8 @@ def aide():
             (_("provider wg-auto <nom> on|off"),
              _("WireGuard géré : clé enregistrée par Katakomba (IVPN, Mullvad)")),
             (_("provider wg-auto <nom> countries <NL,CH|europe|all> | reserved on|off"), ""),
+            (_("provider random <nom> on|off|default"),
+             _("Ordre des comptes propre au fournisseur (au hasard ou dans l'ordre)")),
             (_("provider devices <nom>"),
              _("Mullvad : appareils et échéance de chaque compte")),
             (_("account list <fournisseur> | add <fournisseur> [--stdin]"), ""),

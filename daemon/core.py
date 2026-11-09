@@ -339,6 +339,7 @@ class DaemonCore:
         # Contrôle conclu (débit OK, mesure impossible ou plafond atteint) :
         # pas de nouvelle mesure avant le prochain démarrage du daemon.
         self._circuit_controle_fait = False
+        self._circuit_conclu_at     = 0.0   # quand le dernier contrôle a conclu
         # Mesure en cours : elle sature le circuit, la surveillance ne la
         # prend pas pour une panne.
         self._mesure_en_cours  = False

@@ -138,6 +138,22 @@ class FournisseurTest(Console):
         self.assertEqual(code, 1)
         self.assertIn("existe déjà", err)
 
+    def test_ordre_des_comptes_par_fournisseur(self):
+        self.ajouter("ivpn")
+        code, sortie, erreurs = self.lancer("provider", "random", "ivpn", "off")
+        self.assertEqual(code, 0, erreurs)
+        self.assertIs(self.config()["providers"][0]["random_account"], False)
+        self.assertIn("[random-account off]", self.lancer("provider", "list")[1])
+        self.lancer("provider", "random", "ivpn", "default")
+        self.assertNotIn("random_account", self.config()["providers"][0])
+        code, _sortie, _erreurs = self.lancer("provider", "random", "ivpn", "peut-etre")
+        self.assertNotEqual(code, 0)
+
+    def test_remesure_du_circuit(self):
+        self.assertEqual(self.lancer("set", "circuit-recheck-min", "30")[0], 0)
+        self.assertEqual(self.config()["circuit_recheck_min"], 30)
+        self.assertNotEqual(self.lancer("set", "circuit-recheck-min", "2")[0], 0)
+
     def test_inventaire_mullvad(self):
         self.lancer("provider", "managed", "mullvad", "--name", "mv", "--stdin",
                     entree="1234567812345670\n")
@@ -256,7 +272,7 @@ class ReglageTest(Console):
 
     def test_liste_et_modification(self):
         code, sortie, _ = self.lancer("set")
-        self.assertIn("kill-switch       on", sortie)
+        self.assertIn("kill-switch         on", sortie)
         self.assertEqual(self.lancer("set", "kill-switch", "off")[0], 0)
         self.assertIs(self.config()["kill_switch"], False)
         self.assertEqual(self.lancer("set", "local-dns", "192.168.1.1")[0], 0)
