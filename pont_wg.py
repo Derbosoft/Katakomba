@@ -11,7 +11,7 @@ Tor ne transporte que du TCP.  Certains fournisseurs acceptent WireGuard
 
 Le pont fait la conversion :
 
-  WireGuard du noyau ──UDP──► 127.0.0.1:51820 (ce pont)
+  WireGuard du noyau ──UDP──► 127.0.0.1:51871 (ce pont)
                                    │ emballage, SOCKS5
                                    ▼
                               Tor ──► serveur du fournisseur, TCP
@@ -575,8 +575,12 @@ EMBALLAGES = ("proton", "ivpn", "mullvad")
 # ── Le pont ──────────────────────────────────────────────────────────────────
 
 class Pont:
-    def __init__(self, ecoute, emballage, socks, journal=None):
+    def __init__(self, ecoute, emballage, socks, journal=None, port_wg=None):
         self.emballage = emballage
+        # Port UDP d'écoute de l'interface WireGuard, quand le daemon le fixe :
+        # seuls ses paquets sont pris.  Sans cela, tout compte de la machine
+        # pouvait écrire au pont et se faire adresser le trafic de retour.
+        self.port_wg = port_wg
         self.socks = socks
         self._journal = journal or (lambda m: print(
             time.strftime("%H:%M:%S"), m, file=sys.stderr, flush=True))
@@ -590,7 +594,11 @@ class Pont:
         self._arret = threading.Event()
 
     def journal(self, message):
-        self._journal(message)
+        # Une seule ligne, sans caractère de commande : certains messages
+        # citent la réponse du serveur (ligne de statut HTTP, en clair pour
+        # IVPN), qu'un relais de sortie peut écrire à sa guise — et le daemon
+        # lit ce journal ligne à ligne (« Connecté », « Écoute UDP »).
+        self._journal("".join(c if c.isprintable() else "?" for c in str(message)))
 
     def _connexion(self):
         """La liaison en cours, ouverte au besoin ; None si en attente."""
@@ -647,6 +655,8 @@ class Pont:
                 break
             if not ipaddress.ip_address(origine[0]).is_loopback:
                 continue                # seul WireGuard, en local, parle au pont
+            if self.port_wg and origine[1] != self.port_wg:
+                continue                # un autre programme de la machine
             self._wg = origine
             liaison = self._connexion()
             if liaison is None:
@@ -692,12 +702,15 @@ def main(argv=None):
                         "ou « aucun » pour un essai sans Tor")
     p.add_argument("--ecoute", default=ECOUTE_DEFAUT,
                    help=f"adresse UDP locale pour WireGuard ({ECOUTE_DEFAUT})")
+    p.add_argument("--wireguard", type=int, metavar="PORT",
+                   help="port UDP d'écoute de l'interface WireGuard : seuls "
+                        "ses paquets sont pris (sinon tout paquet local)")
     a = p.parse_args(argv)
     try:
         emballage = emballage_depuis(a.emballage, a.serveur, a.cible, a.uuid, a.sni)
     except ErreurPont as e:
         p.error(str(e))
-    pont = Pont(a.ecoute, emballage, a.socks)
+    pont = Pont(a.ecoute, emballage, a.socks, port_wg=a.wireguard)
     try:
         pont.monter()
     except KeyboardInterrupt:

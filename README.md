@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.6.0
+# Katakomba — v4.7.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.6.0-blue)
+![Version](https://img.shields.io/badge/Version-4.7.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -191,10 +191,10 @@ apt install tor openvpn python3 curl python3-gi python3-gi-cairo gir1.2-gtk-4.0 
 
 **5. Systemd service**
 Creates `/etc/systemd/system/katakomba.service`:
-- `ExecStartPre`: iptables cleanup script (removes orphan rules from the previous session)
+- `ExecStartPre`: cleanup script (removes orphan rules from the previous session, except the kill switch, which the daemon replaces in one piece)
 - `ExecStart`: `python3 -m daemon` from `/opt/katakomba`
-- `ExecStopPost`: same cleanup script
-- `Restart=on-failure` with a 20s delay, unlimited attempts (`StartLimitIntervalSec=0`)
+- `ExecStopPost`: same script; it lifts the kill switch only when the service stops, not when it restarts or exits on failure *(v4.7.0)*
+- `Restart=on-failure`, relaunched 20 s after a failure, unlimited attempts (`StartLimitIntervalSec=0`)
 - `Type=notify` + `WatchdogSec=90`: the daemon reports liveness every ~3s; if it freezes (deadlock), systemd kills and relaunches it
 - `KillMode=control-group`: systemd kills the entire cgroup (Tor, OpenVPN, dnsmasq included)
 - `TimeoutStopSec=30`
@@ -430,7 +430,7 @@ In managed mode, a test makes no API call as long as the PC has its slot and its
 
 ### What stays the same
 
-Kill switch, Tor relay routes kept outside the tunnel, replies to incoming connections, IPv6 blocking, the VPN's DNS and split DNS, exclusions, Tor circuit speed check, watchdog with graduated recovery (the light restart restarts the bridge only), LAN sharing, emergency repair, `katakomba doctor`: everything goes through the same tunnel setup, done by the daemon.
+Kill switch, Tor relay routes kept outside the tunnel, replies to incoming connections, IPv6 blocking, the VPN's DNS and split DNS, exclusions, Tor circuit speed check, watchdog with graduated recovery (the light restart rebuilds the WireGuard tunnel and its bridge, leaving Tor alone), LAN sharing, emergency repair, `katakomba doctor`: everything goes through the same tunnel setup, done by the daemon.
 
 ### Security
 
@@ -686,7 +686,7 @@ Also worth excluding: the **subnet of a remote-admin VPN** (WireGuard/OpenVPN yo
 | **Notify me when the connection drops** | enabled | Desktop notifications (see [Background and notifications](#background-and-notifications)) |
 | **Launch at login** | disabled | `~/.config/autostart/org.katakomba.Katakomba.desktop`, window hidden |
 | **Block all traffic outside the tunnel** | enabled | Kill switch: nothing leaves through your normal connection, even during a reconnection (see [Kill switch](#kill-switch--katakomba_kill-v380)) |
-| **Block IPv6 while connected** | disabled | DROP ip6tables on OUTPUT + FORWARD |
+| **Block IPv6 while connected** | enabled *(v4.7.0)* | The tunnel carries IPv4 only: while it is up, IPv6 to the Internet is refused (local network and IPv6 neighbour discovery allowed). Matters mostly when the kill switch is off |
 | **Measure speed on connection** *(advanced)* | enabled | Draws a new circuit if too slow |
 | **Minimum speed** *(advanced)* | 250 KB/s | Threshold for a new circuit (≈ 2 Mbps; the Mbps equivalent is shown under the field) |
 | **Maximum new circuits** *(advanced)* | 3 | New circuits before keeping the circuit as-is |
@@ -872,6 +872,8 @@ openvpn
   --disable-dco --dns-updown disable
 ```
 
+> **The route through Tor is written at the top of the `.ovpn` copy (v4.7.0).** OpenVPN does not apply to a `<connection>` block the options that come after it, and the command line comes after `--config`: with an `.ovpn` using `<connection>` blocks, `--socks-proxy` was ignored ("Option 'socks-proxy' … is ignored by previous <connection> blocks") and OpenVPN reached the server **without Tor**. With the kill switch on, the connection was refused; with it off, the VPN came up directly, the real address visible to the provider. The copy now starts with `socks-proxy 127.0.0.1 9050` and the connection timeouts, which apply to every block, and any line of the file that would contradict them is neutralised. On top of that, the `katakomba-vpn` account — OpenVPN, the WireGuard bridge, the API helpers — can reach the loopback interface only (`KATAKOMBA_VPN` chains), kill switch on or off. Checked against the real binary (`tests_noyau`).
+
 > **OpenVPN runs with no privileges (v3.9.0).** It parses data received from the network (TLS, messages from the server): a flaw in it, or a malicious server, used to give away the whole machine, since it ran as root. It now starts directly as the `katakomba-vpn` system user, with no capability at all. The daemon creates the `tun-katakomba` interface for it, owned by that user, which is all OpenVPN needs to open it. OpenVPN no longer touches the network configuration: the daemon reads what the server pushed (`PUSH_REPLY`) and sets the address and the routes itself (see *Tunnel setup* below). The `.ovpn` copy has the directives that would need privileges commented out (`user`, `group`, `dev`, `mlock`…): Linux provider files often contain `user nobody`, which would make an unprivileged OpenVPN fail at startup. Paths in an `.ovpn` (`ca /path`…) are now read as `katakomba-vpn`, so root-only files are out of reach.
 >
 > Verified end to end on a real kernel, in an isolated network namespace, against a real OpenVPN server pushing a malicious route: OpenVPN with zero capabilities, tunnel up, real traffic through it, malicious route refused, reconnection on a recreated interface, everything removed on stop.
@@ -982,12 +984,15 @@ While the service runs, outgoing traffic can only leave through:
 Everything else is rejected at once (TCP reset), so applications fail immediately instead of hanging. **DNS is rejected even towards the local network**, unless it goes to the configured local DNS server: the router would forward the queries to your ISP. The `_FWD` chains apply the same rules to forwarded traffic (virtual machines, containers), and the `KILL6` chains to IPv6.
 
 **Lifecycle.**
-- Set **before Tor starts**, all or nothing: the four chains are fully built before being hooked. If a rule is refused, nothing is hooked, the log says why, and `katakomba doctor` reports a KO.
+- Set **before Tor starts**, all or nothing: the chains of an address family are set in one piece (`iptables-restore`), then hooked at the top of `OUTPUT` and `FORWARD`. If a rule is refused, nothing is hooked, the log says why, `katakomba doctor` reports a KO and the daemon tries again every 30 s.
 - Kept through every reconnection and full restart.
+- **Kept when the service restarts or exits on failure** *(v4.7.0)*: resume from sleep, upgrade, Tor failing to start, crash, emergency repair. The next service replaces the chains with its own, with no uncovered instant. Before v4.7.0, the normal connection came back at each of these exits until the next launch — 20 s every 4 minutes on a network that blocks Tor.
+- **Checked again every 30 s** *(v4.7.0)*: if another tool flushed or reloaded the iptables rules, or inserted its own above (Docker in `FORWARD`), the kill switch is put back on top and the log says so.
 - Lifted when the service stops (`katakomba stop`, *Disconnect*): your normal connection comes back. `repair_network.sh` lifts it too.
 
 **Limits.**
-- If the daemon crashes, the systemd cleanup lifts the block until the service is relaunched, 20 s later.
+- Between the machine booting and the service starting, nothing is set yet.
+- A stop requested within the second that follows a crash (while systemd waits) leaves the kill switch set for up to 30 s: a safety net then lifts it. `sudo katakomba stop` always lifts it at once.
 - With *Automatic reconnection* off, a dropped tunnel leaves the machine offline until you disconnect.
 - Other VPNs on the machine keep working when their network is in a private range (WireGuard on `10.x`, for example). A Tailscale network (`100.64.0.0/10`) is blocked: turn the kill switch off if you need it.
 - If your VPN provider pushes no DNS server, the system DNS (usually your router) is refused: no name resolves. The log says so; set a local DNS server (*Exclusions* page) or turn the kill switch off.
@@ -1251,7 +1256,7 @@ When LAN sharing is enabled:
 2. IP routing enabled (`sysctl net.ipv4.ip_forward=1`)
 3. NAT MASQUERADE so LAN traffic exits through the tunnel
 4. `KATAKOMBA_LAN_FWD` chain: blocks all LAN traffic not heading to the tunnel
-5. dnsmasq in `--no-daemon` mode: DHCP in the subnet, DNS `1.1.1.1` through the tunnel
+5. dnsmasq in `--no-daemon` mode: DHCP in the subnet; clients receive the VPN's DNS server *(v4.7.0)*, or `1.1.1.1` if it gives none, reached through the tunnel
 
 If the tunnel drops, LAN traffic is blocked — no leak through the direct connection.
 
@@ -1391,7 +1396,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
   "random_account": true,
   "transports": ["wireguard", "openvpn"],
   "kill_switch": true,
-  "block_ipv6": false,
+  "block_ipv6": true,
   "excluded_ips": ["192.168.1.0/24", "192.168.50.0/24"],
   "excluded_domains": [".local"],
   "local_dns": "192.168.50.10",
@@ -1515,7 +1520,7 @@ python3 outils/traductions.py verifier        # missing entries, mismatched {fie
 
 **VPN credentials:** stored as base64 in `config.json`. This is obfuscation, **not encryption**. The file is mode `660 root:katakomba`, inside a `2770 root:katakomba` directory.
 
-**Kill switch:** while the service runs, nothing leaves outside the tunnel except Tor and the local network, reconnections included (see [Kill switch](#kill-switch--katakomba_kill-v380)).
+**Kill switch:** as long as the service is not stopped, nothing leaves outside the tunnel except Tor and the local network — reconnections, restarts and failure exits included *(v4.7.0)* (see [Kill switch](#kill-switch--katakomba_kill-v380)).
 
 **auth.tmp:** created directly as mode `400`, owned by `katakomba-vpn` (never exposed to the umask; no group rights since v3.12.0, OpenVPN warned about them at every connection), just before launching OpenVPN, in `/run/katakomba-vpn` (root and OpenVPN only), never through a symlink; deleted when OpenVPN exits.
 

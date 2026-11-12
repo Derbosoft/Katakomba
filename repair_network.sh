@@ -5,7 +5,9 @@ set -euo pipefail
 # Sans argument  : usage manuel — arrête le service, répare, affiche conseils
 # --internal     : appelé par le daemon — skip systemctl stop, le daemon
 #                  se charge de son propre arrêt puis de sys.exit(1) pour
-#                  que systemd le relance via Restart=on-failure
+#                  que systemd le relance via Restart=on-failure.  Le blocage
+#                  hors tunnel reste posé (v4.7.0) : le service repart dans
+#                  la foulée, rien ne doit sortir à découvert entre-temps.
 
 INTERNAL=0
 if [[ "${1:-}" == "--internal" ]]; then
@@ -46,15 +48,21 @@ rm -f /etc/wireguard/katakomba-wg.conf
 pkill -f -- "^tor .*katakomba/tor(rc|_data)" 2>/dev/null || true
 
 echo "[3/8] Nettoyage du blocage hors tunnel et des règles IPv6..."
-# Blocage hors tunnel (KATAKOMBA_KILL*) : sans tunnel, il couperait tout.
-for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
-         "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD"; do
-  # shellcheck disable=SC2086  # découpage voulu : « outil parent chaîne »
-  set -- $c
-  while $1 -D "$2" -j "$3" 2>/dev/null; do :; done
-  $1 -F "$3" 2>/dev/null || true
-  $1 -X "$3" 2>/dev/null || true
-done
+# Blocage hors tunnel (KATAKOMBA_KILL*) et garde du compte katakomba-vpn :
+# service arrêté, sans tunnel, le blocage couperait tout.  Gardés quand c'est
+# le daemon qui répare (--internal) : il repart aussitôt.
+if [[ $INTERNAL -eq 0 ]]; then
+  for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
+           "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD" \
+           "iptables OUTPUT KATAKOMBA_VPN" "ip6tables OUTPUT KATAKOMBA_VPN6"; do
+    # shellcheck disable=SC2086  # découpage voulu : « outil parent chaîne »
+    set -- $c
+    while $1 -D "$2" -j "$3" 2>/dev/null; do :; done
+    $1 -F "$3" 2>/dev/null || true
+    $1 -X "$3" 2>/dev/null || true
+  done
+  rm -f /run/katakomba-echec
+fi
 while ip6tables -D OUTPUT  -j "${KS6_CHAIN}" 2>/dev/null; do :; done
 ip6tables -F "${KS6_CHAIN}" 2>/dev/null || true
 ip6tables -X "${KS6_CHAIN}" 2>/dev/null || true
@@ -72,7 +80,7 @@ pkill -f /run/katakomba/dnsmasq.pid 2>/dev/null || true
 pkill -f /etc/katakomba/tor-vpn-dnsmasq.pid 2>/dev/null || true
 # MASQUERADE du partage LAN : sous-réseau lu dans la config, les deux tun testés
 if [[ -f "${CONFIG_JSON}" ]]; then
-  LAN_SUBNET=$(python3 -c "import json;print(json.load(open('${CONFIG_JSON}')).get('lan_subnet',''))" 2>/dev/null || true)
+  LAN_SUBNET=$(python3 -I -c "import json;print(json.load(open('${CONFIG_JSON}')).get('lan_subnet',''))" 2>/dev/null || true)
   if [[ -n "${LAN_SUBNET}" ]]; then
     for T in "${TUNS[@]}"; do
       while iptables -t nat -D POSTROUTING -s "${LAN_SUBNET}" -o "$T" -j MASQUERADE 2>/dev/null; do :; done

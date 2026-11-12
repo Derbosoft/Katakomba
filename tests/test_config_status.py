@@ -56,6 +56,41 @@ class LoadConfigTest(unittest.TestCase):
         for cle in DEFAULT_CONFIG:
             self.assertIn(cle, cfg, f"clé {cle} non complétée")
 
+    def test_types_inattendus_remplaces_par_les_defauts(self):
+        """v4.7.0 : un nombre entre guillemets, une liste à la place d'un
+        booléen… faisaient mourir la boucle VPN sur une exception."""
+        cfg, logs = self._load('{"circuit_min_kbs": "250", "kill_switch": "non", '
+                               '"excluded_ips": "1.2.3.4", "local_dns": 5, "lan_dhcp": 1, '
+                               '"primary_retry_min": 12.5, "advanced_mode": true}')
+        self.assertEqual(cfg["circuit_min_kbs"], 250)
+        self.assertIs(cfg["kill_switch"], True)
+        self.assertEqual(cfg["excluded_ips"], [])
+        self.assertEqual(cfg["local_dns"], "")
+        self.assertIs(cfg["lan_dhcp"], True)
+        self.assertEqual(cfg["primary_retry_min"], 12.5)
+        self.assertIs(cfg["advanced_mode"], True)
+        erreurs = [m for niveau, m in logs if niveau == "ERROR"]
+        self.assertEqual(len(erreurs), 5, erreurs)
+        self.assertFalse([m for m in erreurs if "1.2.3.4" in m or "non" in m.split("«")[0]],
+                         "valeur recopiée au journal")
+
+    def test_fournisseurs_illisibles_ecartes(self):
+        cfg, logs = self._load(
+            '{"providers": ["texte", 5, null, {"sans": "nom"}, {"name": 7}, '
+            '{"name": "bon", "accounts": "x", "wireguard": [1], "ovpn_file": 3}, '
+            '{"name": "entier", "accounts": [{"u": "YQ==", "p": ""}], '
+            '"wireguard": [{"conf": "providers/e/e.conf"}]}]}')
+        self.assertEqual([p["name"] for p in cfg["providers"]], ["bon", "entier"])
+        self.assertEqual(cfg["providers"][0]["accounts"], [])
+        self.assertEqual(cfg["providers"][0]["wireguard"], [])
+        self.assertEqual(cfg["providers"][0]["ovpn_file"], "")
+        self.assertEqual(len(cfg["providers"][1]["accounts"]), 1)
+        self.assertEqual(len([m for n, m in logs if n == "ERROR" and "fournisseur n°" in m]), 7)
+
+    def test_providers_qui_n_est_pas_une_liste(self):
+        cfg, logs = self._load('{"providers": {"name": "x"}}')
+        self.assertEqual(cfg["providers"], [])
+
     def test_valeurs_du_fichier_prioritaires(self):
         cfg, _ = self._load('{"circuit_min_kbs": 999, "auto_reconnect": false}')
         self.assertEqual(cfg["circuit_min_kbs"], 999)

@@ -86,6 +86,47 @@ class BlocageTest(CasNoyau):
         self.assertEqual(r.returncode, 0, r.stderr.decode())
         self.assertEqual(joindre(INTERNET, 80), "refus")
 
+    def test_regles_videes_par_un_tiers_reposees(self):
+        """Un pare-feu rechargé vide les chaînes : la surveillance le voit."""
+        self.assertTrue(self.d._kill_switch_on())
+        self.assertFalse(self.d._verifier_blocage(), "rien à reposer")
+        sh("iptables -F OUTPUT; iptables -F KATAKOMBA_KILL")
+        self.assertEqual(joindre(INTERNET, 80), "ok")
+        self.assertTrue(self.d._verifier_blocage())
+        self.assertEqual(joindre(INTERNET, 80), "refus")
+        self.assertTrue(self.d._kill_active)
+
+    def test_chaine_videe_seule_reposee(self):
+        self.assertTrue(self.d._kill_switch_on())
+        sh("iptables -F KATAKOMBA_KILL")
+        self.assertTrue(self.d._verifier_blocage())
+        self.assertEqual(joindre(INTERNET, 80), "refus")
+
+    def test_regle_d_un_tiers_au_dessus(self):
+        """Docker, démarré après, insère ses règles en tête : ce qu'elles
+        acceptent ne passerait plus par le blocage."""
+        self.assertTrue(self.d._kill_switch_on())
+        sh(f"iptables -I OUTPUT -d {INTERNET} -j ACCEPT")
+        self.assertEqual(joindre(INTERNET, 80), "ok")
+        self.assertTrue(self.d._verifier_blocage())
+        self.assertEqual(joindre(INTERNET, 80), "refus")
+        sorties = sh("iptables -S OUTPUT").splitlines()
+        self.assertEqual(sorties[1], "-A OUTPUT -j KATAKOMBA_KILL")
+        self.assertEqual(sum("KATAKOMBA_KILL" in l for l in sorties), 1, "doublon")
+        self.assertFalse(self.d._verifier_blocage(), "repose sans fin")
+
+    def test_blocage_garde_remplace_sans_trou(self):
+        """Sortie en échec ou redémarrage : les chaînes restent, et le daemon
+        suivant les remplace par les siennes d'un seul tenant."""
+        self.assertTrue(self.d._kill_switch_on())
+        suivant = daemon_de_test(excluded_ips=[])
+        sans_passe_droit_hors_root(suivant)
+        self.assertEqual(joindre(EXCLU, 80), "ok")
+        self.assertTrue(suivant._kill_switch_on())
+        self.assertEqual(joindre(EXCLU, 80), "refus", "anciennes règles restées")
+        self.assertEqual(joindre(INTERNET, 80), "refus")
+        self.assertEqual(sh("iptables -S OUTPUT").count("KATAKOMBA_KILL"), 1)
+
     def test_retrait_complet(self):
         self.assertTrue(self.d._kill_switch_on())
         self.d._kill_switch_off()
@@ -114,11 +155,22 @@ class Ipv6Test(CasNoyau):
         self.assertEqual(joindre(INTERNET6, 80), "ok")
 
     def test_blocage_ipv6(self):
+        self.d.config["kill_switch"] = False     # le blocage IPv6 seul
         self.d._ipv6_block_on()
         self.assertTrue(self.d._ipv6_blocked)
-        self.assertEqual(joindre(INTERNET6, 80, delai=1), "muet")
+        self.assertEqual(joindre(INTERNET6, 80), "refus", "pas de reset : l'application attend")
+        # Le réseau local reste joignable en IPv6 (voisinage compris).
+        self.pair.run("ip -6 addr add fd00:1::1/64 dev eth0 nodad")
+        sh("ip -6 addr add fd00:1::20/64 dev eth0 nodad")
+        self.assertEqual(joindre("fd00:1::1", 80), "ok", "IPv6 local coupé")
+        self.assertFalse(self.d._verifier_blocage(), "rien à reposer")
+        sh("ip6tables -F KATAKOMBA_KS6")
+        self.assertEqual(joindre(INTERNET6, 80), "ok")
+        self.assertTrue(self.d._verifier_blocage())
+        self.assertEqual(joindre(INTERNET6, 80), "refus")
         self.d._ipv6_block_off()
         self.assertEqual(joindre(INTERNET6, 80), "ok")
+        self.assertNotIn("KATAKOMBA", sh("ip6tables -S"))
 
     def test_blocage_hors_tunnel_en_ipv6(self):
         self.assertTrue(self.d._kill_switch_on())

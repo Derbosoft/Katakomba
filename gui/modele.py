@@ -1004,6 +1004,17 @@ def assainir_reglages(config: dict) -> list:
     if iface and not interface_lan_admissible(iface):
         ecartes.append(_("Partage LAN : interface « {nom} » refusée").format(nom=iface))
         config["lan_iface"] = ""
+    # Une sauvegarde reçue d'un tiers ne désactive pas une protection sans
+    # que cela se voie : réactivée, et dit.  À désactiver ensuite dans les
+    # réglages si c'était voulu.
+    for cle, message in (
+            ("kill_switch", N_("Blocage hors tunnel : désactivé dans la sauvegarde, "
+                               "réactivé (à désactiver dans les réglages si c'est voulu)")),
+            ("block_ipv6", N_("Blocage IPv6 : désactivé dans la sauvegarde, réactivé "
+                              "(à désactiver dans les réglages si c'est voulu)"))):
+        if config.get(cle, True) is not True:
+            config[cle] = True
+            ecartes.append(_(message))
     return ecartes
 
 

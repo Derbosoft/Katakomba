@@ -931,6 +931,22 @@ class WireGuardSauvegardeTest(Bac):
         modele.exporter(cfg, zip_)
         return modele.lire_sauvegarde(zip_)
 
+    def test_protections_desactivees_dans_la_sauvegarde_reactivees(self):
+        """v4.7.0 : une sauvegarde reçue d'un tiers désactivait le blocage
+        hors tunnel sans que rien ne le dise."""
+        nouvelle, ecartes = self._sauver_puis_lire(
+            {**copy.deepcopy(DEFAULT_CONFIG), "kill_switch": False, "block_ipv6": 0})
+        self.assertIs(nouvelle["kill_switch"], True)
+        self.assertIs(nouvelle["block_ipv6"], True)
+        self.assertEqual(len(ecartes), 2, ecartes)
+        self.assertTrue(any("Blocage hors tunnel" in e for e in ecartes))
+        self.assertTrue(any("IPv6" in e for e in ecartes))
+
+    def test_protections_actives_rien_a_signaler(self):
+        nouvelle, ecartes = self._sauver_puis_lire(copy.deepcopy(DEFAULT_CONFIG))
+        self.assertEqual(ecartes, [])
+        self.assertIs(nouvelle["kill_switch"], True)
+
     def test_aller_retour(self):
         (modele.PROVIDERS_DIR / "v").mkdir(parents=True)
         (modele.PROVIDERS_DIR / "v" / "v.conf").write_text(CONF)

@@ -44,6 +44,9 @@ PONT_ECOUTE       = "127.0.0.1:51871"
 # un second pont, à côté du tunnel en service, qui n'en voit rien.
 PONT_SONDE        = "127.0.0.1:51872"
 WG_CONF_SONDE     = Path("/etc/wireguard") / "katakomba-sonde.conf"
+# Ports UDP d'écoute des deux interfaces WireGuard (v4.7.0) : fixés, pour que
+# chaque pont ne prenne que les paquets de la sienne.
+WG_PORT, WG_PORT_SONDE = 51873, 51874
 # MTU du tunnel WireGuard quand le .conf n'en donne pas.  Les paquets voyagent
 # dans un flux TCP : la taille n'y est pas limitée, mais 1320 reste sûr
 # partout (valeur du client tiers pvpn pour Proton Stealth).  Mesuré à travers
@@ -82,6 +85,13 @@ KILL_CHAINS = (
     ("iptables",  "FORWARD", "KATAKOMBA_KILL_FWD",  False, True),
     ("ip6tables", "OUTPUT",  "KATAKOMBA_KILL6",     True,  False),
     ("ip6tables", "FORWARD", "KATAKOMBA_KILL6_FWD", True,  True),
+)
+
+# Garde du compte katakomba-vpn (v4.7.0) : (outil, chaîne parente, chaîne).
+# Voir FirewallMixin._garde_vpn_on.
+VPN_CHAINS = (
+    ("iptables",  "OUTPUT", "KATAKOMBA_VPN"),
+    ("ip6tables", "OUTPUT", "KATAKOMBA_VPN6"),
 )
 
 # Retour des connexions entrantes (v3.10.0) : une connexion arrivée par la
@@ -126,14 +136,16 @@ REPAIR_THRESHOLD  = 3   # full_restarts consécutifs avant réparation d'urgence
 RUN_TIMEOUT = 30
 
 
-def _run(*cmd) -> subprocess.CompletedProcess:
+def _run(*cmd, entree=None) -> subprocess.CompletedProcess:
     """Commande système, sortie capturée, jamais bloquante plus de
     RUN_TIMEOUT secondes.  Sur dépassement, le processus est tué et un
     résultat en échec (code 124, comme timeout(1)) est renvoyé : les
-    appelants testent déjà le code de retour."""
+    appelants testent déjà le code de retour.  entree : octets remis à
+    l'entrée standard (iptables-restore)."""
     argv = list(cmd)
     try:
-        return subprocess.run(argv, capture_output=True, timeout=RUN_TIMEOUT)
+        return subprocess.run(argv, capture_output=True, timeout=RUN_TIMEOUT,
+                              input=entree)
     except subprocess.TimeoutExpired:
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] [WARN ] Commande "
               f"interrompue après {RUN_TIMEOUT} s : {' '.join(argv)[:120]}",
@@ -260,6 +272,17 @@ class DaemonCore:
         self._stop_tor_flag      = False
         self._ipv6_blocked       = False
         self._kill_active        = False  # blocage hors tunnel en place
+        # Pose, retrait et vérification du pare-feu ne se croisent pas : la
+        # surveillance (toutes les 30 s) reposerait sinon une chaîne que la
+        # boucle VPN est en train de retirer.  Réentrant : la vérification
+        # appelle la pose, et l'arrêt (signal) peut l'interrompre.
+        self._pare_feu           = threading.RLock()
+        self._kill_attendu       = {}     # chaîne → nombre de règles posées
+        self._kill_echec         = ""     # dernier échec signalé (pas de redite)
+        self._kill_renonce       = False  # levé exprès : Tor resté en root
+        self._ks6_attendu        = {}     # idem, blocage IPv6
+        self._garde_vpn          = False  # garde du compte katakomba-vpn posée
+        self._ip_forward_avant   = None   # valeur d'origine, rendue à l'arrêt
         self._lan_active         = False
         self._lan_tun            = ""    # interface tunnel figée dans les règles LAN
         self._lan_iface          = ""    # carte et adresse posées, revérifiées
@@ -400,7 +423,7 @@ class DaemonCore:
                     loaded = json.load(f)
                 if not isinstance(loaded, dict):
                     raise ValueError("config.json ne contient pas un objet JSON")
-                return {**defaults, **loaded}
+                return self._typer_config({**defaults, **loaded})
             except Exception as e:
                 # config corrompue : la mettre de côté plutôt que de la perdre,
                 # et le signaler dans le journal (sinon démarrage en défauts muet).
@@ -412,6 +435,45 @@ class DaemonCore:
                 except Exception:
                     pass
         return defaults
+
+    def _typer_config(self, cfg: dict) -> dict:
+        """Écarte de config.json ce qui n'a pas la forme attendue.  Le
+        fichier est inscriptible par le groupe et s'édite à la main : un
+        fournisseur qui n'est pas un objet, un nombre écrit entre guillemets,
+        faisaient mourir la boucle VPN sur une exception, puis redémarrer le
+        service sans fin.  Les messages nomment la clé, jamais la valeur."""
+        for cle, defaut in DEFAULT_CONFIG.items():
+            if defaut is None:
+                continue
+            v = cfg.get(cle)
+            if isinstance(defaut, bool):
+                ok = isinstance(v, bool)
+            elif isinstance(defaut, int):
+                ok = isinstance(v, (int, float)) and not isinstance(v, bool)
+            else:
+                ok = isinstance(v, type(defaut))
+            if not ok:
+                self._log(f"config.json : « {cle} » n'a pas la forme attendue — "
+                          "valeur par défaut utilisée.", "ERROR")
+                cfg[cle] = copy.deepcopy(defaut)
+        fournisseurs = []
+        for n, p in enumerate(cfg["providers"], 1):
+            if not isinstance(p, dict) or not isinstance(p.get("name"), str):
+                self._log(f"config.json : fournisseur n° {n} illisible (objet avec "
+                          "un nom attendu) — ignoré.", "ERROR")
+                continue
+            for cle in ("accounts", "wireguard"):
+                liste = p.get(cle, [])
+                if not (isinstance(liste, list) and all(isinstance(e, dict) for e in liste)):
+                    self._log(f"config.json : fournisseur n° {n}, « {cle} » "
+                              "illisible — ignoré.", "ERROR")
+                    p = {**p, cle: []}
+            for cle in ("ovpn_file",):
+                if not isinstance(p.get(cle, ""), str):
+                    p = {**p, cle: ""}
+            fournisseurs.append(p)
+        cfg["providers"] = fournisseurs
+        return cfg
 
     # ── Logging ───────────────────────────────────────────────────────────────
 
@@ -435,8 +497,13 @@ class DaemonCore:
         self._teardown_lan_sharing()
         self._ipv6_block_off()
         self._remove_dns_split()
-        # En dernier : le service s'arrête, la connexion normale revient.
-        self._kill_switch_off()
+        self._garde_vpn_off()
+        # Le blocage hors tunnel en dernier — et, sous systemd, pas ici : le
+        # script d'ExecStopPost le lève si le service s'ARRÊTE et le garde
+        # s'il REDÉMARRE (réveil de veille, mise à jour).  Lui seul le sait ;
+        # le lever ici ouvrait la connexion normale à chaque redémarrage.
+        if not os.environ.get("NOTIFY_SOCKET"):
+            self._kill_switch_off()
         self._stop_status_server()
         if AUTH_TMP.exists():
             AUTH_TMP.unlink()
@@ -459,10 +526,9 @@ class DaemonCore:
         _purge_jumps("ip6tables", "OUTPUT",  KS6_CHAIN)
         _purge_jumps("ip6tables", "FORWARD", KS6_FWD_CHAIN)
         _purge_jumps("iptables",  "FORWARD", KS_LAN_CHAIN)
-        for tool, parent, chain, _v6, _fwd in KILL_CHAINS:
-            _purge_jumps(tool, parent, chain)
-            _run(tool, "-F", chain)
-            _run(tool, "-X", chain)
+        # Pas les chaînes KATAKOMBA_KILL* : gardées exprès d'un lancement à
+        # l'autre (sortie en échec, redémarrage), elles protègent jusqu'à ce
+        # que _kill_switch_on les remplace, d'un seul tenant.
         for args in [
             ("ip6tables", "-F", KS6_CHAIN),
             ("ip6tables", "-X", KS6_CHAIN),
@@ -527,6 +593,11 @@ class DaemonCore:
             if self._tor_ready.wait(2):
                 return True
             prog = self._tor_bootstrap_progress()
+            # Le port de contrôle n'est cru que si NOTRE Tor tourne : avant
+            # son démarrage, tout compte local peut occuper 9051 et répondre
+            # « 100 % » à sa place.
+            if not (self.tor_process and self.tor_process.poll() is None):
+                prog = -1
             self._tor_bootstrap = max(self._tor_bootstrap, prog)
             if prog >= 100:
                 self._tor_ready.set()
@@ -573,7 +644,14 @@ class DaemonCore:
         self.cleanup_stale_rules()
         # Avant Tor : rien ne doit sortir à découvert, même pendant le
         # bootstrap ou la première connexion.
-        self._kill_switch_on()
+        self._garde_vpn_on()
+        if not self._kill_switch_on():
+            # Rien ne reste d'un lancement précédent (réglage désactivé
+            # entre-temps, ou pose impossible : jamais de blocage à moitié).
+            self._kill_switch_off(force=True)
+            if self.config.get("kill_switch", True):
+                self._log("Le service continue SANS blocage hors tunnel ; "
+                          "nouvel essai toutes les 30 s.", "ERROR")
         self._start_status_server()
         if not self._start_services():
             sys.exit(1)

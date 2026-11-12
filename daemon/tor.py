@@ -204,6 +204,7 @@ class TorMixin:
             self._log("[tor] Tor reste en root : le blocage hors tunnel "
                       "l'empêcherait de joindre ses relais — blocage levé.", "ERROR")
             self._kill_switch_off()
+            self._kill_renonce = True       # pas de repose par la surveillance
         cmd = self._tor_command(user)
         self._tor_ready.clear()
         self._stop_tor_flag = False

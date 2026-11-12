@@ -116,6 +116,16 @@ class Recorder:
         argv = list(cmd[0]) if len(cmd) == 1 and isinstance(cmd[0], (list, tuple)) else list(cmd)
         line = " ".join(str(c) for c in argv)
         self.calls.append(line)
+        # iptables-restore : chaque ligne remise à son entrée est notée comme
+        # la commande iptables équivalente (« iptables -A CHAÎNE … »), et un
+        # motif de réponse qui y correspond fait échouer le tout — comme le
+        # vrai, qui ne pose rien si une seule règle est refusée.
+        entree = kwargs.get("entree")
+        if entree and str(argv[0]).endswith("-restore"):
+            outil = str(argv[0])[:-len("-restore")]
+            lignes = [f"{outil} {l}" for l in entree.decode().splitlines()]
+            self.calls += lignes
+            line = "\n".join([line, *lignes])
         for pattern, (rc, out) in self.responses:
             if pattern in line:
                 r = Result(rc, out)

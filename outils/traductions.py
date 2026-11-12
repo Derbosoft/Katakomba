@@ -32,7 +32,7 @@ POT = PO_DIR / "katakomba.pot"
 FONCTIONS_SIMPLES = {"_", "N_"}
 # Diagnostic : du Python dans un document bash (« doctor » du CLI).
 CLI = RACINE / "katakomba-cli.sh"
-_DOCTOR = re.compile(r'python3 - "\$DAEMON_DIR" "\$\{@:2\}" << \'PYEOF\'\n(.*?)\nPYEOF',
+_DOCTOR = re.compile(r'python3 -I - "\$DAEMON_DIR" "\$\{@:2\}" << \'PYEOF\'\n(.*?)\nPYEOF',
                      re.S)
 
 

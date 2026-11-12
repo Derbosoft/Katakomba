@@ -204,11 +204,16 @@ class CleanupStaleRulesTest(unittest.TestCase):
 
     def test_supprime_les_trois_chaines(self):
         _, r = self._run()
-        for chaine in ("KATAKOMBA_KS6", "KATAKOMBA_KS6_FWD", "KATAKOMBA_LAN_FWD",
-                       "KATAKOMBA_KILL", "KATAKOMBA_KILL_FWD", "KATAKOMBA_KILL6",
-                       "KATAKOMBA_KILL6_FWD"):
+        for chaine in ("KATAKOMBA_KS6", "KATAKOMBA_KS6_FWD", "KATAKOMBA_LAN_FWD"):
             self.assertTrue(r.ran("-F", chaine), f"{chaine} non vidée")
             self.assertTrue(r.ran("-X", chaine), f"{chaine} non supprimée")
+
+    def test_blocage_hors_tunnel_garde(self):
+        """v4.7.0 : les chaînes d'un lancement précédent (sortie en échec,
+        redémarrage) protègent jusqu'à leur remplacement par _kill_switch_on.
+        Les purger ici ouvrait la connexion normale à chaque démarrage."""
+        _, r = self._run()
+        self.assertFalse(r.ran("KATAKOMBA_KILL"), r.dump())
 
     def test_nat_lan_pour_tun0_et_tun1(self):
         _, r = self._run()
@@ -257,8 +262,8 @@ class RunOrderTest(unittest.TestCase):
         d = FakeDaemon(config={"providers": [provider("vpn-a")]})
         ordre = []
         for nom in ("_check_dns_stack", "cleanup_stale_rules", "_kill_switch_on",
-                    "_start_status_server"):
-            setattr(d, nom, (lambda n: lambda: ordre.append(n))(nom))
+                    "_start_status_server", "_garde_vpn_on"):
+            setattr(d, nom, (lambda n: lambda: ordre.append(n) or True)(nom))
         d._start_services = lambda: ordre.append("_start_services") or False
         saved = m_core._ensure_private_dir
         m_core._ensure_private_dir = lambda *a, **k: None
@@ -269,6 +274,43 @@ class RunOrderTest(unittest.TestCase):
             m_core._ensure_private_dir = saved
         self.assertLess(ordre.index("cleanup_stale_rules"), ordre.index("_kill_switch_on"))
         self.assertLess(ordre.index("_kill_switch_on"), ordre.index("_start_services"))
+        self.assertLess(ordre.index("_garde_vpn_on"), ordre.index("_start_services"))
+
+    def _lancer(self, pose: bool, **cfg):
+        from tests.helpers import provider
+        d = FakeDaemon(config={"providers": [provider("vpn-a")], **cfg})
+        d.leves = []
+        for nom in ("_check_dns_stack", "cleanup_stale_rules", "_start_status_server",
+                    "_garde_vpn_on"):
+            setattr(d, nom, lambda: None)
+        d._kill_switch_on = lambda: pose
+        d._kill_switch_off = lambda force=False: d.leves.append(force)
+        d._start_services = lambda: False
+        saved = m_core._ensure_private_dir
+        m_core._ensure_private_dir = lambda *a, **k: None
+        try:
+            with self.assertRaises(SystemExit):
+                d.run()
+        finally:
+            m_core._ensure_private_dir = saved
+        return d
+
+    def test_blocage_pose_rien_n_est_retire(self):
+        self.assertEqual(self._lancer(True).leves, [])
+
+    def test_pose_impossible_signalee_et_reste_d_avant_retire(self):
+        """Le retour de _kill_switch_on était ignoré : le service continuait
+        sans blocage, sans le dire."""
+        d = self._lancer(False)
+        self.assertEqual(d.leves, [True])
+        self.assertTrue(d.has_log("SANS blocage hors tunnel", "ERROR"))
+
+    def test_blocage_desactive_chaines_d_avant_retirees(self):
+        """Désactivé puis redémarré : le blocage gardé pendant le
+        redémarrage ne doit pas rester."""
+        d = self._lancer(False, kill_switch=False)
+        self.assertEqual(d.leves, [True])
+        self.assertFalse(d.has_log("SANS blocage hors tunnel"))
 
 
 class HandleSignalTest(unittest.TestCase):
@@ -280,9 +322,34 @@ class HandleSignalTest(unittest.TestCase):
         for nom in ("_stop_openvpn", "_stop_tor", "_revert_vpn_dns",
                     "_cleanup_tor_routes", "_teardown_lan_sharing",
                     "_ipv6_block_off", "_remove_dns_split", "_stop_status_server",
-                    "_kill_switch_off", "_demonter_tunnel"):
+                    "_kill_switch_off", "_demonter_tunnel", "_garde_vpn_off"):
             setattr(d, nom, (lambda n: lambda: d.appels.append(n))(nom))
         return d
+
+    def test_sous_systemd_le_blocage_reste_au_script_d_arret(self):
+        """v4.7.0 : le daemon ne sait pas s'il s'arrête ou redémarre ; le
+        script d'ExecStopPost, si.  Levé ici, le blocage tombait à chaque
+        réveil de veille et à chaque mise à jour."""
+        d = self._daemon()
+        saved = os.environ.get("NOTIFY_SOCKET")
+        os.environ["NOTIFY_SOCKET"] = "/nulle/part"
+        d_notify, m_core._sd_notify = m_core._sd_notify, lambda m: None
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                auth, m_core.AUTH_TMP = m_core.AUTH_TMP, pathlib.Path(tmp) / "a"
+                try:
+                    with self.assertRaises(SystemExit):
+                        d.handle_signal(15, None)
+                finally:
+                    m_core.AUTH_TMP = auth
+        finally:
+            m_core._sd_notify = d_notify
+            if saved is None:
+                del os.environ["NOTIFY_SOCKET"]
+            else:
+                os.environ["NOTIFY_SOCKET"] = saved
+        self.assertNotIn("_kill_switch_off", d.appels)
+        self.assertIn("_garde_vpn_off", d.appels)
 
     def test_tout_est_defait(self):
         d = self._daemon()
@@ -354,6 +421,7 @@ class WaitTorReadyTest(unittest.TestCase):
         if pose:
             ev.set()
         d._tor_ready = ev
+        d.tor_process = types.SimpleNamespace(poll=lambda: None)   # Tor tourne
         if progression is not None:
             valeurs = iter(progression)
             d._tor_bootstrap_progress = lambda: next(valeurs, progression[-1])
@@ -367,6 +435,16 @@ class WaitTorReadyTest(unittest.TestCase):
         self.assertTrue(d._wait_tor_ready(5))
         self.assertTrue(d._tor_ready.is_set(), "l'événement devrait être posé")
         self.assertTrue(d.has_log("Bootstrap 100 % (ControlPort)", "OK"))
+
+    def test_controlport_ignore_si_notre_tor_ne_tourne_pas(self):
+        """Avant le démarrage de Tor, tout compte local peut occuper le port
+        9051 et répondre « 100 % » : le daemon lançait alors le VPN à travers
+        un proxy qui n'était pas Tor."""
+        for processus in (None, types.SimpleNamespace(poll=lambda: 1)):
+            d = self._daemon(progression=[100])
+            d.tor_process = processus
+            self.assertFalse(d._wait_tor_ready(0.05))
+            self.assertFalse(d._tor_ready.is_set())
 
     def test_progression_journalisee_une_fois_par_palier(self):
         d = self._daemon(progression=[10, 10, 50, 50, 100])

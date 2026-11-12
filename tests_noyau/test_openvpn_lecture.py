@@ -101,3 +101,105 @@ class LectureOpenvpnTest(unittest.TestCase):
                 with open(chemin, "w", newline="") as f:
                     f.write(texte)
                 self.assertEqual(openvpn_lit(chemin), ("directive", "kksonde1"), repr(texte))
+
+
+# Certificat d'essai (CN=essai, sans clé) : OpenVPN exige une autorité pour
+# démarrer ; aucune poignée de main TLS n'a lieu ici.
+_CA = """-----BEGIN CERTIFICATE-----
+MIIBdzCCAR2gAwIBAgIUZ7aynl0uRVEL+XXCAowHuJfCX7cwCgYIKoZIzj0EAwIw
+EDEOMAwGA1UEAwwFZXNzYWkwIBcNMjYxMTEyMDYzNzI4WhgPMjEyNjEwMTkwNjM3
+MjhaMBAxDjAMBgNVBAMMBWVzc2FpMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
+7qxF7a1e8ORU7I2DcfaJ0bUMxtfA4yn9TKY921xWipsiAtuVRWP3K3I2Lh+7bVcK
+8fChPB2kelS4D+3ifL70HKNTMFEwHQYDVR0OBBYEFJvi27t4m+zgquFBtyUh3gvU
+m/ztMB8GA1UdIwQYMBaAFJvi27t4m+zgquFBtyUh3gvUm/ztMA8GA1UdEwEB/wQF
+MAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIhAN7NfK+b/1SalF1wyEIZxQRcMFroBXL2
++MrJ3j8u1c1UAiA17GCI04BqZGRUiz0tGyrRs61iBYp5LbfFJR7VPleWMg==
+-----END CERTIFICATE-----
+"""
+PORT_SERVEUR = 11194
+
+
+@unittest.skipUnless(OPENVPN, "openvpn absent")
+@unittest.skipUnless(os.environ.get("KATAKOMBA_NOYAU") == "1",
+                     "lancer avec bash tests_noyau/lancer.sh (port 9050 pris ici)")
+class PassageParTorTest(unittest.TestCase):
+    """v4.7.0 : avec les options du daemon, OpenVPN rejoint le proxy de Tor
+    (127.0.0.1:9050), jamais le serveur en direct — blocs <connection>
+    compris, qui ignorent tout « --socks-proxy » donné après eux."""
+
+    PLAT = f"client\nproto tcp\nremote 127.0.0.1 {PORT_SERVEUR}\n"
+    BLOCS = (f"client\n<connection>\nremote 127.0.0.1 {PORT_SERVEUR} tcp\n"
+             f"</connection>\n<connection>\nremote 127.0.0.1 {PORT_SERVEUR} tcp\n"
+             "socks-proxy 127.0.0.1 1\n</connection>\n")
+
+    def _ou_va_openvpn(self, texte, copie=True) -> set:
+        """Ports locaux qu'OpenVPN a joints : 9050 (Tor) ou le serveur."""
+        import socket
+        import threading
+        import validation
+        subprocess.run(["ip", "link", "set", "lo", "up"], check=True)
+        joints, ecoutes = set(), []
+        for port in (9050, PORT_SERVEUR):
+            s = socket.socket()
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", port))
+            s.listen(4)
+            s.settimeout(0.2)
+            ecoutes.append(s)
+        fin = threading.Event()
+
+        def ecouter(s):
+            while not fin.is_set():
+                try:
+                    c, _ = s.accept()
+                except OSError:
+                    continue
+                joints.add(s.getsockname()[1])
+                c.close()
+
+        fils = [threading.Thread(target=ecouter, args=(s,), daemon=True) for s in ecoutes]
+        for f in fils:
+            f.start()
+        texte += f"<ca>\n{_CA}</ca>\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            conf, auth = os.path.join(tmp, "c.conf"), os.path.join(tmp, "auth")
+            with open(conf, "w", newline="") as f:
+                f.write(validation.preparer_copie_ovpn(texte) if copie else texte)
+            with open(auth, "w") as f:
+                f.write("u\np\n")
+            os.chmod(auth, 0o600)
+            # Les options du daemon (daemon/openvpn.py), dans le même ordre.
+            p = subprocess.Popen(
+                [OPENVPN, "--config", conf, "--auth-user-pass", auth,
+                 "--script-security", "1", "--verb", "3", "--connect-timeout", "60",
+                 "--connect-retry", "1", "--connect-retry-max", "1",
+                 "--socks-proxy", "127.0.0.1", "9050", "--dev", "null",
+                 "--ifconfig-noexec", "--route-noexec", "--disable-dco"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=tmp)
+            try:
+                for _ in range(60):
+                    if joints or p.poll() is not None:
+                        break
+                    fin.wait(0.1)
+                fin.wait(0.5)            # une seconde connexion éventuelle
+            finally:
+                p.kill()
+                p.wait()
+                fin.set()
+                for f in fils:
+                    f.join()
+                for s in ecoutes:
+                    s.close()
+        return joints
+
+    def test_fichier_plat(self):
+        self.assertEqual(self._ou_va_openvpn(self.PLAT), {9050})
+
+    def test_blocs_connection(self):
+        self.assertEqual(self._ou_va_openvpn(self.BLOCS), {9050})
+
+    def test_sans_la_copie_les_blocs_sortaient_sans_tor(self):
+        """Le défaut corrigé, sur le vrai binaire : c'est bien la copie — le
+        proxy en tête — qui protège, pas la ligne de commande."""
+        self.assertEqual(self._ou_va_openvpn(self.BLOCS.replace(
+            "socks-proxy 127.0.0.1 1\n", ""), copie=False), {PORT_SERVEUR})

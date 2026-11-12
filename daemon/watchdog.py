@@ -335,12 +335,16 @@ class WatchdogMixin:
             # tunnel, sinon boucle de routage (le tunnel dépend du guard).
             # Repose au passage ce qu'un tiers a effacé (systemd-networkd).
             guard_tick += 1
-            if self._tunnel_up and guard_tick >= self._GUARD_REFRESH_TICKS:
+            if guard_tick >= self._GUARD_REFRESH_TICKS:
                 guard_tick = 0
-                self._entretien_routage()
-                # Même rythme (~30s) : revérifie que le DNS n'a pas été
-                # effacé par un redémarrage externe de systemd-resolved.
-                self._ensure_dns_config()
+                # Tunnel monté ou non : c'est sans tunnel que le blocage
+                # hors tunnel compte le plus.
+                self._verifier_blocage()
+                if self._tunnel_up:
+                    self._entretien_routage()
+                    # Même rythme (~30s) : revérifie que le DNS n'a pas été
+                    # effacé par un redémarrage externe de systemd-resolved.
+                    self._ensure_dns_config()
 
             if self._tunnel_up:
                 self._light_restart_at = 0.0     # la relance légère a abouti

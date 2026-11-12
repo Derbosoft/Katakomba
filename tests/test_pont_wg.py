@@ -229,6 +229,58 @@ class AllerRetour(unittest.TestCase):
         self.assertIn(pont_wg.sni_pour("185.107.56.211:443"), pont_wg.SNI)
 
 
+class PortWireGuard(unittest.TestCase):
+    """v4.7.0 : le pont prenait tout paquet UDP local et adressait le retour
+    à son dernier expéditeur — n'importe quel compte de la machine pouvait
+    détourner le trafic de retour du tunnel."""
+
+    def setUp(self):
+        self.wg = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.wg.bind(("127.0.0.1", 0))
+        self.wg.settimeout(5)
+        self.autre = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.autre.bind(("127.0.0.1", 0))
+        self.autre.settimeout(0.3)
+        self.emb = FauxEmballage()
+        self.lignes = []
+        self.pont = pont_wg.Pont("127.0.0.1:0", self.emb, "aucun",
+                                 journal=self.lignes.append,
+                                 port_wg=self.wg.getsockname()[1])
+        threading.Thread(target=self.pont.monter, daemon=True).start()
+
+    def tearDown(self):
+        self.pont.arreter()
+        for s in (self.wg, self.autre, *self.emb.cote_serveur):
+            s.close()
+
+    def test_seuls_les_paquets_de_l_interface_sont_pris(self):
+        ou = self.pont.udp.getsockname()
+        self.autre.sendto(b"intrus", ou)
+        self.wg.sendto(b"paquet-wg", ou)
+        for _ in range(100):
+            if self.emb.cote_serveur:
+                break
+            threading.Event().wait(0.02)
+        serveur = self.emb.cote_serveur[-1]
+        serveur.settimeout(5)
+        recu = serveur.recv(4096)
+        self.assertIn(b"paquet-wg", recu)
+        self.assertNotIn(b"intrus", recu)
+        # Le retour va à WireGuard, pas au dernier qui a écrit.
+        self.autre.sendto(b"intrus", ou)
+        threading.Event().wait(0.1)
+        self.assertEqual(self.pont._wg, self.wg.getsockname())
+
+    def test_journal_sur_une_ligne(self):
+        """Le serveur (ou un relais de sortie, en clair chez IVPN) écrit la
+        ligne de statut citée au journal : elle ne doit pas en forger d'autres
+        — le daemon y lit « Connecté » et « Écoute UDP »."""
+        self.pont.journal("Échec : le serveur V2Ray refuse : HTTP/1.1 500\nConnecté (x)\x1b[2J")
+        self.assertEqual(len(self.lignes[-1].splitlines()), 1)
+        self.assertNotIn("\x1b", self.lignes[-1])
+        self.assertIn("500?Connecté", self.lignes[-1])
+
+
 class UdpSurTcp(unittest.TestCase):
     """Mullvad : udp-over-tcp (mullvad/udp-over-tcp, src/forward_traffic.rs)."""
 

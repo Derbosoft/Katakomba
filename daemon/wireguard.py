@@ -33,6 +33,7 @@ import time
 from .core import (
     _run, _read_regular, _write_private, PONT_ECOUTE, PONT_PATTERN, PONT_SONDE,
     SCRIPT_DIR, TUN_SONDE, WG_CONF_RUN, WG_CONF_SONDE, WG_MTU_DEFAUT,
+    WG_PORT, WG_PORT_SONDE,
 )
 from .gestion_wg import SERVEURS_GERES, service_gere
 from validation import analyser_wg, chemin_fournisseur_sur, conf_wg_noyau
@@ -153,7 +154,8 @@ class WireGuardMixin:
             # La clé privée ne fait que passer : fichier 0600 en root, effacé
             # dès que wg l'a lu.
             _write_private(fichier, conf_wg_noyau(
-                reglages, PONT_SONDE if sonde else PONT_ECOUTE))
+                reglages, PONT_SONDE if sonde else PONT_ECOUTE,
+                WG_PORT_SONDE if sonde else WG_PORT))
             r = _run("wg", "setconf", tun, str(fichier))
             erreur = "" if r.returncode == 0 else "wg setconf a échoué"
             issue = "interface"
@@ -191,7 +193,8 @@ class WireGuardMixin:
                "--emballage", reglages["emballage"],
                "--serveur",   reglages["serveur"],
                "--socks",     "127.0.0.1:9050",
-               "--ecoute",    ecoute]
+               "--ecoute",    ecoute,
+               "--wireguard", str(WG_PORT_SONDE if sonde else WG_PORT)]
         if reglages["emballage"] == "ivpn":
             cmd += ["--cible", reglages["cible"], "--uuid", reglages["uuid"]]
         proc = subprocess.Popen(

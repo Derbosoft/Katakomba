@@ -74,6 +74,48 @@ class Fichier(unittest.TestCase):
                          ("ivpn", "95.211.1.3:80"))
 
 
+class Liberer(unittest.TestCase):
+    """Désinstallation : l'échange avec l'API ne se fait pas en root."""
+
+    def test_hors_root_sur_place(self):
+        vus = []
+        r = ivpn.appel_sans_droit("/x/ivpn.py", "aucun", {"action": "fermer", "jeton": "j"},
+                                  lambda socks, requete: vus.append((socks, requete)) or {"ok": True})
+        self.assertEqual(r, {"ok": True})
+        self.assertEqual(vus, [("aucun", '{"action": "fermer", "jeton": "j"}')])
+
+    def test_en_root_processus_sans_droit(self):
+        import subprocess
+        import types
+        lances = []
+
+        def run(cmd, **kw):
+            lances.append((cmd, kw))
+            return types.SimpleNamespace(stdout='{"ok": true}')
+
+        with mock.patch.object(ivpn.os, "geteuid", return_value=0), \
+                mock.patch("pwd.getpwnam", return_value=types.SimpleNamespace(
+                    pw_uid=997, pw_gid=996)), \
+                mock.patch.object(subprocess, "run", run):
+            r = ivpn.appel_sans_droit("/opt/katakomba/ivpn.py", "127.0.0.1:9050",
+                                      {"action": "fermer", "jeton": "j"},
+                                      lambda *a: self.fail("échange fait en root"))
+        self.assertEqual(r, {"ok": True})
+        cmd, kw = lances[0]
+        self.assertEqual(cmd[1:], ["-I", "/opt/katakomba/ivpn.py", "api",
+                                   "--socks", "127.0.0.1:9050"])
+        self.assertEqual((kw["user"], kw["group"], kw["extra_groups"]), (997, 996, []))
+        self.assertNotIn("j", " ".join(cmd), "jeton en argument (visible de tous)")
+
+    def test_en_root_sans_le_compte_rien_n_est_tente(self):
+        def absent(_nom):
+            raise KeyError(_nom)
+        with mock.patch.object(ivpn.os, "geteuid", return_value=0), \
+                mock.patch("pwd.getpwnam", absent):
+            r = ivpn.appel_sans_droit("/x", "aucun", {}, lambda *a: self.fail("en root"))
+        self.assertFalse(r["ok"])
+
+
 class Api(unittest.TestCase):
 
     def _session(self, reponse, statut=200):

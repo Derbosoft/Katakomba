@@ -10,8 +10,8 @@ Only the latest release receives fixes.
 
 | Version | Supported |
 |---------|-----------|
-| 4.6.x   | ✅ |
-| < 4.6   | ❌ |
+| 4.7.x   | ✅ |
+| < 4.7   | ❌ |
 
 ## Reporting a vulnerability
 
@@ -44,7 +44,7 @@ Especially relevant:
 - an `.ovpn`, WireGuard `.conf` or torrc directive that bypasses the allowlists (`validation.py`);
 - credentials written to the journal, the status socket or a world-readable file.
 
-Out of scope: the known, documented limits (the kill switch is lifted while the service is stopped or being relaunched after a crash, base64 obfuscation of credentials in `config.json`). See the [Security section of the README](README.md#security).
+Out of scope: the known, documented limits (the kill switch is lifted while the service is stopped and not yet set before it first starts after boot, base64 obfuscation of credentials in `config.json`). See the [Security section of the README](README.md#security).
 
 ---
 
@@ -59,4 +59,4 @@ Indiquez la version (`katakomba status`), la distribution, les étapes pour repr
 
 Les paquets joints à une version sont construits par GitHub Actions depuis le commit du tag, jamais sur un poste personnel : `sha256sum -c SHA256SUMS --ignore-missing` vérifie qu'ils sont intacts, `gh attestation verify <paquet> -R Derbosoft/Katakomba` qu'ils sortent bien de ce dépôt. La construction est reproductible (README, *Vérifier un téléchargement*).
 
-Seule la dernière version reçoit des correctifs. Les limites connues et documentées (blocage hors tunnel levé quand le service est arrêté ou en cours de relance après un plantage, identifiants en base64 dans `config.json`) ne sont pas des vulnérabilités : voir la section [Sécurité du README](README.fr.md#sécurité).
+Seule la dernière version reçoit des correctifs. Les limites connues et documentées (blocage hors tunnel levé quand le service est arrêté et pas encore posé avant son premier démarrage, identifiants en base64 dans `config.json`) ne sont pas des vulnérabilités : voir la section [Sécurité du README](README.fr.md#sécurité).

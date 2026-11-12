@@ -203,9 +203,11 @@ class PrepareOvpnTest(unittest.TestCase):
         d, chemin = self._prep(contenu)
         self.assertEqual(chemin, str(m_openvpn.OVPN_RUN), d.log_dump())
         # Copie lisible par OpenVPN seul ; l'interface est imposée par le daemon.
-        self.assertEqual(pathlib.Path(chemin).read_text(),
-                         contenu.replace("dev tun\n",
-                                         "# dev tun    # katakomba : géré par le daemon\n"))
+        self.assertEqual(
+            pathlib.Path(chemin).read_text(),
+            "# katakomba : imposé par le daemon\nsocks-proxy 127.0.0.1 9050\n"
+            "connect-timeout 60\nconnect-retry 1\nconnect-retry-max 1\n"
+            + contenu.replace("dev tun\n", "# katakomba : « dev » géré par le daemon\n"))
         self.assertEqual(stat.S_IMODE(os.stat(chemin).st_mode), 0o640)
         self.assertEqual(d.logs, [], d.log_dump())
 

@@ -82,6 +82,15 @@ case "${1:-help}" in
         _need_root "$@"
         systemctl stop katakomba-essai.timer 2>/dev/null || true
         systemctl stop "$SERVICE" && echo "Service arrêté."
+        # Le blocage hors tunnel, gardé quand le service redémarre ou sort en
+        # échec, ne doit pas survivre à un arrêt demandé : arrêté pendant
+        # l'attente d'un redémarrage, le service n'exécute plus son script.
+        for c in /usr/lib/katakomba/katakomba-cleanup.sh /usr/local/lib/katakomba-cleanup.sh; do
+            if [ -x "$c" ] && [ ! -L "$c" ]; then
+                "$c" >/dev/null 2>&1 || true
+                break
+            fi
+        done
         ;;
 
     restart)
@@ -209,7 +218,7 @@ case "${1:-help}" in
         fi
         echo ""
         # État précis via le socket du daemon ; repli sur pgrep si absent.
-        DSTATUS=$(python3 - << 'PYEOF' 2>/dev/null
+        DSTATUS=$(python3 -I - << 'PYEOF' 2>/dev/null
 import json, socket
 try:
     d = None
@@ -302,7 +311,7 @@ PYEOF
         # de vérifié non plus côté daemon.
         # --json : mêmes résultats pour l'interface graphique.  Textes dans la
         # langue de l'utilisateur (KATAKOMBA_LANGUE, sinon celle du système).
-        python3 - "$DAEMON_DIR" "${@:2}" << 'PYEOF'
+        python3 -I - "$DAEMON_DIR" "${@:2}" << 'PYEOF'
 import datetime, importlib.util, json, os, socket, subprocess, sys, time
 
 DAEMON_DIR = sys.argv[1] if len(sys.argv) > 1 else ""

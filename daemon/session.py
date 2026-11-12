@@ -320,8 +320,13 @@ class SessionMixin:
         # (drop-in) qui garde la priorité sur les domaines exclus.
         self._apply_vpn_dns()
         self._apply_dns_split()
-        if self.config.get("block_ipv6"):
+        if self.config.get("block_ipv6", True):
             self._ipv6_block_on()
+        elif not self._kill_active:
+            self._log("IPv6 ni bloqué ni porté par le tunnel : sur un réseau "
+                      "IPv6, ce trafic sort à découvert, avec votre adresse "
+                      "réelle. Activez « Bloquer IPv6 pendant la connexion ».",
+                      "WARN")
         if self.config.get("lan_auto") and self.config.get("lan_iface"):
             self._setup_lan_sharing()
         # Contrôle qualité du circuit — en thread : la mesure ne doit pas

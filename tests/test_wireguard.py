@@ -171,6 +171,9 @@ class AnalyserWgTest(unittest.TestCase):
         """Réécrite par le daemon : pair joint par le pont, rien d'autre."""
         r, _, _ = analyser_wg(PROTON.replace("DNS = 10.2.0.1", "DNS = 10.2.0.1\nPostUp = x"))
         texte = conf_wg_noyau(r, "127.0.0.1:51871")
+        self.assertNotIn("ListenPort", texte)
+        self.assertIn("[Interface]\nPrivateKey = " + CLE_A + "\nListenPort = 51873\n\n[Peer]",
+                      conf_wg_noyau(r, "127.0.0.1:51871", 51873))
         self.assertIn("Endpoint = 127.0.0.1:51871", texte)
         self.assertIn("AllowedIPs = 0.0.0.0/0\n", texte)
         self.assertIn(f"PrivateKey = {CLE_A}", texte)
@@ -371,6 +374,7 @@ class LancerPontTest(unittest.TestCase):
         self.assertIn("--emballage proton --serveur 185.107.56.211:443", args)
         self.assertIn("--socks 127.0.0.1:9050", args)
         self.assertIn("--ecoute 127.0.0.1:51871", args)
+        self.assertIn("--wireguard 51873", args, "le pont prendrait tout paquet local")
         self.assertNotIn(CLE_A, args, "clé privée en argument (visible de tous)")
 
     def test_arguments_ivpn(self):

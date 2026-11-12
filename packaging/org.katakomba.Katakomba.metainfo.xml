@@ -95,6 +95,19 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.7.0" date="2026-11-12">
+      <description>
+        <p>Security release, after a full audit: one way around Tor closed, and a kill switch that holds.</p>
+        <ul>
+          <li>An .ovpn file using connection blocks made OpenVPN ignore the Tor proxy: with the kill switch off, the VPN connected directly. The proxy is now written at the top of the validated copy, and the unprivileged VPN account can reach the loopback interface only</li>
+          <li>The kill switch stays in place when the service restarts or exits on failure (resume from sleep, upgrade, Tor blocked, crash); it is lifted only when the service is stopped</li>
+          <li>The kill switch is checked every 30 seconds and put back if another tool removed it or inserted rules above it</li>
+          <li>IPv6 is blocked by default while the tunnel is up; local IPv6 keeps working</li>
+          <li>The installer no longer changes ownership or permissions through paths the katakomba group can replace; a malformed WireGuard file is refused instead of stopping the VPN loop</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.7.0</url>
+    </release>
     <release version="4.6.0" date="2026-11-09">
       <description>
         <p>Every new circuit can be measured again, and a fleet can mix account orders.</p>

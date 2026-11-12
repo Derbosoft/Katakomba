@@ -29,7 +29,8 @@ INSTALL_DIR="/opt/katakomba"
 
 # WireGuard géré : la place de ce PC (session IVPN, appareil Mullvad) occupe
 # une place d'appareil sur le compte.  On la rend tant que Tor, lancé par le
-# service, tourne encore.
+# service, tourne encore.  L'échange avec l'API se fait sans aucun droit
+# (compte katakomba-vpn) : root ne lit et n'efface que le fichier d'état.
 for service in ivpn mullvad; do
     if [ -f "/var/lib/katakomba/$service-session.json" ] && [ -f "$INSTALL_DIR/$service.py" ]; then
         echo "Fermeture de la place $service de ce PC …"

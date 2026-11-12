@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.6.0
+# Katakomba — v4.7.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.6.0-blue)
+![Version](https://img.shields.io/badge/Version-4.7.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -191,10 +191,10 @@ apt install tor openvpn python3 curl python3-gi python3-gi-cairo gir1.2-gtk-4.0 
 
 **5. Service systemd**
 Crée `/etc/systemd/system/katakomba.service` :
-- `ExecStartPre` : script de nettoyage iptables (efface les règles orphelines d'une session précédente)
+- `ExecStartPre` : script de nettoyage (efface les règles orphelines d'une session précédente, sauf le blocage hors tunnel, que le daemon remplace d'un seul tenant)
 - `ExecStart` : `python3 -m daemon` lancé depuis `/opt/katakomba`
-- `ExecStopPost` : même script de nettoyage
-- `Restart=on-failure` avec un délai de 20s, tentatives illimitées (`StartLimitIntervalSec=0`)
+- `ExecStopPost` : même script ; il ne lève le blocage hors tunnel que si le service s'arrête, pas s'il redémarre ou sort en échec *(v4.7.0)*
+- `Restart=on-failure`, relance 20 s après un échec, tentatives illimitées (`StartLimitIntervalSec=0`)
 - `Type=notify` + `WatchdogSec=90` : le daemon signale sa vivacité toutes les ~3s ; s'il gèle (deadlock), systemd le tue et le relance
 - `KillMode=control-group` : systemd tue tout le groupe (Tor, OpenVPN, dnsmasq inclus)
 - `TimeoutStopSec=30`
@@ -430,7 +430,7 @@ En mode géré, un test n'appelle pas l'API tant que le PC a sa place et sa list
 
 ### Ce qui ne change pas
 
-Blocage hors tunnel, routes des relais Tor hors du tunnel, retour des connexions entrantes, blocage IPv6, DNS du VPN et split DNS, exclusions, contrôle du débit du circuit, watchdog et reprise graduée (la relance légère relance le pont seul), partage LAN, réparation d'urgence, `katakomba doctor` : tout passe par le même montage du tunnel, posé par le daemon.
+Blocage hors tunnel, routes des relais Tor hors du tunnel, retour des connexions entrantes, blocage IPv6, DNS du VPN et split DNS, exclusions, contrôle du débit du circuit, watchdog et reprise graduée (la relance légère remonte le tunnel WireGuard et son pont, sans toucher à Tor), partage LAN, réparation d'urgence, `katakomba doctor` : tout passe par le même montage du tunnel, posé par le daemon.
 
 ### Sécurité
 
@@ -713,7 +713,7 @@ CIDRs et IPs qui contournent le tunnel et passent par la passerelle locale. Le d
 | **Prévenir en cas de coupure** | activé | Notifications du bureau (voir [Arrière-plan et notifications](#arrière-plan-et-notifications)) |
 | **Lancer à l'ouverture de session** | désactivé | `~/.config/autostart/org.katakomba.Katakomba.desktop`, fenêtre cachée |
 | **Bloquer tout trafic hors du tunnel** | activé | Kill switch : rien ne sort par votre connexion normale, même pendant une reconnexion (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)) |
-| **Bloquer IPv6 pendant la connexion** | désactivé | DROP ip6tables sur OUTPUT + FORWARD |
+| **Bloquer IPv6 pendant la connexion** | activé *(v4.7.0)* | Le tunnel ne porte que l'IPv4 : tant qu'il est monté, l'IPv6 vers Internet est refusé (réseau local et voisinage IPv6 autorisés). Utile surtout si le blocage hors tunnel est désactivé |
 | **Mesurer le débit à la connexion** *(avancé)* | activé | Re-tire un circuit s'il est trop lent |
 | **Débit minimum** *(avancé)* | 250 KB/s | Seuil de re-tirage (≈ 2 Mbps ; l'équivalent en Mbps est affiché sous le champ) |
 | **Nouveaux tirages au plus** *(avancé)* | 3 | Re-tirages avant de conserver le circuit tel quel |
@@ -920,6 +920,8 @@ openvpn
   --disable-dco --dns-updown disable
 ```
 
+> **Le passage par Tor est écrit en tête de la copie du `.ovpn` (v4.7.0).** OpenVPN n'applique pas à un bloc `<connection>` les options qui le suivent, et la ligne de commande vient après `--config` : avec un `.ovpn` à blocs `<connection>`, `--socks-proxy` était ignoré (« Option 'socks-proxy' … is ignored by previous <connection> blocks ») et OpenVPN joignait le serveur **sans Tor**. Avec le blocage hors tunnel, la connexion était refusée ; sans lui, le VPN montait en direct, l'adresse réelle visible du fournisseur. La copie commence désormais par `socks-proxy 127.0.0.1 9050` et les délais de connexion, qui valent pour tous les blocs, et toute ligne du fichier qui les contredirait est neutralisée. En plus, le compte `katakomba-vpn` — OpenVPN, le pont WireGuard, les assistants d'API — ne peut joindre que la boucle locale (chaînes `KATAKOMBA_VPN`), blocage hors tunnel activé ou non. Vérifié sur le vrai binaire (`tests_noyau`).
+
 > **OpenVPN tourne sans aucun privilège (v3.9.0).** Il analyse des données reçues du réseau (TLS, messages du serveur) : une faille de sa part, ou un serveur malveillant, donnait la machine entière, puisqu'il tournait en root. Il démarre désormais directement sous l'utilisateur système `katakomba-vpn`, sans aucune capacité. Le daemon lui crée l'interface `tun-katakomba`, qui appartient à cet utilisateur : c'est tout ce dont OpenVPN a besoin pour l'ouvrir. OpenVPN ne touche plus à la configuration réseau : le daemon lit ce que le serveur a poussé (`PUSH_REPLY`) et pose lui-même l'adresse et les routes (voir *Montage du tunnel* ci-dessous). Dans la copie du `.ovpn`, les directives qui exigeraient des droits sont mises en commentaire (`user`, `group`, `dev`, `mlock`…) : les fichiers des fournisseurs pour Linux contiennent souvent `user nobody`, qui ferait échouer un OpenVPN sans privilège au démarrage. Les chemins d'un `.ovpn` (`ca /chemin`…) sont désormais lus sous `katakomba-vpn` : les fichiers réservés à root sont hors de portée.
 >
 > Vérifié de bout en bout sur un vrai noyau, dans un espace réseau isolé, face à un vrai serveur OpenVPN qui pousse une route malveillante : OpenVPN sans aucune capacité, tunnel monté, trafic réel à travers lui, route malveillante refusée, reconnexion sur une interface recréée, tout retiré à l'arrêt.
@@ -1030,12 +1032,15 @@ Tant que le service tourne, le trafic sortant ne peut passer que par :
 Tout le reste est refusé sur-le-champ (reset TCP) : une application échoue aussitôt au lieu de rester bloquée. **Le DNS est refusé même vers le réseau local**, sauf vers le serveur DNS local configuré : le routeur transmettrait les requêtes à votre FAI. Les chaînes `_FWD` appliquent les mêmes règles au trafic routé (machines virtuelles, conteneurs), et les chaînes `KILL6` à l'IPv6.
 
 **Cycle de vie.**
-- Posé **avant le démarrage de Tor**, en tout ou rien : les quatre chaînes sont entièrement construites avant d'être branchées. Si une règle est refusée, rien n'est branché, le journal dit pourquoi et `katakomba doctor` signale un KO.
+- Posé **avant le démarrage de Tor**, en tout ou rien : les chaînes d'une famille d'adresses sont posées d'un seul tenant (`iptables-restore`), puis branchées en tête de `OUTPUT` et `FORWARD`. Si une règle est refusée, rien n'est branché, le journal dit pourquoi, `katakomba doctor` signale un KO et le daemon réessaie toutes les 30 s.
 - Gardé pendant toutes les reconnexions et les redémarrages complets.
+- **Gardé quand le service redémarre ou sort en échec** *(v4.7.0)* : réveil de veille, mise à jour, Tor qui ne démarre pas, plantage, réparation d'urgence. Le service suivant remplace les chaînes par les siennes, sans instant à découvert. Avant la v4.7.0, la connexion normale revenait à chacune de ces sorties, jusqu'au lancement suivant — 20 s toutes les 4 minutes sur un réseau qui bloque Tor.
+- **Revérifié toutes les 30 s** *(v4.7.0)* : si un autre outil a vidé ou rechargé les règles iptables, ou inséré les siennes au-dessus (Docker dans `FORWARD`), le blocage est reposé en tête et le journal le dit.
 - Levé à l'arrêt du service (`katakomba stop`, *Se déconnecter*) : la connexion normale revient. `repair_network.sh` le lève aussi.
 
 **Limites.**
-- Si le daemon plante, le nettoyage de systemd lève le blocage jusqu'à la relance du service, 20 s plus tard.
+- Entre le démarrage de la machine et celui du service, rien n'est encore posé.
+- Un arrêt demandé dans la seconde qui suit un plantage (pendant l'attente de systemd) laisse le blocage posé jusqu'à 30 s : un filet le lève alors. `sudo katakomba stop` le lève toujours aussitôt.
 - Avec la *Reconnexion automatique* désactivée, un tunnel tombé laisse la machine hors ligne jusqu'à la déconnexion.
 - Les autres VPN de la machine continuent de fonctionner quand leur réseau est dans une plage privée (WireGuard en `10.x`, par exemple). Un réseau Tailscale (`100.64.0.0/10`) est bloqué : désactivez le blocage si vous en avez besoin.
 - Si votre fournisseur VPN ne pousse aucun serveur DNS, le DNS du système (en général votre routeur) est refusé : plus aucun nom ne se résout. Le journal le signale ; configurez un DNS local (page *Exclusions*) ou désactivez le blocage.
@@ -1302,7 +1307,7 @@ Quand le partage LAN est activé :
 2. Routage IP activé (`sysctl net.ipv4.ip_forward=1`)
 3. NAT MASQUERADE pour que le trafic LAN sorte par le tunnel
 4. Chaîne `KATAKOMBA_LAN_FWD` : bloque tout trafic LAN n'allant pas vers le tunnel
-5. dnsmasq en mode `--no-daemon` : DHCP dans le sous-réseau, DNS `1.1.1.1` via tunnel
+5. dnsmasq en mode `--no-daemon` : DHCP dans le sous-réseau ; les clients reçoivent le DNS du VPN *(v4.7.0)*, ou `1.1.1.1` s'il n'en donne aucun, joint par le tunnel
 
 Si le tunnel tombe, le trafic LAN est bloqué — aucune fuite par la connexion directe.
 
@@ -1442,7 +1447,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
   "random_account": true,
   "transports": ["wireguard", "openvpn"],
   "kill_switch": true,
-  "block_ipv6": false,
+  "block_ipv6": true,
   "excluded_ips": ["192.168.1.0/24", "192.168.50.0/24"],
   "excluded_domains": [".lan"],
   "local_dns": "192.168.50.10",
@@ -1566,7 +1571,7 @@ python3 outils/traductions.py verifier        # manques, {champs} incohérents (
 
 **Credentials VPN :** stockés en base64 dans `config.json`. C'est de l'obfuscation, **pas du chiffrement**. Le fichier est en mode `660 root:katakomba`, dans un répertoire `2770 root:katakomba`.
 
-**Blocage hors tunnel :** tant que le service tourne, rien ne sort hors du tunnel, sauf Tor et le réseau local, reconnexions comprises (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)).
+**Blocage hors tunnel :** tant que le service n'est pas arrêté, rien ne sort hors du tunnel, sauf Tor et le réseau local — reconnexions, redémarrages et sorties en échec compris *(v4.7.0)* (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)).
 
 **auth.tmp :** créé directement en mode `400`, au nom de `katakomba-vpn` (jamais exposé à l'umask ; plus aucun droit de groupe depuis la v3.12.0, OpenVPN les signalait à chaque connexion), juste avant de lancer OpenVPN, dans `/run/katakomba-vpn` (root et OpenVPN seuls), sans jamais suivre de lien symbolique ; supprimé à l'arrêt d'OpenVPN.
 

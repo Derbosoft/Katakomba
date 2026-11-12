@@ -203,13 +203,14 @@ class FinDeBlocTest(unittest.TestCase):
 
     def test_copie_sortie_du_bloc_comme_openvpn(self):
         copie = validation.preparer_copie_ovpn("<ca>\nx\n</ca>\nuser nobody\n")
-        self.assertIn("# user nobody", copie)
+        self.assertIn("# katakomba : « user » géré", copie)
+        self.assertNotIn("\nuser nobody", copie)
 
     def test_copie_conserve_les_retours_chariot(self):
         """OpenVPN lit la copie : elle doit être découpée comme le texte
         validé, pas renormalisée."""
         texte = "client\r\nremote a 1\r\n"
-        self.assertEqual(validation.preparer_copie_ovpn(texte), texte)
+        self.assertTrue(validation.preparer_copie_ovpn(texte).endswith("\n" + texte))
 
 
 class PushTest(unittest.TestCase):
@@ -277,10 +278,67 @@ class CopieOvpnTest(unittest.TestCase):
         copie = validation.preparer_copie_ovpn(
             "client\nuser nobody\ngroup nogroup\ndev tun\nmlock\nremote a 443\n"
             "<key>\nuser x\n</key>\n")
-        for d in ("user nobody", "group nogroup", "dev tun", "mlock"):
-            self.assertIn(f"# {d}    # katakomba", copie, d)
+        for d in ("user", "group", "dev", "mlock"):
+            self.assertIn(f"# katakomba : « {d} » géré par le daemon\n", copie, d)
+        for d in ("user nobody", "group nogroup", "dev tun"):
+            self.assertNotIn(f"\n{d}\n", copie.split("<key>")[0], d)
         self.assertIn("remote a 443\n", copie)
         self.assertIn("<key>\nuser x\n</key>", copie, "contenu d'un bloc modifié")
+
+    def test_passage_par_tor_en_tete_meme_avec_des_blocs_connection(self):
+        """v4.7.0 : OpenVPN n'applique pas à un bloc <connection> les options
+        qui le suivent — « --socks-proxy » en ligne de commande, après
+        --config, y était ignoré et la connexion partait sans Tor."""
+        copie = validation.preparer_copie_ovpn(
+            "client\n<connection>\nremote a 443 tcp\nsocks-proxy 10.0.0.9 1080\n"
+            "connect-retry-max 9\n</connection>\n<connection>\nremote b 443\n"
+            "</connection>\nsetenv opt socks-proxy 10.0.0.9 1080\n--connect-timeout 5\n")
+        lignes = copie.split("\n")
+        self.assertEqual(lignes[1:5], list(validation.OVPN_EN_TETE))
+        self.assertLess(lignes.index("socks-proxy 127.0.0.1 9050"),
+                        lignes.index("<connection>"))
+        self.assertEqual(sum("socks-proxy" in l and not l.startswith("#")
+                             for l in lignes), 1, copie)
+        for reste in ("10.0.0.9", "connect-retry-max 9", "connect-timeout 5"):
+            self.assertNotIn(reste, copie)
+        self.assertIn("remote a 443 tcp\n", copie)
+
+    def test_ligne_neutralisee_jamais_allongee(self):
+        """OpenVPN refuse toute ligne de plus de 255 octets : le commentaire
+        qui remplace une directive ne recopie pas la ligne."""
+        copie = validation.preparer_copie_ovpn("user " + "x" * 245 + "\n")
+        self.assertLess(max(map(len, copie.split("\n"))), 80)
+
+
+class WgChiffresTest(unittest.TestCase):
+    """« ² » et « ١ » passent isdigit() ; int() lève sur le premier.  La
+    boucle VPN mourait sur un .conf mal formé au lieu de le refuser."""
+
+    CONF = ("[Interface]\nPrivateKey = {k}\nAddress = 10.2.0.2/32\n{mtu}"
+            "[Peer]\nPublicKey = {k}\nEndpoint = {ep}\n")
+    CLE = "A" * 43 + "="
+
+    def _lire(self, ep="1.2.3.4:51820", mtu=""):
+        return validation.analyser_wg(self.CONF.format(k=self.CLE, ep=ep, mtu=mtu))
+
+    def test_port_en_chiffres_non_ascii_refuse(self):
+        for port in ("²", "١٢٣", "5²"):
+            reglages, refus, _ = self._lire(ep=f"1.2.3.4:{port}")
+            self.assertIsNone(reglages, port)
+            self.assertTrue(any("Endpoint" in r for r in refus), port)
+
+    def test_mtu_en_chiffres_non_ascii_ignore(self):
+        reglages, refus, avert = self._lire(mtu="MTU = ²²²²\n")
+        self.assertEqual(refus, [])
+        self.assertIsNone(reglages["mtu"])
+        self.assertTrue(any("MTU" in a for a in avert))
+
+    def test_commentaire_katakomba_en_chiffres_non_ascii(self):
+        texte = self.CONF.format(k=self.CLE, ep="1.2.3.4:51820", mtu="") \
+            + "# Katakomba-Serveur = 1.2.3.4:²\n"
+        reglages, refus, _ = validation.analyser_wg(texte)
+        self.assertIsNone(reglages)
+        self.assertTrue(any("Serveur" in r for r in refus))
 
 
 if __name__ == "__main__":

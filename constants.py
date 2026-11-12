@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "4.6.0"
+VERSION       = "4.7.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")
@@ -50,7 +50,10 @@ DEFAULT_CONFIG = {
     # WireGuard d'abord, OpenVPN en secours.  Un fournisseur sans .conf ou
     # sans .ovpn saute simplement le transport qu'il n'a pas.
     "transports":        ["wireguard", "openvpn"],
-    "block_ipv6":        False,
+    # Le tunnel ne porte que l'IPv4 : l'IPv6 vers Internet est refusé tant
+    # qu'il est monté (v4.7.0 : activé par défaut ; il sortait à découvert
+    # dès que le blocage hors tunnel était désactivé).
+    "block_ipv6":        True,
     # Blocage hors tunnel (kill switch) : tant que le service tourne, rien ne
     # sort hors du tunnel, sauf Tor et le réseau local — y compris pendant
     # les reconnexions.

@@ -222,8 +222,25 @@ class OvpnFuzzTest(unittest.TestCase):
             apres = directives_vues_par_openvpn(validation.preparer_copie_ovpn(texte))
             if avant is None:
                 continue
-            neutralisees = set(validation.OVPN_GEREES_PAR_LE_DAEMON)
-            self.assertEqual([n for n in avant if n not in neutralisees], apres)
+            neutralisees = (set(validation.OVPN_GEREES_PAR_LE_DAEMON)
+                            | set(validation.OVPN_IMPOSEES_PAR_LE_DAEMON))
+            en_tete = [ligne.split()[0] for ligne in validation.OVPN_EN_TETE]
+            self.assertEqual(en_tete + [n for n in avant if n not in neutralisees], apres)
+
+    def test_le_passage_par_tor_precede_toute_directive(self):
+        """Un bloc <connection> ignore ce qui le suit : le proxy est donc en
+        tête de la copie, et aucun autre n'y survit."""
+        rng = random.Random(4700)
+        for _ in range(500):
+            texte = ovpn_aleatoire(rng)
+            if analyser_ovpn(texte)[0]:
+                continue
+            copie = validation.preparer_copie_ovpn(texte)
+            vues = directives_vues_par_openvpn(copie)
+            if vues is None:
+                continue
+            self.assertEqual(vues[0], "socks-proxy")
+            self.assertEqual(vues.count("socks-proxy"), 1, repr(texte))
 
 
 # ── Options poussées par le serveur ──────────────────────────────────────────

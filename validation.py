@@ -450,10 +450,30 @@ OVPN_GEREES_PAR_LE_DAEMON = frozenset("""
 """.split())
 
 
+# Imposé par le daemon, EN TÊTE de la copie (v4.7.0).  Une option placée
+# après un bloc <connection> — la ligne de commande vient après --config — ne
+# s'applique pas à ce bloc : OpenVPN l'écrit (« Option 'socks-proxy' … is
+# ignored by previous <connection> blocks ») et se connecte droit au serveur,
+# sans Tor (vérifié sur OpenVPN 2.7.0).  Placées avant, ces lignes valent pour
+# tous les blocs ; celles du fichier, qui les contrediraient, sont neutralisées.
+OVPN_EN_TETE = (
+    "socks-proxy 127.0.0.1 9050",
+    "connect-timeout 60",
+    "connect-retry 1",
+    "connect-retry-max 1",
+)
+OVPN_IMPOSEES_PAR_LE_DAEMON = frozenset("""
+    socks-proxy socks-proxy-retry connect-timeout server-poll-timeout
+    connect-retry connect-retry-max
+""".split())
+
+
 def preparer_copie_ovpn(texte: str) -> str:
-    """Copie d'un .ovpn déjà validé, ces directives mises en commentaire.
-    Le contenu des blocs de données (<ca>, <key>…) n'est jamais touché."""
-    sortie, bloc = [], None
+    """Copie d'un .ovpn déjà validé : le passage par Tor en tête, et les
+    directives que le daemon gère ou impose mises en commentaire, où qu'elles
+    soient (blocs <connection> compris).  Le contenu des blocs de données
+    (<ca>, <key>…) n'est jamais touché."""
+    sortie, bloc = ["# katakomba : imposé par le daemon", *OVPN_EN_TETE], None
     for brute in lignes_ovpn(texte.rstrip("\n")):
         ligne = brute.strip()
         if bloc is not None:
@@ -467,8 +487,13 @@ def preparer_copie_ovpn(texte: str) -> str:
             continue
         p = _jetons(ligne) if ligne and ligne[0] not in "#;<" else []
         nom = (p[0][2:] if p[0].startswith("--") else p[0]) if p else ""
-        if nom in OVPN_GEREES_PAR_LE_DAEMON:
-            sortie.append(f"# {ligne}    # katakomba : géré par le daemon")
+        # « setenv opt X … » : X est lue comme une directive à part entière.
+        if nom == "setenv" and len(p) >= 3 and p[1] == "opt":
+            nom = p[2][2:] if p[2].startswith("--") else p[2]
+        if nom in OVPN_GEREES_PAR_LE_DAEMON or nom in OVPN_IMPOSEES_PAR_LE_DAEMON:
+            # Le nom seul, pris dans un vocabulaire fixe : recopier la ligne
+            # l'allongerait, et OpenVPN refuse toute ligne de plus de 255 octets.
+            sortie.append(f"# katakomba : « {nom} » géré par le daemon")
         else:
             sortie.append(brute)
     return "\n".join(sortie) + "\n"
@@ -614,7 +639,8 @@ def _ip_port(valeur: str):
     """« 1.2.3.4:443 » ou « [2001:db8::1]:443 » → (ip, port), ou None.
     Une adresse IP, jamais un nom : rien n'est résolu hors de Tor."""
     hote, sep, port = valeur.rpartition(":")
-    if not sep or not port.isdigit() or not 0 < int(port) < 65536:
+    # isascii : « ² » ou « ١٢ » passent isdigit(), et int() lèverait.
+    if not sep or not (port.isascii() and port.isdigit()) or not 0 < int(port) < 65536:
         return None
     try:
         return str(ipaddress.ip_address(hote.strip("[]"))), int(port)
@@ -710,7 +736,7 @@ def analyser_wg(texte: str):
     r["mtu"] = None
     mtu = champ("interface", "mtu", False)
     if mtu is not None:
-        if mtu.isdigit() and WG_MTU_MIN <= int(mtu) <= WG_MTU_MAX:
+        if mtu.isascii() and mtu.isdigit() and WG_MTU_MIN <= int(mtu) <= WG_MTU_MAX:
             r["mtu"] = int(mtu)
         else:
             avert.append(f"MTU ignoré (entre {WG_MTU_MIN} et {WG_MTU_MAX} attendu)")
@@ -747,11 +773,14 @@ def analyser_wg(texte: str):
     return (None if refus else r), refus, avert
 
 
-def conf_wg_noyau(reglages: dict, pont: str) -> str:
+def conf_wg_noyau(reglages: dict, pont: str, port_ecoute: int = 0) -> str:
     """Fichier remis à « wg setconf » : réécrit d'après les réglages
-    contrôlés, le pair joint par le pont local."""
-    lignes = ["[Interface]", f"PrivateKey = {reglages['cle_privee']}", "",
-              "[Peer]", f"PublicKey = {reglages['cle_publique']}"]
+    contrôlés, le pair joint par le pont local.  port_ecoute : port UDP de
+    l'interface, fixé pour que le pont n'accepte que ses paquets."""
+    lignes = ["[Interface]", f"PrivateKey = {reglages['cle_privee']}"]
+    if port_ecoute:
+        lignes.append(f"ListenPort = {port_ecoute}")
+    lignes += ["", "[Peer]", f"PublicKey = {reglages['cle_publique']}"]
     if reglages.get("cle_partagee"):
         lignes.append(f"PresharedKey = {reglages['cle_partagee']}")
     lignes += ["AllowedIPs = 0.0.0.0/0", f"Endpoint = {pont}",

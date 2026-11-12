@@ -29,7 +29,8 @@ Trois usages :
 
   python3 ivpn.py liberer
       À la désinstallation : ferme la session gérée de cette machine, pour
-      rendre sa place au compte.
+      rendre sa place au compte.  Lancé en root, il confie l'échange avec
+      l'API à un second processus sans droit (appel_sans_droit).
 
 Codes de l'API : ceux de l'application IVPN (daemon/api/types/errors.go).
 """
@@ -358,6 +359,34 @@ def repondre(socks, requete_json: str) -> dict:
         return {"ok": False, "code": RESEAU, "message": f"réponse inattendue : {e}"[:300]}
 
 
+def appel_sans_droit(script: str, socks: str, requete: dict, sur_place) -> dict:
+    """Une requête à l'API depuis la désinstallation, lancée en root.
+
+    L'échange se fait dans un second processus, sans aucun droit, sous le
+    compte katakomba-vpn : c'est lui qui lit ce que le réseau renvoie, comme
+    quand le daemon appelle l'assistant.  Root ne garde que la lecture et
+    l'effacement du fichier d'état.  Hors root (essais) : sur place."""
+    if os.geteuid() != 0:
+        return sur_place(socks, json.dumps(requete))
+    import pwd
+    import subprocess
+    try:
+        compte = pwd.getpwnam("katakomba-vpn")
+        r = subprocess.run(
+            [sys.executable, "-I", script, "api", "--socks", socks],
+            input=json.dumps(requete), capture_output=True, text=True, timeout=100,
+            user=compte.pw_uid, group=compte.pw_gid, extra_groups=[], cwd="/",
+            env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"})
+        reponse = json.loads(r.stdout[:2 * REPONSE_MAX])
+    except KeyError:
+        return {"ok": False, "code": RESEAU, "message": "compte katakomba-vpn absent"}
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        return {"ok": False, "code": RESEAU, "message": "assistant sans réponse lisible"}
+    if not isinstance(reponse, dict) or not isinstance(reponse.get("ok"), bool):
+        return {"ok": False, "code": RESEAU, "message": "réponse illisible de l'assistant"}
+    return reponse
+
+
 def liberer(socks) -> int:
     """Ferme la session gérée de cette machine (désinstallation)."""
     try:
@@ -372,11 +401,11 @@ def liberer(socks) -> int:
         # Image disque clonée : la session est celle d'une autre machine.
         SESSION_GEREE.unlink(missing_ok=True)
         return 0
-    try:
-        fermer_session(socks, etat["jeton"])
-    except (ErreurIvpn, ErreurPont, OSError, KeyError) as e:
-        print(f"IVPN : session non fermée ({e}) ; sa place se libérera à la "
-              "prochaine remise à zéro du compte.", file=sys.stderr)
+    r = appel_sans_droit(os.path.abspath(__file__), socks,
+                         {"action": "fermer", "jeton": etat.get("jeton")}, repondre)
+    if not r["ok"]:
+        print(f"IVPN : session non fermée ({r.get('message', '?')}) ; sa place se "
+              "libérera à la prochaine remise à zéro du compte.", file=sys.stderr)
         return 1
     SESSION_GEREE.unlink(missing_ok=True)
     print("IVPN : session de cette machine fermée, place rendue au compte.")

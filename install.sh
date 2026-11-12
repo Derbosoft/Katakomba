@@ -31,7 +31,7 @@ if [ "$PAQUET" = "1" ] && [ ! -f /opt/katakomba/main.py ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="$(python3 -B -c "import sys; sys.path.insert(0,'$SCRIPT_DIR'); from constants import VERSION; print(VERSION)" 2>/dev/null || echo "?")"
+VERSION="$(python3 -I -B -c "import sys; sys.path.insert(0,'$SCRIPT_DIR'); from constants import VERSION; print(VERSION)" 2>/dev/null || echo "?")"
 REAL_USER="${SUDO_USER:-$(logname 2>/dev/null || echo "$USER")}"
 SERVICE_FILE="/etc/systemd/system/katakomba.service"
 CLEANUP_SCRIPT="/usr/local/lib/katakomba-cleanup.sh"
@@ -74,6 +74,48 @@ fi
 # à travers un lien symbolique.  « [ -f ] » suit les liens et un lien pendant
 # le trompe ; on teste donc aussi « -L ».
 absent() { [ ! -e "$1" ] && [ ! -L "$1" ]; }
+
+# Groupe et droits posés en root sur des fichiers que le groupe katakomba peut
+# remplacer : jamais par leur chemin.  « find -type f -exec chgrp/chmod » suit
+# un lien glissé à la place du fichier entre l'examen de find et l'appel — de
+# quoi donner au groupe un fichier système, à chaque mise à jour.  Ici, chaque
+# fichier est ouvert sans suivre de lien, depuis son dossier déjà ouvert, puis
+# modifié par son descripteur.
+#   droits_surs plat  <dossier>   ses fichiers ordinaires : groupe katakomba, g+rw
+#   droits_surs arbre <dossier>   tout l'arbre : root:katakomba, 2770 et 660
+droits_surs() {
+    python3 -I - "$1" "$2" << 'DROITS_EOF'
+import grp, os, stat, sys
+mode, racine = sys.argv[1], sys.argv[2]
+gid = grp.getgrnam("katakomba").gr_gid
+OUVRIR = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+
+def traiter(nom, parent=None, profondeur=0):
+    try:
+        fd = os.open(nom, OUVRIR, dir_fd=parent)
+    except OSError:
+        return                    # lien symbolique, fichier disparu entre-temps
+    try:
+        st = os.fstat(fd)
+        if stat.S_ISREG(st.st_mode) and st.st_nlink == 1 and profondeur:
+            if mode == "plat":
+                os.fchown(fd, -1, gid)
+                os.fchmod(fd, stat.S_IMODE(st.st_mode) | 0o060)
+            else:
+                os.fchown(fd, 0, gid)
+                os.fchmod(fd, 0o660)
+        elif stat.S_ISDIR(st.st_mode) and profondeur < (1 if mode == "plat" else 8):
+            if mode == "arbre":
+                os.fchown(fd, 0, gid)
+                os.fchmod(fd, 0o2770)
+            for enfant in os.listdir(fd):
+                traiter(enfant, fd, profondeur + 1)
+    finally:
+        os.close(fd)
+
+traiter(racine)
+DROITS_EOF
+}
 
 # ── Migration : Tor-VPN Manager → Katakomba ─────────────────────────────────
 # Jusqu'à la v3.7.0, le programme s'appelait « Tor-VPN Manager » : service
@@ -137,7 +179,7 @@ if [ -e /etc/systemd/system/tor-vpn-manager.service ] || [ -d /etc/tor-vpn-manag
     # Chemins écrits en dur par l'ancienne version : .ovpn absolus dans
     # config.json, DataDirectory dans le torrc.  Réécriture sans jamais
     # suivre un lien déposé par le groupe.
-    python3 - "$CONFIG_DIR" << 'MIGRATION_EOF'
+    python3 -I - "$CONFIG_DIR" << 'MIGRATION_EOF'
 import json, os, sys
 rep = sys.argv[1]
 
@@ -215,7 +257,7 @@ DEPS_BIN=(tor openvpn wg python3 curl)
 # Interface graphique : GTK 4 et libadwaita 1.5 ou plus (Ubuntu 24.04+, Debian 13+).
 DEPS_GUI=(python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common)
 gui_disponible() {
-    python3 - << 'GUI_EOF' 2>/dev/null
+    python3 -I - << 'GUI_EOF' 2>/dev/null
 import sys, gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -232,7 +274,7 @@ if [ "${KATAKOMBA_SKIP_APT:-0}" = "1" ]; then
     done
     # Un module Python ne se voit pas à « command -v » : sans lui, le WireGuard
     # géré et l'emballage VMess échouent au premier usage.
-    python3 -c 'import cryptography' 2>/dev/null || manquants+=(python3-cryptography)
+    python3 -I -c 'import cryptography' 2>/dev/null || manquants+=(python3-cryptography)
     if [ "$AVEC_GUI" = 1 ]; then
         gui_disponible || manquants+=("${DEPS_GUI[@]}")
     fi
@@ -257,7 +299,7 @@ fi
 # défaut).  On ne l'installe donc pas systématiquement pour le désactiver
 # aussitôt : uniquement s'il est déjà présent ou si le partage est configuré.
 LAN_CONFIGURED=false
-if [ -f "$CONFIG_DIR/config.json" ] && python3 -c "
+if [ -f "$CONFIG_DIR/config.json" ] && python3 -I -c "
 import json,sys
 d = json.load(open('$CONFIG_DIR/config.json'))
 sys.exit(0 if d.get('lan_auto') or d.get('lan_iface') else 1)
@@ -310,10 +352,9 @@ fi
 mkdir -p "$CONFIG_DIR"
 chown root:katakomba "$CONFIG_DIR"
 chmod 2770 "$CONFIG_DIR"            # setgid : fichiers créés → groupe katakomba
-# « -type f » écarte les liens symboliques : le groupe peut en déposer ici,
-# et root ne doit jamais agir à travers eux.
-find "$CONFIG_DIR" -maxdepth 1 -type f -exec chgrp katakomba {} + 2>/dev/null || true
-find "$CONFIG_DIR" -maxdepth 1 -type f -exec chmod g+rw {} + 2>/dev/null || true
+# Le groupe peut déposer des liens symboliques ici : root n'agit jamais à
+# travers eux (voir droits_surs).
+droits_surs plat "$CONFIG_DIR" || true
 # install_dir n'est plus lu (le CLI connaît $INSTALL_DIR) : un fichier que le
 # groupe peut remplacer ne doit pas désigner le code à exécuter.
 rm -f "$CONFIG_DIR/install_dir"
@@ -351,7 +392,17 @@ fi
 # réinstallation ne doit jamais écraser un torrc personnalisé.
 TORRC_FILE="$CONFIG_DIR/torrc"
 if absent "$TORRC_FILE"; then
-    cat > "$TORRC_FILE" << 'TORRC_EOF'
+    # Créé sans suivre de lien (O_EXCL), groupe et droits posés par le
+    # descripteur : « cat > », puis chown et chmod par le chemin, laissaient
+    # au groupe le temps d'y glisser un lien vers un fichier système.
+    python3 -I -c '
+import grp, os, sys
+fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o660)
+os.fchown(fd, 0, grp.getgrnam("katakomba").gr_gid)
+os.fchmod(fd, 0o660)
+with os.fdopen(fd, "w") as f:
+    f.write(sys.stdin.read())
+' "$TORRC_FILE" << 'TORRC_EOF'
 # === Paramètres obligatoires — ne pas supprimer ===
 SocksPort 9050
 ControlPort 9051
@@ -372,8 +423,6 @@ KeepalivePeriod 60
 NumEntryGuards 3
 GuardLifetime 2 months
 TORRC_EOF
-    chown root:katakomba "$TORRC_FILE"
-    chmod 660 "$TORRC_FILE"
     echo "    torrc par défaut créé : $TORRC_FILE"
 else
     echo "    torrc existant conservé : $TORRC_FILE"
@@ -419,16 +468,14 @@ chmod 755 "$INSTALL_DIR/repair_network.sh" "$INSTALL_DIR/katakomba-cli.sh" \
 # providers/ : seul endroit inscriptible par le groupe (import via le GUI).
 # Le daemon contrôle chaque .ovpn avant usage (validation.py).
 mkdir -p "$INSTALL_DIR/providers"
-chown -R root:katakomba "$INSTALL_DIR/providers"
-find "$INSTALL_DIR/providers" -type d -exec chmod 2770 {} +
-find "$INSTALL_DIR/providers" -type f -exec chmod 660 {} +
+droits_surs arbre "$INSTALL_DIR/providers"
 echo "    Code : $INSTALL_DIR (root:root, lecture seule pour les autres)"
 
 # Chemins .ovpn absolus pointant sur l'ancien clone → relatifs (providers/…),
 # résolus désormais depuis $INSTALL_DIR.
 if [ -f "$CONFIG_DIR/config.json" ] && [ ! -L "$CONFIG_DIR/config.json" ] \
         && [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
-    python3 - "$CONFIG_DIR/config.json" "$SCRIPT_DIR" << 'PYEOF'
+    python3 -I - "$CONFIG_DIR/config.json" "$SCRIPT_DIR" << 'PYEOF'
 import json, os, sys
 chemin, ancien = sys.argv[1], sys.argv[2].rstrip("/") + "/"
 cfg = json.load(open(chemin))
@@ -485,15 +532,83 @@ echo "[5/7] Création du service systemd …"
 mkdir -p "$(dirname "$CLEANUP_SCRIPT")"
 cat > "$CLEANUP_SCRIPT" << 'CLEANUP_EOF'
 #!/bin/bash
-# Suppression en boucle : des crashs répétés peuvent empiler plusieurs jumps
-# Blocage hors tunnel : le service s'arrête, la connexion normale revient.
-for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
-         "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD"; do
-    set -- $c
+# Katakomba — retire du système ce que le daemon y pose.
+#
+#   avant    ExecStartPre : tout, sauf le blocage hors tunnel — le daemon le
+#            remplace d'un seul tenant, sans instant à découvert.
+#   apres    ExecStopPost : le blocage hors tunnel n'est levé que si le
+#            service s'ARRÊTE.  S'il redémarre (réveil de veille, mise à jour)
+#            ou sort en échec (Tor bloqué, plantage), il reste posé jusqu'au
+#            lancement suivant : avant la v4.7.0, la connexion normale
+#            revenait pendant ces intervalles.
+#   filet    lancé 30 s après un blocage gardé : le lève si le service est
+#            resté arrêté.
+#   (rien)   tout, blocage compris : « katakomba stop », désinstallation.
+MODE="${1:-tout}"
+SERVICE=katakomba.service
+ECHEC=/run/katakomba-echec
+retirer() {
+    # Suppression en boucle : des crashs répétés peuvent empiler plusieurs jumps
     while $1 -D "$2" -j "$3" 2>/dev/null; do :; done
     $1 -F "$3" 2>/dev/null
     $1 -X "$3" 2>/dev/null
-done
+}
+lever=1
+pause=0
+case "$MODE" in
+    avant)
+        lever=0
+        # Sortie en échec juste avant : la pause entre deux lancements se fait
+        # ICI, service « en démarrage ».  Pendant l'attente de systemd
+        # (RestartSec), un arrêt demandé n'exécute aucun script : le blocage
+        # gardé resterait posé sur un service arrêté.
+        if [ -e "$ECHEC" ]; then
+            rm -f "$ECHEC"
+            pause=19
+        fi
+        ;;
+    apres)
+        # Seul systemd sait pourquoi le service sort : la tâche en cours.
+        # (SERVICE_RESULT ne suffit pas : il vaut « success » pour un
+        # redémarrage comme pour un arrêt.)
+        tache=$(systemctl list-jobs --no-legend "$SERVICE" 2>/dev/null | awk '{print $3; exit}')
+        case "$tache" in
+            stop) lever=1 ;;
+            restart|try-restart|reload-or-restart) lever=0 ;;
+            *)  # Aucune tâche : le daemon est sorti de lui-même.  Sortie
+                # propre, ou 78 (aucun fournisseur) : systemd ne relance pas.
+                if [ "${SERVICE_RESULT:-success}" = success ] || [ "${EXIT_STATUS:-}" = 78 ]; then
+                    lever=1
+                else
+                    lever=0
+                    tache=""
+                fi ;;
+        esac
+        if [ "$lever" = 0 ]; then
+            echo "Blocage hors tunnel gardé (${tache:-sortie en échec : ${SERVICE_RESULT:-?}})."
+            [ -n "$tache" ] || : > "$ECHEC"
+            systemd-run --quiet --collect --on-active=30 \
+                --description="Katakomba : levée du blocage si le service est resté arrêté" \
+                "$0" filet 2>/dev/null || true
+        fi
+        ;;
+    filet)
+        case "$(systemctl is-active "$SERVICE" 2>/dev/null)" in
+            active|activating|deactivating|reloading) exit 0 ;;
+        esac
+        ;;
+esac
+if [ "$lever" = 1 ]; then
+    # Blocage hors tunnel : le service s'arrête, la connexion normale revient.
+    for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
+             "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD"; do
+        retirer $c
+    done
+    rm -f "$ECHEC"
+fi
+# Garde du compte katakomba-vpn : reposée par le daemon à chaque lancement.
+retirer iptables OUTPUT KATAKOMBA_VPN
+retirer ip6tables OUTPUT KATAKOMBA_VPN6
 # Interface tunnel créée par le daemon : son adresse et ses routes partent avec.
 ip link del dev tun-katakomba 2>/dev/null
 # Retour des connexions entrantes : marquage (mangle) et règles de routage.
@@ -525,7 +640,7 @@ pkill -f /etc/katakomba/tor-vpn-dnsmasq.pid 2>/dev/null
 # NAT masquerade du partage LAN
 CONFIG_JSON="/etc/katakomba/config.json"
 if [ -f "$CONFIG_JSON" ]; then
-    LAN_SUBNET=$(python3 -c "import json; d=json.load(open('$CONFIG_JSON')); print(d.get('lan_subnet',''))" 2>/dev/null)
+    LAN_SUBNET=$(python3 -I -c "import json; d=json.load(open('$CONFIG_JSON')); print(d.get('lan_subnet',''))" 2>/dev/null)
     if [ -n "$LAN_SUBNET" ]; then
         iptables -t nat -D POSTROUTING -s "$LAN_SUBNET" -o tun-katakomba -j MASQUERADE 2>/dev/null
         iptables -t nat -D POSTROUTING -s "$LAN_SUBNET" -o tun0 -j MASQUERADE 2>/dev/null
@@ -537,6 +652,7 @@ rm -f /run/katakomba.sock /run/katakomba-statut.sock
 # DNS split drop-in
 rm -f /etc/systemd/resolved.conf.d/katakomba-split.conf
 systemctl reload-or-restart systemd-resolved 2>/dev/null || true
+[ "$pause" = 0 ] || sleep "$pause"
 exit 0
 CLEANUP_EOF
 chmod +x "$CLEANUP_SCRIPT"
@@ -567,11 +683,15 @@ WatchdogSec=90
 # effectifs — Tor ne pouvait plus passer à debian-tor (v3.11.0, corrigé en
 # 3.11.1 ; vérifié : CapEff 0x346f, bit 7 absent).
 WorkingDirectory=$INSTALL_DIR
-ExecStartPre=$CLEANUP_SCRIPT
+# Le script de nettoyage décide du sort du blocage hors tunnel : levé si le
+# service s'arrête, gardé s'il redémarre ou sort en échec (v4.7.0).
+ExecStartPre=$CLEANUP_SCRIPT avant
 ExecStart=/usr/bin/python3 -m daemon
-ExecStopPost=$CLEANUP_SCRIPT
+ExecStopPost=$CLEANUP_SCRIPT apres
 Restart=on-failure
-RestartSec=20
+# 1 s, et non plus 20 : après un échec, la pause se fait dans ExecStartPre
+# (19 s), où un arrêt demandé exécute encore ExecStopPost.
+RestartSec=1
 # 78 = aucun fournisseur configuré : une erreur de configuration, pas une
 # panne.  Relancer toutes les 20 s ne ferait que remplir le journal.
 RestartPreventExitStatus=78

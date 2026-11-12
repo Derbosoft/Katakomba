@@ -46,7 +46,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ivpn import (                                       # noqa: E402
     COMPTE_PLEIN, NON_AUTORISE, REPONSE_MAX, RESEAU,
-    SESSION_INCONNUE, _ConnexionTor)
+    SESSION_INCONNUE, _ConnexionTor, appel_sans_droit)
 from pont_wg import ErreurPont                           # noqa: E402
 
 API = "api.mullvad.net"
@@ -352,7 +352,10 @@ def liberer(socks) -> int:
         compte = compte_par_empreinte(etat["compte"])
         if not compte:
             raise ErreurMullvad("compte absent de la configuration")
-        supprimer(socks, compte, etat["jeton"])
+        r = appel_sans_droit(os.path.abspath(__file__), socks, {
+            "action": "fermer", "compte": compte, "jeton": etat["jeton"]}, repondre)
+        if not r["ok"]:
+            raise ErreurMullvad(str(r.get("message", "?")))
     except (ErreurMullvad, ErreurPont, OSError, KeyError, ValueError) as e:
         print(f"Mullvad : appareil non supprimé ({e}) ; les autres PC du parc le "
               "supprimeront quand il sera trop ancien (comptes réservés), sinon "

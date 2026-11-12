@@ -139,6 +139,73 @@ class InstallServiceUnitTest(unittest.TestCase):
         self.assertIn('while $1 -D "$2" -j "$3"', cleanup)
         self.assertIn('$1 -X "$3"', cleanup)
 
+    def test_blocage_garde_quand_le_service_redemarre_ou_echoue(self):
+        """v4.7.0 : ExecStopPost levait le blocage à CHAQUE sortie — réveil
+        de veille, mise à jour, Tor bloqué — et la connexion normale revenait
+        jusqu'au lancement suivant.  Comportement vérifié sur de vraies règles
+        dans tests_noyau/test_nettoyage.py."""
+        unite = INSTALL[INSTALL.index('cat > "$SERVICE_FILE" << SERVICE_EOF'):]
+        unite = unite[:unite.index("\nSERVICE_EOF")]
+        self.assertIn("\nExecStartPre=$CLEANUP_SCRIPT avant\n", unite)
+        self.assertIn("\nExecStopPost=$CLEANUP_SCRIPT apres\n", unite)
+        # La pause après un échec se fait dans ExecStartPre : un arrêt demandé
+        # pendant l'attente RestartSec de systemd n'exécute aucun script.
+        self.assertIn("\nRestartSec=1\n", unite)
+        cleanup = INSTALL[INSTALL.index("CLEANUP_EOF"):INSTALL.rindex("CLEANUP_EOF")]
+        self.assertIn('systemctl list-jobs --no-legend "$SERVICE"', cleanup)
+        self.assertIn("restart|try-restart|reload-or-restart) lever=0", cleanup)
+        self.assertIn('"${EXIT_STATUS:-}" = 78', cleanup)
+        self.assertIn('"$0" filet', cleanup)
+        self.assertLess(cleanup.index('if [ "$lever" = 1 ]; then'),
+                        cleanup.index("KATAKOMBA_KILL6_FWD"),
+                        "blocage retiré sans condition")
+
+    def test_reparation_par_le_daemon_garde_le_blocage(self):
+        """repair_network.sh --internal : le service repart aussitôt."""
+        bloc = REPAIR[REPAIR.index("[3/8]"):REPAIR.index("[4/8]")]
+        self.assertLess(bloc.index("if [[ $INTERNAL -eq 0 ]]; then"),
+                        bloc.index('"iptables OUTPUT KATAKOMBA_KILL"'))
+        self.assertLess(bloc.index("KATAKOMBA_KILL6_FWD"), bloc.index("\nfi\n"))
+
+    def test_arret_par_le_cli_leve_toujours_le_blocage(self):
+        bloc = CLI[CLI.index("    stop)"):CLI.index("    restart)")]
+        self.assertLess(bloc.index('systemctl stop "$SERVICE"'),
+                        bloc.index("katakomba-cleanup.sh"))
+        self.assertIn('"$c" >/dev/null 2>&1 || true', bloc)
+
+    def test_garde_du_compte_vpn_retiree_partout(self):
+        cleanup = INSTALL[INSTALL.index("CLEANUP_EOF"):INSTALL.rindex("CLEANUP_EOF")]
+        for texte, nom in ((cleanup, "cleanup"), (REPAIR, "repair_network.sh")):
+            for chaine in ("OUTPUT KATAKOMBA_VPN", "OUTPUT KATAKOMBA_VPN6"):
+                self.assertIn(chaine, texte, f"{nom} : {chaine}")
+
+    def test_python_lance_en_root_isole_du_dossier_courant(self):
+        """« python3 - » et « python3 -c » importent d'abord depuis le dossier
+        courant : un json.py posé là où l'on tape « sudo katakomba status »
+        s'exécutait en root (vérifié).  -I l'écarte."""
+        import re as _re
+        for nom, texte in (("install.sh", INSTALL), ("repair_network.sh", REPAIR),
+                           ("katakomba-cli.sh", CLI), ("uninstall.sh", UNINSTALL)):
+            for m in _re.finditer(r"python3 ([^\n]*)", texte):
+                suite = m.group(1)
+                if _re.match(r"(-B )?(-c\b|- |-$)", suite):
+                    self.fail(f"{nom} : « python3 {suite[:40]} » sans -I")
+
+    def test_droits_jamais_poses_par_le_chemin(self):
+        """find -exec chgrp/chmod suit un lien glissé entre l'examen et
+        l'appel ; « cat > », chown puis chmod aussi.  Le groupe katakomba
+        écrit dans ces dossiers."""
+        self.assertNotRegex(INSTALL, r"find [^\n]*-exec ch(grp|own|mod)[^\n]*(CONFIG_DIR|providers)")
+        self.assertNotIn('chown root:katakomba "$TORRC_FILE"', INSTALL)
+        self.assertNotIn('cat > "$TORRC_FILE"', INSTALL)
+        self.assertIn('droits_surs plat "$CONFIG_DIR"', INSTALL)
+        self.assertIn('droits_surs arbre "$INSTALL_DIR/providers"', INSTALL)
+        aide = INSTALL[INSTALL.index("droits_surs() {"):INSTALL.index("DROITS_EOF\n}")]
+        for requis in ("os.O_NOFOLLOW", "dir_fd=parent", "os.fchown(fd", "os.fchmod(fd",
+                       "st.st_nlink == 1"):
+            self.assertIn(requis, aide)
+        self.assertNotRegex(aide, r"os\.ch(own|mod)\(")
+
     def test_openvpn_sans_privilege(self):
         """Utilisateur dédié, répertoire d'exécution à part, interface retirée
         à chaque arrêt, utilisateur effacé à la purge."""
@@ -494,7 +561,7 @@ class DoctorCommandTest(unittest.TestCase):
         """L'interface lit --json : aucun découpage en colonnes, que des
         titres traduits (plus longs en allemand) casseraient."""
         bloc = CLI[CLI.index("    doctor)"):CLI.index("    logs)")]
-        self.assertIn('python3 - "$DAEMON_DIR" "${@:2}"', bloc)
+        self.assertIn('python3 -I - "$DAEMON_DIR" "${@:2}"', bloc)
         self.assertIn('JSON = "--json" in sys.argv[2:]', bloc)
         self.assertIn("json.dumps({\"resultats\"", bloc)
 

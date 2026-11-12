@@ -159,7 +159,7 @@ class PageReglages(Adw.PreferencesPage):
             self.transports.set_selected(
                 modele.ORDRES_TRANSPORTS.index(modele.ordre_general(c)))
             self.blocage.set_active(c.get("kill_switch", True))
-            self.ipv6.set_active(c.get("block_ipv6", False))
+            self.ipv6.set_active(c.get("block_ipv6", True))
             self.mesure.set_active(c.get("circuit_check", True))
             self.seuil.set_value(int(c.get("circuit_min_kbs", 250)))
             self.essais.set_value(int(c.get("circuit_max_retries", 3)))

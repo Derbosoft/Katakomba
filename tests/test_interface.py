@@ -168,8 +168,9 @@ class FenetreTest(unittest.TestCase):
 
     def test_interrupteur_enregistre(self):
         page = self.fen.pages["reglages"]
-        page.ipv6.set_active(True)
-        self.assertTrue(self.config_disque()["block_ipv6"])
+        self.assertTrue(page.ipv6.get_active(), "IPv6 bloqué par défaut (v4.7.0)")
+        page.ipv6.set_active(False)
+        self.assertFalse(self.config_disque()["block_ipv6"])
         self.assertTrue(self.fen.bandeau.get_revealed(),
                         "le redémarrage nécessaire n'est pas proposé")
 

@@ -37,9 +37,9 @@ class KillSwitchTest(unittest.TestCase):
         m_firewall.pwd = self._pwd
 
     def _poser(self, rec=None, **cfg):
-        """« -C » renvoie 1 : chaîne pas encore branchée (cas réel)."""
+        """« -S » ne liste rien : chaîne pas encore branchée (cas réel)."""
         d = FakeDaemon(config=cfg)
-        r = rec or Recorder({" -C ": (1, "")})
+        r = rec or Recorder()
         with patched_run(r):
             ok = d._kill_switch_on()
         return d, r, ok
@@ -56,12 +56,24 @@ class KillSwitchTest(unittest.TestCase):
                                       ("iptables", "FORWARD", "KATAKOMBA_KILL_FWD"),
                                       ("ip6tables", "OUTPUT", "KATAKOMBA_KILL6"),
                                       ("ip6tables", "FORWARD", "KATAKOMBA_KILL6_FWD")):
-            self.assertTrue(r.ran(f"{outil} -N {chaine}"), chaine)
-            self.assertTrue(r.ran(f"{outil} -I {parent} -j {chaine}"), chaine)
+            self.assertTrue(r.ran(f"{outil} :{chaine} - [0:0]"), chaine)
+            self.assertTrue(r.ran(f"{outil} -I {parent} 1 -j {chaine}"), chaine)
         # Tout ou rien : aucun branchement avant la dernière règle construite.
         dernier_a = max(i for i, c in enumerate(r.calls) if " -A " in c)
         premier_i = min(i for i, c in enumerate(r.calls) if " -I " in c)
         self.assertLess(dernier_a, premier_i, "chaîne branchée avant d'être complète")
+
+    def test_chaines_remplacees_d_un_seul_tenant(self):
+        """iptables-restore --noflush : une chaîne déjà en place (gardée d'un
+        lancement précédent) n'est jamais vide ni à moitié remplie.  Aucune
+        commande ne la vide ou ne la remplit règle par règle."""
+        _, r, _ = self._poser()
+        restaurations = [c for c in r.calls if "-restore" in c]
+        self.assertEqual(restaurations, ["iptables-restore --noflush -w 5",
+                                         "ip6tables-restore --noflush -w 5"])
+        self.assertTrue(r.ran("iptables *filter") and r.ran("iptables COMMIT"))
+        self.assertFalse([c for c in r.calls if c.split()[1] in ("-F", "-X", "-N")],
+                         "chaîne vidée ou recréée hors de la restauration")
 
     def test_ordre_des_regles_en_sortie(self):
         _, r, _ = self._poser()
@@ -138,7 +150,7 @@ class KillSwitchTest(unittest.TestCase):
         self.assertTrue(d.has_log("debian-tor absent", "ERROR"))
 
     def test_regle_refusee_tout_est_retire(self):
-        d, r, ok = self._poser(Recorder({" -C ": (1, ""), "--uid-owner": (1, "")}))
+        d, r, ok = self._poser(Recorder({"--uid-owner": (1, "")}))
         self.assertFalse(ok)
         self.assertFalse(d._kill_active)
         self.assertFalse(r.ran(" -I "), "chaîne incomplète branchée")
@@ -146,17 +158,47 @@ class KillSwitchTest(unittest.TestCase):
         self.assertTrue(d.has_log("INACTIF", "ERROR"))
 
     def test_branchement_refuse_tout_est_retire(self):
-        d, r, ok = self._poser(Recorder({" -C ": (1, ""),
-                                         "-I FORWARD -j KATAKOMBA_KILL_FWD": (1, "")}))
+        d, r, ok = self._poser(Recorder({"-I FORWARD 1 -j KATAKOMBA_KILL_FWD": (1, "")}))
         self.assertFalse(ok)
         self.assertFalse(d._kill_active)
         self.assertTrue(r.ran("iptables -D OUTPUT -j KATAKOMBA_KILL"),
                         "la chaîne déjà branchée reste en place")
 
     def test_deja_branche_pas_de_doublon(self):
-        _, r, ok = self._poser(Recorder())          # « -C » réussit : déjà branché
+        _, r, ok = self._poser(Recorder({
+            "iptables -S OUTPUT": (0, "-P OUTPUT ACCEPT\n-A OUTPUT -j KATAKOMBA_KILL\n"),
+            "iptables -S FORWARD": (0, "-P FORWARD ACCEPT\n-A FORWARD -j KATAKOMBA_KILL_FWD\n"),
+            "ip6tables -S OUTPUT": (0, "-A OUTPUT -j KATAKOMBA_KS6\n-A OUTPUT -j KATAKOMBA_KILL6\n"),
+            "ip6tables -S FORWARD": (0, "-A FORWARD -j KATAKOMBA_KILL6_FWD\n")}))
         self.assertTrue(ok)
         self.assertFalse(r.ran(" -I "))
+
+    def test_regle_d_un_tiers_au_dessus_chaine_remise_en_tete(self):
+        """Docker insère ses règles en tête de FORWARD : ce qu'elles
+        acceptent ne passerait plus par le blocage."""
+        d = FakeDaemon()
+        r = Recorder({"iptables -S FORWARD": (
+            0, "-P FORWARD ACCEPT\n-A FORWARD -j DOCKER-USER\n"
+               "-A FORWARD -j KATAKOMBA_KILL_FWD\n-A FORWARD -j ACCEPT\n"
+               "-A FORWARD -j KATAKOMBA_KILL_FWD\n")})
+        with patched_run(r):
+            self.assertIs(d._brancher("iptables", "FORWARD", "KATAKOMBA_KILL_FWD"), True)
+        self.assertEqual(r.calls[1:], ["iptables -I FORWARD 1 -j KATAKOMBA_KILL_FWD",
+                                       "iptables -D FORWARD 5", "iptables -D FORWARD 3"])
+
+    def test_branchement_impossible(self):
+        d = FakeDaemon()
+        with patched_run(Recorder({" -I ": (1, "")})):
+            self.assertIsNone(d._brancher("iptables", "OUTPUT", "KATAKOMBA_KILL"))
+
+    def test_echec_signale_une_seule_fois(self):
+        """La surveillance réessaie toutes les 30 s : pas la même erreur au
+        journal à chaque fois."""
+        d = FakeDaemon()
+        with patched_run(Recorder({"--uid-owner": (1, "")})):
+            for _ in range(3):
+                self.assertFalse(d._kill_switch_on())
+        self.assertEqual(len(d.logged("INACTIF", "ERROR")), 1)
 
     def test_off_retire_tout(self):
         d, _, _ = self._poser()
@@ -178,7 +220,152 @@ class KillSwitchTest(unittest.TestCase):
         self.assertEqual(r.calls, [])
 
 
+class VerifierBlocageTest(unittest.TestCase):
+    """v4.7.0 : le blocage n'était posé qu'une fois, jamais revérifié."""
+
+    def setUp(self):
+        self._pwd = m_firewall.pwd
+        m_firewall.pwd = types.SimpleNamespace(
+            getpwnam=lambda n: types.SimpleNamespace(pw_uid=112))
+        self.addCleanup(setattr, m_firewall, "pwd", self._pwd)
+        self.d = FakeDaemon()
+        with patched_run(Recorder()):
+            self.assertTrue(self.d._kill_switch_on())
+        self.d.logs.clear()
+
+    def _etat(self, **defauts):
+        """Réponses d'iptables pour un blocage intact, sauf `defauts`."""
+        rep = {}
+        for outil, parent, chaine, _v6, _fwd in m_firewall.KILL_CHAINS:
+            n = self.d._kill_attendu[chaine]
+            rep[f"{outil} -S {chaine}"] = (0, f"-N {chaine}\n" + f"-A {chaine} -j X\n" * n)
+            rep[f"{outil} -S {parent}"] = (0, f"-P {parent} ACCEPT\n-A {parent} -j {chaine}\n")
+        rep.update(defauts)
+
+        class Exact(Recorder):
+            """Réponse par commande EXACTE : « iptables -S KATAKOMBA_KILL »
+            est aussi le début de « … -S KATAKOMBA_KILL_FWD »."""
+            def __call__(self, *cmd, **kwargs):
+                ligne = " ".join(cmd)
+                if ligne in rep:
+                    self.calls.append(ligne)
+                    from tests.helpers import Result
+                    return Result(*rep[ligne])
+                return super().__call__(*cmd, **kwargs)
+        return Exact()
+
+    def test_intact_rien_n_est_touche(self):
+        r = self._etat()
+        with patched_run(r):
+            self.assertFalse(self.d._verifier_blocage())
+        self.assertTrue(all(" -S " in c for c in r.calls), r.dump())
+        self.assertEqual(self.d.logs, [])
+
+    def test_chaine_videe_tout_est_repose(self):
+        r = self._etat(**{"iptables -S KATAKOMBA_KILL": (0, "-N KATAKOMBA_KILL\n")})
+        with patched_run(r):
+            self.assertTrue(self.d._verifier_blocage())
+        self.assertTrue(r.ran("iptables-restore"))
+        self.assertTrue(self.d._kill_active)
+        self.assertTrue(self.d.has_log("modifié ou retiré par un autre outil", "WARN"))
+
+    def test_chaine_disparue_tout_est_repose(self):
+        r = self._etat(**{"ip6tables -S KATAKOMBA_KILL6_FWD": (1, "")})
+        with patched_run(r):
+            self.assertTrue(self.d._verifier_blocage())
+        self.assertTrue(r.ran("ip6tables-restore"))
+
+    def test_branchement_retire_remis(self):
+        r = self._etat(**{"iptables -S OUTPUT": (0, "-P OUTPUT ACCEPT\n")})
+        with patched_run(r):
+            self.assertTrue(self.d._verifier_blocage())
+        self.assertTrue(r.ran("iptables -I OUTPUT 1 -j KATAKOMBA_KILL"))
+        self.assertFalse(r.ran("-restore"), "chaînes intactes : rien à reconstruire")
+        self.assertTrue(self.d.has_log("n'était plus en tête de OUTPUT", "WARN"))
+
+    def test_pose_impossible_au_demarrage_retentee(self):
+        d = FakeDaemon()
+        with patched_run(Recorder()):
+            self.assertTrue(d._verifier_blocage())
+        self.assertTrue(d._kill_active)
+
+    def test_desactive_ou_leve_expres_jamais_repose(self):
+        for d in (FakeDaemon(config={"kill_switch": False}),
+                  FakeDaemon(_kill_renonce=True)):
+            r = Recorder()
+            with patched_run(r):
+                self.assertFalse(d._verifier_blocage())
+            self.assertEqual(r.calls, [])
+
+    def test_blocage_ipv6_repose(self):
+        d = FakeDaemon(config={"kill_switch": False})
+        with patched_run(Recorder()):
+            d._ipv6_block_on()
+        r = Recorder({"ip6tables -S KATAKOMBA_KS6": (0, "-N KATAKOMBA_KS6\n")})
+        with patched_run(r):
+            self.assertTrue(d._verifier_blocage())
+        self.assertTrue(r.ran("ip6tables-restore"))
+        self.assertTrue(d._ipv6_blocked)
+
+
+class GardeVpnTest(unittest.TestCase):
+    """OpenVPN, le pont et les assistants d'API ne parlent qu'à Tor, en local."""
+
+    def setUp(self):
+        self._pwd = m_firewall.pwd
+        self.addCleanup(setattr, m_firewall, "pwd", self._pwd)
+        m_firewall.pwd = types.SimpleNamespace(
+            getpwnam=lambda n: types.SimpleNamespace(pw_uid=998))
+
+    def test_tout_sauf_la_boucle_locale_refuse(self):
+        d = FakeDaemon(config={"kill_switch": False})     # même sans blocage
+        r = Recorder()
+        with patched_run(r):
+            d._garde_vpn_on()
+        for outil, chaine in (("iptables", "KATAKOMBA_VPN"), ("ip6tables", "KATAKOMBA_VPN6")):
+            regles = [c.split(f" -A {chaine} ", 1)[1] for c in r.calls if f" -A {chaine} " in c]
+            self.assertEqual(regles, [
+                "-o lo -j RETURN",
+                "-m owner --uid-owner 998 -p tcp -j REJECT --reject-with tcp-reset",
+                "-m owner --uid-owner 998 -j REJECT"])
+            self.assertTrue(r.ran(f"{outil} -I OUTPUT 1 -j {chaine}"))
+        self.assertTrue(d._garde_vpn)
+
+    def test_retrait(self):
+        d = FakeDaemon()
+        with patched_run(Recorder()):
+            d._garde_vpn_on()
+        r = Recorder({" -D ": (1, "")})
+        with patched_run(r):
+            d._garde_vpn_off()
+        self.assertTrue(r.ran("iptables -X KATAKOMBA_VPN"))
+        self.assertTrue(r.ran("ip6tables -X KATAKOMBA_VPN6"))
+        self.assertFalse(d._garde_vpn)
+
+    def test_sans_le_compte_rien_n_est_pose(self):
+        def absent(_n):
+            raise KeyError(_n)
+        m_firewall.pwd = types.SimpleNamespace(getpwnam=absent)
+        d, r = FakeDaemon(), Recorder()
+        with patched_run(r):
+            d._garde_vpn_on()
+        self.assertEqual(r.calls, [])
+
+    def test_echec_signale_sans_bloquer(self):
+        d = FakeDaemon()
+        with patched_run(Recorder({"-restore": (1, "")})):
+            d._garde_vpn_on()
+        self.assertFalse(d._garde_vpn)
+        self.assertTrue(d.has_log("Garde du compte katakomba-vpn", "WARN"))
+
+
 class Ipv6BlockTest(unittest.TestCase):
+
+    def setUp(self):
+        self._pwd = m_firewall.pwd
+        self.addCleanup(setattr, m_firewall, "pwd", self._pwd)
+        m_firewall.pwd = types.SimpleNamespace(
+            getpwnam=lambda n: types.SimpleNamespace(pw_uid=112))
 
     def test_chaines_creees_et_branchees(self):
         d = FakeDaemon(_tun_iface="tun0")
@@ -186,22 +373,30 @@ class Ipv6BlockTest(unittest.TestCase):
         with patched_run(r):
             d._ipv6_block_on()
         self.assertTrue(d._ipv6_blocked)
-        self.assertTrue(r.ran("ip6tables -N KATAKOMBA_KS6"))
-        self.assertTrue(r.ran("ip6tables -I OUTPUT -j KATAKOMBA_KS6"))
-        self.assertTrue(r.ran("ip6tables -I FORWARD -j KATAKOMBA_KS6_FWD"))
-        # Le tunnel et lo doivent être exemptés AVANT le DROP final.
-        self.assertTrue(r.ran("-A KATAKOMBA_KS6 -o tun0 -j RETURN"))
-        self.assertTrue(r.ran("-A KATAKOMBA_KS6 -j DROP"))
+        self.assertTrue(r.ran("ip6tables :KATAKOMBA_KS6 - [0:0]"))
+        self.assertTrue(r.ran("ip6tables -I OUTPUT 1 -j KATAKOMBA_KS6"))
+        self.assertTrue(r.ran("ip6tables -I FORWARD 1 -j KATAKOMBA_KS6_FWD"))
+        # Le tunnel et lo doivent être exemptés AVANT le refus final.
+        self.assertTrue(r.ran("-A KATAKOMBA_KS6 -o tun+ -j RETURN"))
+        self.assertTrue(r.ran("-A KATAKOMBA_KS6 -j REJECT"))
 
-    def test_ordre_return_avant_drop(self):
-        """Un DROP placé avant les RETURN couperait tout l'IPv6 local."""
+    def test_memes_regles_que_le_blocage_hors_tunnel(self):
+        """v4.7.0 : l'ancienne chaîne jetait tout, voisinage IPv6 compris, et
+        laissait continuer les connexions sortantes déjà ouvertes."""
         d = FakeDaemon(_tun_iface="tun0")
         r = Recorder()
         with patched_run(r):
             d._ipv6_block_on()
-        chain = [c for c in r.calls if "-A KATAKOMBA_KS6 " in c]
-        self.assertEqual(chain[-1], "ip6tables -A KATAKOMBA_KS6 -j DROP",
-                         f"le DROP n'est pas la dernière règle : {chain}")
+        regles = [c.split(" -A KATAKOMBA_KS6 ", 1)[1] for c in r.calls
+                  if " -A KATAKOMBA_KS6 " in c]
+        self.assertEqual(regles[-1], "-j REJECT", f"le refus n'est pas en dernier : {regles}")
+        self.assertIn("-p ipv6-icmp --icmpv6-type neighbour-solicitation -j RETURN", regles)
+        self.assertIn("-d fe80::/10 -j RETURN", regles)
+        self.assertIn("-m owner --uid-owner 112 -j RETURN", regles)
+        for regle in regles:
+            if "ESTABLISHED" in regle:
+                self.assertIn("--ctdir REPLY", regle)
+        self.assertFalse([c for c in r.calls if " DROP" in c])
 
     def test_idempotent(self):
         d = FakeDaemon(_tun_iface="tun0")
@@ -214,10 +409,21 @@ class Ipv6BlockTest(unittest.TestCase):
 
     def test_echec_output_annule_l_activation(self):
         d = FakeDaemon(_tun_iface="tun0")
-        with patched_run(Recorder({"-I OUTPUT": (1, "")})):
+        r = Recorder({"-I OUTPUT": (1, ""), " -D ": (1, "")})
+        with patched_run(r):
             d._ipv6_block_on()
         self.assertFalse(d._ipv6_blocked)
-        self.assertTrue(d.has_log("ip6tables OUTPUT", "ERROR"))
+        self.assertTrue(d.has_log("Blocage IPv6 INACTIF", "ERROR"))
+        self.assertTrue(r.ran("ip6tables -X KATAKOMBA_KS6"), "chaîne laissée")
+
+    def test_regles_refusees(self):
+        d = FakeDaemon(_tun_iface="tun0")
+        r = Recorder({"-restore": (1, "")})
+        with patched_run(r):
+            d._ipv6_block_on()
+        self.assertFalse(d._ipv6_blocked)
+        self.assertFalse(r.ran(" -I "))
+        self.assertTrue(d.has_log("Blocage IPv6 INACTIF", "ERROR"))
 
     def test_off_supprime_et_reinitialise(self):
         d = FakeDaemon(_tun_iface="tun0")
@@ -431,9 +637,9 @@ class DnsmasqRangeTest(unittest.TestCase):
     les bornes dans le test ne testerait que le test.
     """
 
-    def _dnsmasq_cmd(self, subnet, gw="10.0.0.1", dhcp=True):
+    def _dnsmasq_cmd(self, subnet, gw="10.0.0.1", dhcp=True, dns=()):
         import tempfile
-        d = FakeDaemon(config={**LAN_CFG, "lan_dhcp": dhcp})
+        d = FakeDaemon(config={**LAN_CFG, "lan_dhcp": dhcp}, _vpn_dns_ips=list(dns))
         captured = {}
 
         class SyncThread:
@@ -474,9 +680,19 @@ class DnsmasqRangeTest(unittest.TestCase):
         return None
 
     def test_pas_de_serveur_dns(self):
-        """Les clients reçoivent 1.1.1.1 ; dnsmasq n'a aucun amont à servir."""
+        """Les clients reçoivent le DNS du VPN ; dnsmasq n'a aucun amont à servir."""
         _, cmd = self._dnsmasq_cmd("10.0.0.0/24")
         self.assertIn("--port=0", cmd)
+
+    def test_dns_du_vpn_remis_aux_clients(self):
+        """v4.7.0 : 1.1.1.1 était remis en dur — les requêtes de tout le
+        réseau partagé allaient à un tiers, même quand le VPN a son DNS."""
+        _, cmd = self._dnsmasq_cmd("10.0.0.0/24", dns=["pas-une-ip", "10.8.0.1", "10.8.0.2"])
+        self.assertIn("--dhcp-option=6,10.8.0.1", cmd)
+
+    def test_sans_dns_du_vpn_repli(self):
+        _, cmd = self._dnsmasq_cmd("10.0.0.0/24")
+        self.assertIn("--dhcp-option=6,1.1.1.1", cmd)
 
     def test_slash_24_plage_centrale(self):
         self.assertEqual(self._plage("10.0.0.0/24"), ("10.0.0.100", "10.0.0.200"))
