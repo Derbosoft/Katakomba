@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.8.0
+# Katakomba — v4.9.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.8.0-blue)
+![Version](https://img.shields.io/badge/Version-4.9.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1052,7 +1052,19 @@ A fault affecting an entire provider (`.ovpn` not found) likewise skips straight
 
 ### Failure detection
 
-The watchdog checks connectivity every **9 seconds** (after a **30-second grace period** post-connection, cut short if the tunnel sends without receiving anything for 9 s: dead data channel):
+The watchdog takes stock every **9 seconds** (after a **30-second grace period** post-connection, cut short if the tunnel sends without receiving anything for 9 s: dead data channel).
+
+*(v4.9.0)* **Received traffic counts as proof.** If the tunnel has received at least 2 KB since the last check, it is alive: no probe is sent. This threshold is well above what a dead tunnel still receives: a WireGuard keepalive is 32 bytes, and the replies to our own probes under 500. A probe is sent only when in doubt:
+
+- a failure is already open: only a probe closes it;
+- the channel is silent: the tunnel sends without receiving anything;
+- at least 2 KB sent without as much received;
+- nothing has been verified yet for this tunnel;
+- idle tunnel: one routine probe at most every **5 minutes**. A failure that happens while idle shows up anyway as soon as traffic resumes.
+
+Before, the probe went out every 9 s, about 800 connections an hour to two public resolvers, at a fixed rate. It was Katakomba's most recognisable signature, for the VPN provider as for Cloudflare and Quad9. A tunnel in use is no longer probed at all; an idle one gets 24 connections an hour at most.
+
+The probe itself:
 
 1. `ip link show tunX` — does the interface exist?
 2. TCP connections via `SO_BINDTODEVICE tunX` to `1.1.1.1:443` **and** `9.9.9.9:443`, opened **in parallel** (5 s timeout for both together) — does the tunnel actually route traffic? Two independent endpoints: a transient outage of one triggers nothing.
@@ -1104,7 +1116,11 @@ If **3 consecutive full restarts** all fail (`_full_restart_count`), the watchdo
 
 ### Tor circuit quality check
 
-The Tor circuit is **drawn at random on every connection**, and its quality varies wildly (from ~100 KB/s to several MB/s). Right after the tunnel comes up, the daemon measures real throughput *through* the tunnel:
+The Tor circuit is **drawn at random on every connection**, and its quality varies wildly (from ~100 KB/s to several MB/s). Right after the tunnel comes up, the daemon measures the circuit *through* the tunnel.
+
+*(v4.9.0)* **Latency only, by default** (`circuit_max_ms` at 1500, `circuit_min_kbs` at 0): ten connection openings to `1.1.1.1:443`, a few KB, no DNS query. The throughput test downloaded 4.5 MB, and up to 9 MB per attempt, from `speed.cloudflare.com` at every start. The VPN provider saw that name right after each connection: a signature. It is still available: `katakomba set circuit-min-kbs 250` (or the Settings page). A configuration saved before v4.9.0 keeps its values, since the interface saves every key: run `katakomba set circuit-min-kbs 0` then `katakomba set circuit-max-ms 1500` to move to the new defaults.
+
+With a throughput threshold:
 
 ```
 Tunnel up → 5 s to settle → latency (v4.8.0) → measure throughput
@@ -1128,7 +1144,7 @@ Two design points worth stating:
 
 Throughput says nothing about response time: on 44 circuits measured by a fleet, throughput and latency had **no relationship** (correlation ≈ 0). A circuit taking 211 ms to open a connection delivered 257 KB/s, another at 673 ms delivered 852. The throughput criterion therefore let through circuits that are slow to respond, the ones that detour through a distant relay. That is what browsing feels.
 
-- **Latency** (`circuit_max_ms`, `katakomba set circuit-max-ms <ms>`, 0 by default = no criterion): median of ten TCP connection openings through the tunnel, to the same host as the throughput test. Nothing is sent, and each connection is closed at once. It is measured **before** throughput: it costs a few KB, rejects a circuit without downloading the 4.5 MB, and is not inflated by the queues a download leaves full. It is measured and shown (`katakomba status`, `doctor`) even without a criterion. Fleet reference points, over 32 circuits: median 406 ms, 75% under 512 ms, 90% under 586 ms, worst 1,083 ms; circuits whose test download did not complete almost all had more than 450 ms.
+- **Latency** (`circuit_max_ms`, `katakomba set circuit-max-ms <ms>`, 1500 by default since v4.9.0, 0 = no criterion): median of ten TCP connection openings through the tunnel, to `1.1.1.1:443` by its address (`9.9.9.9:443` if the first refuses), with no DNS query *(v4.9.0; before, `speed.cloudflare.com`)*. 1500 ms is above the fleet's worst circuit: only unusable circuits are rejected. Nothing is sent, and each connection is closed at once. It is measured **before** throughput: it costs a few KB, rejects a circuit without downloading the 4.5 MB, and is not inflated by the queues a download leaves full. It is measured and shown (`katakomba status`, `doctor`) even without a criterion. Fleet reference points, over 32 circuits: median 406 ms, 75% under 512 ms, 90% under 586 ms, worst 1,083 ms; circuits whose test download did not complete almost all had more than 450 ms.
 - **Relative threshold** (`circuit_relative_pct`, `katakomba set circuit-relative-pct <N>`, 0 to 50, 0 by default): a circuit is replaced if it is among the worst N%, in throughput or latency, of those **this machine** has measured. A fixed threshold ages badly when the whole of Tor's speed shifts by 30% in two months; a relative threshold sets the redraw rate in advance and follows the machine's guard, which almost never changes. `circuit_min_kbs` and `circuit_max_ms` remain a floor and a ceiling: the relative threshold can only be stricter, so that a bad guard does not make everything acceptable. With this mode, set `circuit_min_kbs` as a safety floor (150 for example). The history (50 measurements at most, 60 days) is in `/var/lib/katakomba/circuits.json`; before 10 measurements, only the fixed thresholds apply. At one measurement per start this takes a few days, less with `circuit_recheck_min`.
 
 Both criteria share `circuit_max_retries`. Rejecting the worst 30% costs on average 0.4 extra draws per connection on one criterion, more on two: keep the percentage modest.
@@ -1410,7 +1426,7 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
   "excluded_domains": [".local"],
   "local_dns": "192.168.50.10",
   "circuit_check": true,
-  "circuit_min_kbs": 250,
+  "circuit_min_kbs": 0,
   "circuit_max_retries": 3,
   "lan_iface": "",
   "lan_gateway": "10.0.0.1",
@@ -1437,8 +1453,8 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 | `primary_retry_min` | int | On a fallback, minutes between two tests of the first WireGuard stage (default 30, 5 minimum, 0 = never) (v4.5.0) |
 | `random_account` | bool | Account order drawn at random within each provider (provider order stays the list's priority) |
 | `circuit_check` | bool | Measure throughput on connect + re-draw if the circuit is slow |
-| `circuit_min_kbs` | int | Threshold in KB/s (250 ≈ 2 Mbps; 0 = disabled) |
-| `circuit_max_ms` | int | Maximum median latency to open a connection, in ms (100 to 10000; 0 = no criterion, the default) (v4.8.0) |
+| `circuit_min_kbs` | int | Threshold in KB/s (250 ≈ 2 Mbps; 0 = no throughput test, the default since v4.9.0) |
+| `circuit_max_ms` | int | Maximum median latency to open a connection, in ms (100 to 10000; 0 = no criterion; 1500 by default since v4.9.0) (v4.8.0) |
 | `circuit_relative_pct` | int | Replace the worst N% of the circuits measured by this machine (0 to 50; 0 = fixed thresholds only, the default) (v4.8.0) |
 | `circuit_max_retries` | int | Max re-draws before keeping the circuit |
 | `circuit_recheck_min` | int | Measure every new circuit again, at most once per this many minutes (5 minimum); `0` = once per start, the default (v4.6.0) |
@@ -1532,6 +1548,21 @@ python3 outils/traductions.py verifier        # missing entries, mismatched {fie
 **VPN credentials:** stored as base64 in `config.json`. This is obfuscation, **not encryption**. The file is mode `660 root:katakomba`, inside a `2770 root:katakomba` directory.
 
 **Kill switch:** as long as the service is not stopped, nothing leaves outside the tunnel except Tor and the local network — reconnections, restarts and failure exits included *(v4.7.0)* (see [Kill switch](#kill-switch--katakomba_kill-v380)).
+
+**Outgoing traffic (v4.9.0):** what Katakomba itself sends on the network, and who sees it. No telemetry, no update check, and the interface only talks to the daemon, over a local socket.
+
+| Traffic | Seen by | When |
+|---|---|---|
+| Tor to its entry relay and the directories | ISP, local network | All the time |
+| Connection to the VPN server, through Tor | Tor exit node, provider | All the time |
+| Mullvad or IVPN API, through Tor, certificate verified, no User-Agent | Exit node (encrypted), provider | Managed WireGuard: opening a slot, the key every week, the server list every 7 days |
+| Return probe handshake | Provider | In fallback mode only, every 30 min |
+| Watchdog probe: TCP to `1.1.1.1:443`, `9.9.9.9:443`, nothing sent | Provider, Cloudflare, Quad9 | Only when in doubt; when idle, every 5 min at most |
+| Circuit latency: ten TCP connections to `1.1.1.1:443` | Provider, Cloudflare | Once per daemon start |
+| Throughput test, `speed.cloudflare.com` (4.5 MB) | Provider, Cloudflare | Only if `circuit_min_kbs` > 0 |
+| `katakomba status`, `ip`, `doctor`: `api.ipify.org`; `doctor`: one DNS query | Provider, ipify | On request, through the tunnel only |
+
+Since v4.9.0, Katakomba itself no longer sends anything outside Tor. `doctor` compared the tunnel's resolver with the network card's: that query went in the clear to the ISP. `status` and `ip` asked for the public address even without a tunnel, and so with the real address if the kill switch was off. Internet exclusions you add do leave outside the tunnel, by choice.
 
 **auth.tmp:** created directly as mode `400`, owned by `katakomba-vpn` (never exposed to the umask; no group rights since v3.12.0, OpenVPN warned about them at every connection), just before launching OpenVPN, in `/run/katakomba-vpn` (root and OpenVPN only), never through a symlink; deleted when OpenVPN exits.
 

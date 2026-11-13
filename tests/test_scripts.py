@@ -554,8 +554,25 @@ class DoctorCommandTest(unittest.TestCase):
         bloc = CLI[CLI.index("    doctor)"):]
         bloc = bloc[:bloc.index("    logs)")]
         self.assertNotIn('"eth0"', bloc, "nom d'interface codé en dur")
-        self.assertIn('champs.index("dev")', bloc,
-                      "l'uplink devrait être dérivé de la route par défaut")
+
+    def test_aucune_requete_dns_par_la_carte_reseau(self):
+        """v4.9.0 : la comparaison avec le résolveur local partait en clair
+        chez le FAI, à chaque diagnostic."""
+        bloc = CLI[CLI.index("    doctor)"):]
+        bloc = bloc[:bloc.index("    logs)")]
+        self.assertNotIn('"-i", uplink', bloc)
+        self.assertEqual(bloc.count('"resolvectl", "query"'), 1)
+
+    def test_ip_publique_demandee_par_le_tunnel_seulement(self):
+        """v4.9.0 : « status » et « ip » ne demandent jamais l'adresse hors
+        du tunnel, où elle partirait avec l'adresse réelle."""
+        for cmd, fin in (("    status)", "    doctor)"), ("    ip)", ";;")):
+            bloc = CLI[CLI.index(cmd):]
+            bloc = bloc[:bloc.index(fin)]
+            for ligne in bloc.splitlines():
+                if "api.ipify.org" in ligne:
+                    self.assertIn("--interface tun-katakomba", ligne, cmd)
+            self.assertIn("ip link show tun-katakomba up", bloc, cmd)
 
     def test_sortie_json_pour_l_interface(self):
         """L'interface lit --json : aucun découpage en colonnes, que des

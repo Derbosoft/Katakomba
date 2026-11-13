@@ -72,8 +72,8 @@ class ErreurMullvad(Exception):
 def requete(socks, methode, chemin, corps=None, jeton=None):
     """(statut HTTP, réponse JSON ou None, heure du serveur)."""
     c = _ConnexionTor(API, socks)
-    entetes = {"Content-Type": "application/json", "Accept": "application/json",
-               "User-Agent": "Katakomba"}
+    # Pas de User-Agent (v4.9.0), comme ivpn.requete.
+    entetes = {"Content-Type": "application/json", "Accept": "application/json"}
     if jeton:
         entetes["Authorization"] = f"Bearer {jeton}"
     try:

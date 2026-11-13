@@ -160,3 +160,15 @@ class Api(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnTetes(unittest.TestCase):
+    """Rien qui nomme le client (v4.9.0), jeton compris dans la requête."""
+
+    def test_aucun_user_agent(self):
+        from tests.test_ivpn import requete_capturee
+        brut = requete_capturee(mullvad, lambda: mullvad.requete(
+            "aucun", "GET", "/app/v1/relays", jeton="t"))
+        self.assertNotIn(b"user-agent", brut.lower())
+        self.assertNotIn(b"katakomba", brut.lower())
+        self.assertIn(b"Authorization: Bearer t", brut)

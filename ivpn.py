@@ -93,9 +93,10 @@ def requete(socks, methode, chemin, corps=None):
     c = _ConnexionTor(API, socks)
     try:
         donnees = None if corps is None else json.dumps(corps).encode()
+        # Pas de User-Agent (v4.9.0) : « Katakomba » désignait le client au
+        # fournisseur.  http.client n'en ajoute aucun de lui-même.
         c.request(methode, chemin, body=donnees, headers={
-            "Content-Type": "application/json", "Accept": "application/json",
-            "User-Agent": "Katakomba"})
+            "Content-Type": "application/json", "Accept": "application/json"})
         r = c.getresponse()
         texte = r.read(REPONSE_MAX)
     finally:

@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.8.0
+# Katakomba — v4.9.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.8.0-blue)
+![Version](https://img.shields.io/badge/Version-4.9.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -834,7 +834,7 @@ Vérifie en une commande les invariants qui doivent tenir quand la connexion est
   [OK  ] Réseaux locaux             2 réseau(x) en accès direct
   [OK  ] DNS du tunnel              10.8.0.1 · ~. · default-route
   [OK  ] DNS split                  drop-in en place
-  [OK  ] Chemin des requêtes DNS    128 ms (résolveur local via eth0 : 7 ms)
+  [OK  ] Chemin des requêtes DNS    128 ms
   [OK  ] IPv6                       bloqué
   [OK  ] Sortie Internet            IP publique 203.0.113.42
 
@@ -1100,7 +1100,19 @@ Un défaut qui touche le fournisseur entier (`.ovpn` introuvable) fait aussi pas
 
 ### Détection de panne
 
-Le watchdog vérifie la connectivité toutes les **9 secondes** (après un délai de grâce de **30 secondes** post-connexion, abrégé si le tunnel émet sans rien recevoir pendant 9 s : canal de données mort) :
+Le watchdog fait le point toutes les **9 secondes** (après un délai de grâce de **30 secondes** post-connexion, abrégé si le tunnel émet sans rien recevoir pendant 9 s : canal de données mort).
+
+*(v4.9.0)* **Le trafic reçu sert de preuve.** Si le tunnel a reçu au moins 2 Ko depuis le dernier point, il est vivant : aucune sonde ne part. Ce seuil est bien au-dessus de ce qu'un tunnel mort reçoit encore : une keepalive WireGuard fait 32 octets, et les réponses à nos propres sondes moins de 500. La sonde ne part que dans le doute :
+
+- une panne est déjà ouverte : seule une sonde la clôt ;
+- le canal est muet : le tunnel émet sans rien recevoir ;
+- au moins 2 Ko émis sans autant reçu ;
+- rien n'a encore été vérifié pour ce tunnel ;
+- tunnel au repos : une sonde de routine au plus toutes les **5 minutes**. Une panne survenue au repos se voit de toute façon dès la reprise du trafic.
+
+Avant, la sonde partait toutes les 9 s, soit environ 800 connexions par heure vers deux résolveurs publics, à cadence fixe. C'était la signature la plus reconnaissable de Katakomba, pour le fournisseur VPN comme pour Cloudflare et Quad9. Un tunnel qui sert n'est plus sondé du tout ; au repos, il reste au plus 24 connexions par heure.
+
+La sonde elle-même :
 
 1. `ip link show tunX` — l'interface existe-t-elle ?
 2. Connexion TCP via `SO_BINDTODEVICE tunX` vers `1.1.1.1:443` **et** `9.9.9.9:443`, lancées **en parallèle** (5 s d'attente pour les deux ensemble) — le tunnel route-t-il vraiment ? Deux endpoints indépendants : la panne ponctuelle de l'un ne déclenche rien.
@@ -1152,7 +1164,11 @@ Si **3 redémarrages complets consécutifs** échouent tous (compteur `_full_res
 
 ### Contrôle qualité du circuit Tor
 
-Le circuit Tor est **tiré au sort à chaque connexion** : sa qualité varie fortement d'un tirage à l'autre (de ~100 KB/s à plusieurs Mo/s). Juste après l'établissement du tunnel, le daemon mesure le débit réel *à travers* le tunnel :
+Le circuit Tor est **tiré au sort à chaque connexion** : sa qualité varie fortement d'un tirage à l'autre (de ~100 KB/s à plusieurs Mo/s). Juste après l'établissement du tunnel, le daemon mesure le circuit *à travers* le tunnel.
+
+*(v4.9.0)* **Par défaut, la latence seule** (`circuit_max_ms` à 1500, `circuit_min_kbs` à 0) : dix ouvertures de connexion vers `1.1.1.1:443`, quelques Ko, sans requête DNS. Le test de débit téléchargeait 4,5 Mo, et jusqu'à 9 Mo par essai, depuis `speed.cloudflare.com` à chaque démarrage. Le fournisseur VPN voyait ce nom juste après chaque connexion : une signature. Il reste disponible : `katakomba set circuit-min-kbs 250` (ou la page Réglages). Une configuration enregistrée avant la v4.9.0 garde ses valeurs, l'interface enregistrant toutes les clés : `katakomba set circuit-min-kbs 0` puis `katakomba set circuit-max-ms 1500` pour passer aux nouveaux défauts.
+
+Avec un seuil de débit :
 
 ```
 Tunnel actif → 5 s de stabilisation → latence (v4.8.0) → mesure du débit
@@ -1176,7 +1192,7 @@ Deux points de conception importants :
 
 Le débit ne dit rien du temps de réponse : sur 44 circuits mesurés par un parc, débit et latence n'avaient **aucun lien** (corrélation ≈ 0). Un circuit à 211 ms d'ouverture de connexion débitait 257 KB/s, un autre à 673 ms en débitait 852. Le critère de débit laissait donc passer des circuits lents à répondre, ceux qui font un détour par un relais lointain. C'est ce que la navigation fait sentir.
 
-- **Latence** (`circuit_max_ms`, `katakomba set circuit-max-ms <ms>`, 0 par défaut = pas de critère) : médiane de dix ouvertures de connexion TCP à travers le tunnel, vers le même hôte que le débit. Rien n'est envoyé, et chaque connexion est refermée aussitôt. Elle est mesurée **avant** le débit : elle coûte quelques Ko, écarte un circuit sans télécharger les 4,5 Mo, et n'est pas gonflée par les files d'attente qu'un téléchargement laisse pleines. Elle est mesurée et affichée (`katakomba status`, `doctor`) même sans critère. Repères du parc, sur 32 circuits : médiane 406 ms, 75 % sous 512 ms, 90 % sous 586 ms, pire 1 083 ms ; les circuits dont le téléchargement de test n'aboutissait pas avaient presque tous plus de 450 ms.
+- **Latence** (`circuit_max_ms`, `katakomba set circuit-max-ms <ms>`, 1500 par défaut depuis la v4.9.0, 0 = pas de critère) : médiane de dix ouvertures de connexion TCP à travers le tunnel, vers `1.1.1.1:443` par son adresse (`9.9.9.9:443` si la première refuse), sans requête DNS *(v4.9.0 ; avant, `speed.cloudflare.com`)*. 1500 ms est au-dessus du pire circuit du parc : seuls les circuits inutilisables sont écartés. Rien n'est envoyé, et chaque connexion est refermée aussitôt. Elle est mesurée **avant** le débit : elle coûte quelques Ko, écarte un circuit sans télécharger les 4,5 Mo, et n'est pas gonflée par les files d'attente qu'un téléchargement laisse pleines. Elle est mesurée et affichée (`katakomba status`, `doctor`) même sans critère. Repères du parc, sur 32 circuits : médiane 406 ms, 75 % sous 512 ms, 90 % sous 586 ms, pire 1 083 ms ; les circuits dont le téléchargement de test n'aboutissait pas avaient presque tous plus de 450 ms.
 - **Seuil relatif** (`circuit_relative_pct`, `katakomba set circuit-relative-pct <N>`, de 0 à 50, 0 par défaut) : un circuit est remplacé s'il fait partie des N % les moins bons, en débit ou en latence, de ceux que **cette machine** a mesurés. Un seuil fixe vieillit mal quand toute la vitesse de Tor varie de 30 % en deux mois ; un seuil relatif fixe d'avance le taux de nouveaux tirages et suit la garde de la machine, qui ne change presque jamais. `circuit_min_kbs` et `circuit_max_ms` restent un plancher et un plafond : le seuil relatif ne peut que durcir, pour qu'une mauvaise garde ne fasse pas tout accepter. Avec ce mode, réglez `circuit_min_kbs` en plancher de sécurité (150 par exemple). L'historique (50 mesures au plus, 60 jours) est dans `/var/lib/katakomba/circuits.json` ; avant 10 mesures, seuls les seuils fixes jouent. À une mesure par démarrage, il faut donc quelques jours, moins avec `circuit_recheck_min`.
 
 Les deux critères partagent `circuit_max_retries`. Rejeter les 30 % les moins bons coûte en moyenne 0,4 nouveau tirage par montée sur un critère, davantage sur deux : gardez un pourcentage modeste.
@@ -1461,7 +1477,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
   "excluded_domains": [".lan"],
   "local_dns": "192.168.50.10",
   "circuit_check": true,
-  "circuit_min_kbs": 250,
+  "circuit_min_kbs": 0,
   "circuit_max_retries": 3,
   "lan_iface": "",
   "lan_gateway": "10.0.0.1",
@@ -1488,8 +1504,8 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 | `primary_retry_min` | int | En secours, minutes entre deux tests de la première étape WireGuard (30 par défaut, 5 au minimum, 0 = jamais) (v4.5.0) |
 | `random_account` | bool | Ordre des comptes tiré au hasard chez chaque fournisseur (l'ordre des fournisseurs reste la priorité de la liste) |
 | `circuit_check` | bool | Mesure du débit à la connexion + re-tirage si circuit lent |
-| `circuit_min_kbs` | int | Seuil en KB/s (250 ≈ 2 Mbps ; 0 = désactivé) |
-| `circuit_max_ms` | int | Latence médiane maximale à l'ouverture d'une connexion, en ms (100 à 10000 ; 0 = pas de critère, le défaut) (v4.8.0) |
+| `circuit_min_kbs` | int | Seuil en KB/s (250 ≈ 2 Mbps ; 0 = pas de test de débit, le défaut depuis la v4.9.0) |
+| `circuit_max_ms` | int | Latence médiane maximale à l'ouverture d'une connexion, en ms (100 à 10000 ; 0 = pas de critère ; 1500 par défaut depuis la v4.9.0) (v4.8.0) |
 | `circuit_relative_pct` | int | Remplacer les N % des circuits les moins bons mesurés par cette machine (0 à 50 ; 0 = seuils fixes seuls, le défaut) (v4.8.0) |
 | `circuit_max_retries` | int | Re-tirages max avant de conserver le circuit |
 | `circuit_recheck_min` | int | Mesurer de nouveau chaque nouveau circuit, au plus une fois par ce nombre de minutes (5 au minimum) ; `0` = une fois par démarrage, le défaut (v4.6.0) |
@@ -1583,6 +1599,21 @@ python3 outils/traductions.py verifier        # manques, {champs} incohérents (
 **Credentials VPN :** stockés en base64 dans `config.json`. C'est de l'obfuscation, **pas du chiffrement**. Le fichier est en mode `660 root:katakomba`, dans un répertoire `2770 root:katakomba`.
 
 **Blocage hors tunnel :** tant que le service n'est pas arrêté, rien ne sort hors du tunnel, sauf Tor et le réseau local — reconnexions, redémarrages et sorties en échec compris *(v4.7.0)* (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)).
+
+**Flux sortants (v4.9.0) :** ce que Katakomba envoie lui-même sur le réseau, et qui le voit. Pas de télémétrie, pas de vérification de mise à jour, et l'interface ne parle qu'au daemon, par un socket local.
+
+| Flux | Qui le voit | Quand |
+|---|---|---|
+| Tor vers son relais d'entrée et les annuaires | FAI, réseau local | En permanence |
+| Connexion au serveur VPN, à travers Tor | Nœud de sortie Tor, fournisseur | En permanence |
+| API Mullvad ou IVPN, à travers Tor, certificat vérifié, sans User-Agent | Nœud de sortie (chiffré), fournisseur | WireGuard géré : ouverture d'une place, clé chaque semaine, liste des serveurs tous les 7 jours |
+| Poignée de main de la sonde de retour | Fournisseur | En mode secours seulement, toutes les 30 min |
+| Sonde de la surveillance : TCP vers `1.1.1.1:443`, `9.9.9.9:443`, rien d'envoyé | Fournisseur, Cloudflare, Quad9 | Dans le doute seulement ; au repos, au plus toutes les 5 min |
+| Latence du circuit : dix connexions TCP vers `1.1.1.1:443` | Fournisseur, Cloudflare | Une fois par démarrage du daemon |
+| Test de débit, `speed.cloudflare.com` (4,5 Mo) | Fournisseur, Cloudflare | Seulement si `circuit_min_kbs` > 0 |
+| `katakomba status`, `ip`, `doctor` : `api.ipify.org` ; `doctor` : une requête DNS | Fournisseur, ipify | À la demande, par le tunnel seulement |
+
+Depuis la v4.9.0, rien n'est plus envoyé hors de Tor par Katakomba lui-même. `doctor` comparait le résolveur du tunnel à celui de la carte réseau : cette requête partait en clair chez le FAI. `status` et `ip` demandaient l'adresse publique même sans tunnel, donc avec l'adresse réelle si le blocage hors tunnel était désactivé. Les exclusions vers Internet que vous ajoutez sortent, elles, hors du tunnel, par choix.
 
 **auth.tmp :** créé directement en mode `400`, au nom de `katakomba-vpn` (jamais exposé à l'umask ; plus aucun droit de groupe depuis la v3.12.0, OpenVPN les signalait à chaque connexion), juste avant de lancer OpenVPN, dans `/run/katakomba-vpn` (root et OpenVPN seuls), sans jamais suivre de lien symbolique ; supprimé à l'arrêt d'OpenVPN.
 

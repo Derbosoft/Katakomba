@@ -222,7 +222,9 @@ class DefaultConfigIntegrityTest(unittest.TestCase):
             self.assertEqual(DEFAULT_CONFIG[cle], [])
 
     def test_seuil_de_circuit_par_defaut(self):
-        self.assertEqual(DEFAULT_CONFIG["circuit_min_kbs"], 250)
+        """v4.9.0 : latence seule par défaut, aucun téléchargement de test."""
+        self.assertEqual(DEFAULT_CONFIG["circuit_min_kbs"], 0)
+        self.assertEqual(DEFAULT_CONFIG["circuit_max_ms"], 1500)
         self.assertTrue(DEFAULT_CONFIG["circuit_check"])
         self.assertEqual(DEFAULT_CONFIG["circuit_max_retries"], 3)
 

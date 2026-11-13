@@ -33,6 +33,24 @@ class WatchdogMixin:
 
     _CONN_TIMEOUT = 5   # secondes, pour les deux endpoints ENSEMBLE
 
+    # Preuve par le trafic (v4.9.0).  Sonder toutes les 9 s, c'était ~800
+    # connexions par heure vers deux résolveurs publics, à cadence fixe : la
+    # signature la plus reconnaissable de Katakomba, pour le fournisseur VPN
+    # comme pour Cloudflare et Quad9.  Un tunnel qui reçoit du trafic est
+    # vivant : on ne sonde plus que dans le doute.
+    #
+    # Seuil de la preuve : bien au-dessus de ce qu'un tunnel mort reçoit
+    # encore — une keepalive WireGuard (32 octets, une par 10 s au plus), les
+    # SYN-ACK et FIN de nos propres sondes (moins de 500 octets).
+    _PREUVE_OCTETS = 2048   # reçus en une fenêtre de vérification
+    # Émis sans en recevoir autant : on sonde tout de suite.  Au-dessus du
+    # trafic d'une sonde, qui ne doit pas en appeler une autre.
+    _DOUTE_OCTETS  = 2048
+    # Tunnel au repos : une sonde de routine au plus par intervalle.  Une
+    # panne survenue au repos se voit de toute façon dès la reprise du
+    # trafic (canal muet, ou envoi sans réponse).
+    _CONN_REPOS    = 300    # secondes
+
     def _check_connectivity(self) -> bool:
         """Joignabilité d'Internet PAR LE TUNNEL : vrai dès qu'un endpoint
         accepte la connexion.
@@ -84,6 +102,26 @@ class WatchdogMixin:
                     s.close()
                 except OSError:
                     pass
+
+    def _sonde_utile(self, tx_fenetre: int) -> bool:
+        """Faut-il sonder ?  Appelé quand le trafic reçu n'a rien prouvé."""
+        if self._conn_fail_count or self._canal_mort():
+            return True                  # panne à confirmer ou canal muet
+        if tx_fenetre >= self._DOUTE_OCTETS:
+            return True                  # des envois restés sans réponse
+        if self._derniere_preuve <= self._tunnel_up_time:
+            return True                  # rien de vérifié pour ce tunnel
+        return time.time() - self._derniere_preuve >= self._CONN_REPOS
+
+    def _connectivite_prouvee(self):
+        """Seule une connectivité vérifiée — par une sonde, ou par du trafic
+        reçu — clôt la panne."""
+        self._conn_fail_count      = 0
+        self._full_restart_count   = 0
+        self._light_restart_done   = False
+        self._derniere_preuve      = time.time()
+        if self._reprises_sans_succes:
+            self._solder_reprises()
 
     def _compteurs_tun(self) -> tuple:
         """Octets (reçus, émis) de l'interface tunnel ; (0, 0) si absente."""
@@ -290,6 +328,8 @@ class WatchdogMixin:
             d_tx = max(0, tx - self._last_tx) if self._last_tx else 0
             self._last_rx, self._last_tx = rx, tx
             self._rx_history.append(float(d_rx))
+            self._rx_fenetre += d_rx
+            self._tx_fenetre += d_tx
             # Mesure du débit en cours : elle sature le circuit, qui peut se
             # taire plusieurs secondes sans être mort (constaté deux fois
             # sur deux).  Si le tunnel meurt vraiment, la mesure échoue et
@@ -356,6 +396,10 @@ class WatchdogMixin:
             if conn_tick < 3:   # vérifier toutes les 9s (3 × 3s)
                 continue
             conn_tick = 0
+            # Trafic depuis la dernière vérification : 9 s, ou 3 s après un
+            # échec à confirmer.
+            rx_fenetre, tx_fenetre = self._rx_fenetre, self._tx_fenetre
+            self._rx_fenetre = self._tx_fenetre = 0
 
             # Relance légère restée sans effet : le tunnel ne remonte pas (Tor
             # malade malgré les apparences, serveur injoignable…).  Sans ce
@@ -392,14 +436,16 @@ class WatchdogMixin:
 
             if self._mesure_en_cours:
                 continue
+            # Du trafic reçu prouve le tunnel : aucune sonde.  Pas pendant une
+            # panne ouverte, que seule une sonde clôt.
+            if not self._conn_fail_count and rx_fenetre >= self._PREUVE_OCTETS:
+                self._connectivite_prouvee()
+                continue
+            if not self._sonde_utile(tx_fenetre):
+                continue
             ok = self._check_connectivity()
             if ok:
-                # Seule une connectivité VÉRIFIÉE clôt la panne.
-                self._conn_fail_count      = 0
-                self._full_restart_count   = 0
-                self._light_restart_done   = False
-                if self._reprises_sans_succes:
-                    self._solder_reprises()
+                self._connectivite_prouvee()
             elif self._entretien_routage():
                 # Le routage avait été effacé : reposé, le tunnel peut
                 # reprendre seul.  Pas de reprise — elle coûterait une

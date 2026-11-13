@@ -108,8 +108,8 @@ class StatusMixin:
             # Faux : contrôle désactivé, ou conclu pour ce démarrage.  Aucune
             # mesure n'est plus à attendre.
             "circuit_pending": bool(self.config.get("circuit_check", True)
-                                    and (self.config.get("circuit_min_kbs", 250) > 0
-                                         or self.config.get("circuit_max_ms", 0) > 0
+                                    and (self.config.get("circuit_min_kbs", 0) > 0
+                                         or self.config.get("circuit_max_ms", 1500) > 0
                                          or self.config.get("circuit_relative_pct", 0) > 0)
                                     and not self._circuit_controle_fait),
             "conn_failures":  self._conn_fail_count,

@@ -337,15 +337,20 @@ class LatenceCircuitTest(unittest.TestCase):
     """Mesure de la latence : médiane des ouvertures de connexion à travers
     le tunnel, sans vraie connexion ici."""
 
-    def mesurer(self, durees, budget=None):
+    def mesurer(self, durees, budget=None, cibles=None):
         d = FakeDaemon()
         suite = iter(durees)
-        d._ouvrir_connexion = lambda iface, adresse: next(suite)
+        jointes = [] if cibles is None else cibles
+
+        def ouvrir(iface, adresse):
+            jointes.append(adresse)
+            return next(suite)
+        d._ouvrir_connexion = ouvrir
         if budget is not None:
             d._LAT_BUDGET = budget
-        adresse = [(2, 1, 6, "", ("104.16.0.1", 443))]
+        # Aucune résolution de nom (v4.9.0) : une requête DNS ferait échouer.
         with unittest.mock.patch.object(m_session.socket, "getaddrinfo",
-                                        return_value=adresse):
+                                        side_effect=AssertionError("DNS")):
             return m_session.SessionMixin._measure_tunnel_latency(d, "tun0")
 
     def test_mediane(self):
@@ -366,20 +371,32 @@ class LatenceCircuitTest(unittest.TestCase):
     def test_depassements_comptes_comme_lents(self):
         self.assertEqual(self.mesurer([3000.0] * 6 + [400] * 4), 3000.0)
 
-    def test_nom_introuvable(self):
-        d = FakeDaemon()
-        with unittest.mock.patch.object(m_session.socket, "getaddrinfo",
-                                        side_effect=OSError("dns")):
-            self.assertEqual(m_session.SessionMixin._measure_tunnel_latency(d, "tun0"), -1.0)
+    def test_cibles_par_adresse(self):
+        """Les adresses de la surveillance, jamais un nom de test de débit."""
+        jointes = []
+        self.mesurer([400] * 10, cibles=jointes)
+        self.assertEqual(set(jointes), {("1.1.1.1", 443)})
+        self.assertNotIn("speed.cloudflare.com", repr(m_session.SessionMixin._LAT_CIBLES))
+
+    def test_cible_suivante_si_la_premiere_refuse(self):
+        jointes = []
+        self.assertEqual(self.mesurer([-1] + [300] * 9, cibles=jointes), 300)
+        self.assertEqual(jointes[0], ("1.1.1.1", 443))
+        self.assertEqual(set(jointes[1:]), {("9.9.9.9", 443)})
+
+    def test_pas_de_melange_apres_une_mesure(self):
+        """Un refus isolé ne change plus de cible : la médiane reste celle
+        d'un seul hôte."""
+        jointes = []
+        self.mesurer([300, -1] + [300] * 8, cibles=jointes)
+        self.assertEqual(set(jointes), {("1.1.1.1", 443)})
 
     def test_arret_si_le_tunnel_tombe(self):
         d = FakeDaemon()
         appels = []
         d._ouvrir_connexion = lambda iface, adresse: appels.append(1) or 400.0
-        with unittest.mock.patch.object(m_session.socket, "getaddrinfo",
-                                        return_value=[(2, 1, 6, "", ("104.16.0.1", 443))]):
-            r = m_session.SessionMixin._measure_tunnel_latency(
-                d, "tun0", still_valid=lambda: len(appels) < 3)
+        r = m_session.SessionMixin._measure_tunnel_latency(
+            d, "tun0", still_valid=lambda: len(appels) < 3)
         self.assertEqual((r, len(appels)), (-1.0, 3))
 
     def test_ouverture_liee_au_tunnel(self):
@@ -419,8 +436,10 @@ class ControleCircuitLatenceTest(unittest.TestCase):
     tearDown = setUp
 
     def _daemon(self, ms, kbs, **cfg):
+        # Réglages d'avant la v4.9.0 sauf mention contraire : débit à 250,
+        # pas de critère de latence.
         d = FakeDaemon(config={"circuit_check": True, "circuit_min_kbs": 250,
-                               "circuit_max_retries": 3, **cfg})
+                               "circuit_max_ms": 0, "circuit_max_retries": 3, **cfg})
         d._tunnel_up, d._tun_iface = True, "tun0"
         d.openvpn_process = FakeProc(returncode=None)
         d.ordre = []
@@ -491,6 +510,17 @@ class ControleCircuitLatenceTest(unittest.TestCase):
         self.assertEqual(d.newnym, [])
         self.assertTrue(d.has_log("[circuit] Circuit conservé après 3 essais — Latence "
                                   "élevée : 900 ms > 500 ms", "WARN"))
+
+    def test_defauts_latence_seule_sans_telechargement(self):
+        """v4.9.0 : par défaut, la latence seule — aucun test de débit."""
+        from constants import DEFAULT_CONFIG
+        d = self._daemon(400.0, 10.0, circuit_min_kbs=DEFAULT_CONFIG["circuit_min_kbs"],
+                         circuit_max_ms=DEFAULT_CONFIG["circuit_max_ms"])
+        self._run(d)
+        self.assertEqual(d.ordre, ["latence"])
+        self.assertTrue(d.has_log("Latence OK : 400 ms", "OK"))
+        d = self._run(self._daemon(1600.0, 10.0, circuit_min_kbs=0, circuit_max_ms=1500))
+        self.assertEqual((d.ordre, d.newnym), (["latence"], [1]))
 
     def test_tout_desactive(self):
         d = self._run(self._daemon(900.0, 10.0, circuit_min_kbs=0))

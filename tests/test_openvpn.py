@@ -1295,7 +1295,8 @@ class CircuitMeasureInStatusTest(unittest.TestCase):
         self.assertFalse(d._status_snapshot()["circuit_pending"])
 
     def test_aucune_mesure_attendue_si_desactivee(self):
-        for reglage in ({"circuit_check": False}, {"circuit_min_kbs": 0}):
+        for reglage in ({"circuit_check": False},
+                        {"circuit_min_kbs": 0, "circuit_max_ms": 0}):
             d = FakeDaemon(config={"providers": [], **reglage})
             self.assertFalse(d._status_snapshot()["circuit_pending"], reglage)
 

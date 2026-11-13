@@ -206,3 +206,53 @@ class Requetes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnTetes(unittest.TestCase):
+    """Ce qui part réellement sur le réseau (v4.9.0) : rien qui nomme le
+    client.  Requête complète, jusqu'aux octets, via http.client."""
+
+    def test_aucun_user_agent(self):
+        brut = requete_capturee(ivpn, lambda: ivpn.requete("aucun", "GET", "/v5/servers.json"))
+        self.assertNotIn(b"user-agent", brut.lower())
+        self.assertNotIn(b"katakomba", brut.lower())
+
+
+def requete_capturee(module, appel):
+    """Octets d'une requête du module vers un faux serveur local, en clair
+    (le TLS de _ConnexionTor est remplacé, le reste de http.client non)."""
+    import http.client
+    import socket
+    import threading
+
+    serveur = socket.socket()
+    serveur.bind(("127.0.0.1", 0))
+    serveur.listen(1)
+    port = serveur.getsockname()[1]
+    recu = []
+
+    def servir():
+        c, _a = serveur.accept()
+        with c:
+            donnees = b""
+            while b"\r\n\r\n" not in donnees:
+                morceau = c.recv(4096)
+                if not morceau:
+                    break
+                donnees += morceau
+            recu.append(donnees)
+            c.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                      b"Content-Length: 2\r\nConnection: close\r\n\r\n{}")
+    fil = threading.Thread(target=servir, daemon=True)
+    fil.start()
+
+    class EnClair(http.client.HTTPConnection):
+        def __init__(self, hote, socks):
+            super().__init__("127.0.0.1", port, timeout=5)
+    try:
+        with mock.patch.object(module, "_ConnexionTor", EnClair):
+            appel()
+    finally:
+        fil.join(5)
+        serveur.close()
+    return recu[0]

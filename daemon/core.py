@@ -410,6 +410,11 @@ class DaemonCore:
         # Ticks consécutifs où le tunnel émet sans rien recevoir : canal de
         # données mort, reconnu sans attendre la fin du délai de grâce.
         self._tx_sans_rx = 0
+        # Octets reçus et émis depuis la dernière vérification, et heure de la
+        # dernière connectivité prouvée (v4.9.0, preuve par le trafic).
+        self._rx_fenetre = 0
+        self._tx_fenetre = 0
+        self._derniere_preuve = 0.0
 
     # ── Config ────────────────────────────────────────────────────────────────
 

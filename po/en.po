@@ -74,7 +74,7 @@ msgstr "Credentials"
 msgid "Connexion"
 msgstr "Connection"
 
-#: gui/assistant.py:247 gui/modele.py:1436
+#: gui/assistant.py:247 gui/modele.py:1439
 msgid "Démarrage du service…"
 msgstr "Starting the service…"
 
@@ -214,7 +214,7 @@ msgstr "Exclusions"
 msgid "Partage LAN"
 msgstr "LAN sharing"
 
-#: gui/fenetre.py:33 katakomba-cli.sh:425 katakomba-cli.sh:427 katakomba-cli.sh:429
+#: gui/fenetre.py:33 katakomba-cli.sh:431 katakomba-cli.sh:433 katakomba-cli.sh:435
 msgid "Tor"
 msgstr "Tor"
 
@@ -274,7 +274,7 @@ msgstr "All of the machine's traffic goes through a VPN, itself tunnelled throug
 msgid "Avancé"
 msgstr "Advanced"
 
-#: gui/fenetre.py:354 gui/page_reglages.py:267 gui/page_reglages.py:373
+#: gui/fenetre.py:354 gui/page_reglages.py:273 gui/page_reglages.py:379
 msgid "Action annulée"
 msgstr "Action cancelled"
 
@@ -286,657 +286,657 @@ msgstr "Preference not saved: {erreur}"
 msgid "Le service n'a pas répondu comme prévu"
 msgstr "The service did not respond as expected"
 
-#: gui/fenetre.py:357 gui/page_reglages.py:271
+#: gui/fenetre.py:357 gui/page_reglages.py:277
 msgid "Erreur inconnue."
 msgstr "Unknown error."
 
-#: gui/modele.py:176
+#: gui/modele.py:177
 msgid "Votre compte ne peut pas modifier la configuration de Katakomba. Fermez puis rouvrez votre session ; si le problème persiste : sudo katakomba autoriser $USER"
 msgstr "Your account cannot change Katakomba's configuration. Log out and back in; if the problem persists: sudo katakomba autoriser $USER"
 
-#: gui/modele.py:1253
+#: gui/modele.py:1256
 msgid "démarrage du service"
 msgstr "service starting"
 
-#: gui/modele.py:1253
+#: gui/modele.py:1256
 msgid "redémarrage complet de Tor et du VPN"
 msgstr "full restart of Tor and the VPN"
 
-#: gui/modele.py:1254
+#: gui/modele.py:1257
 msgid "perte de connectivité, relance du VPN"
 msgstr "connectivity lost, restarting the VPN"
 
-#: gui/modele.py:1255
+#: gui/modele.py:1258
 msgid "circuit Tor trop lent, nouveau tirage"
 msgstr "Tor circuit too slow, picking a new one"
 
-#: gui/modele.py:1256
+#: gui/modele.py:1259
 msgid "circuit Tor trop lent à répondre, nouveau tirage"
 msgstr "Tor circuit too slow to respond, picking a new one"
 
-#: gui/modele.py:1257
+#: gui/modele.py:1260
 msgid "connexion VPN interrompue"
 msgstr "VPN connection interrupted"
 
-#: gui/modele.py:1258
+#: gui/modele.py:1261
 msgid "identifiants refusés, compte suivant"
 msgstr "credentials refused, trying the next account"
 
-#: gui/modele.py:1259
+#: gui/modele.py:1262
 msgid "aucune poignée de main, nouvel essai"
 msgstr "no handshake, trying again"
 
-#: gui/modele.py:1260
+#: gui/modele.py:1263
 msgid "aucune poignée de main, .conf suivant"
 msgstr "no handshake, next .conf"
 
-#: gui/modele.py:1261
+#: gui/modele.py:1264
 msgid "aucune poignée de main, serveur suivant"
 msgstr "no handshake, next server"
 
-#: gui/modele.py:1261
+#: gui/modele.py:1264
 msgid "fichier .conf refusé"
 msgstr ".conf file refused"
 
-#: gui/modele.py:1262
+#: gui/modele.py:1265
 msgid "retour sur la première étape"
 msgstr "returning to the first stage"
 
-#: gui/modele.py:1263
+#: gui/modele.py:1266
 msgid "interface tunnel impossible à créer"
 msgstr "tunnel interface could not be created"
 
-#: gui/modele.py:1263
+#: gui/modele.py:1266
 msgid "tunnel impossible à monter"
 msgstr "tunnel could not be set up"
 
-#: gui/modele.py:231
+#: gui/modele.py:234
 msgid "WireGuard, puis OpenVPN en secours"
 msgstr "WireGuard, then OpenVPN as fallback"
 
-#: gui/modele.py:232
+#: gui/modele.py:235
 msgid "OpenVPN, puis WireGuard en secours"
 msgstr "OpenVPN, then WireGuard as fallback"
 
-#: gui/modele.py:233
+#: gui/modele.py:236
 msgid "WireGuard seulement"
 msgstr "WireGuard only"
 
-#: gui/modele.py:233
+#: gui/modele.py:236
 msgid "OpenVPN seulement"
 msgstr "OpenVPN only"
 
-#: gui/modele.py:323
+#: gui/modele.py:326
 msgid "Un numéro de compte IVPN a la forme i-XXXX-XXXX-XXXX (ou ivpnXXXXXXXX)."
 msgstr "An IVPN account number looks like i-XXXX-XXXX-XXXX (or ivpnXXXXXXXX)."
 
-#: gui/modele.py:503
+#: gui/modele.py:506
 msgid "Donnez un nom au fournisseur (par exemple celui de votre VPN)."
 msgstr "Give the provider a name (for example your VPN's name)."
 
-#: gui/modele.py:505 gui/modele.py:160
+#: gui/modele.py:508 gui/modele.py:161
 msgid "Le nom ne peut contenir ni « / » ni « \\ »."
 msgstr "The name cannot contain “/” or “\\”."
 
-#: gui/modele.py:540
+#: gui/modele.py:543
 msgid "Les lignes retirées restent dans le fichier, en commentaire."
 msgstr "Removed lines stay in the file as comments."
 
-#: gui/modele.py:718
+#: gui/modele.py:721
 msgid "aucun compte"
 msgstr "no account"
 
-#: gui/modele.py:1309
+#: gui/modele.py:1312
 msgid "Connexion au VPN…"
 msgstr "Connecting to the VPN…"
 
-#: gui/modele.py:1310
+#: gui/modele.py:1313
 msgid "À travers Tor, en général en moins de 30 secondes."
 msgstr "Through Tor, usually in under 30 seconds."
 
-#: gui/modele.py:1396
+#: gui/modele.py:1399
 msgid "Depuis le démarrage"
 msgstr "Since startup"
 
-#: gui/modele.py:1407
+#: gui/modele.py:1410
 msgid "Mesuré à la connexion"
 msgstr "Measured on connection"
 
-#: gui/modele.py:1439
+#: gui/modele.py:1442
 msgid "Connecté : votre trafic passe par Tor, puis par le VPN."
 msgstr "Connected: your traffic goes through Tor, then through the VPN."
 
-#: gui/modele.py:1462
+#: gui/modele.py:1465
 msgid "Connexion au VPN à travers Tor…"
 msgstr "Connecting to the VPN through Tor…"
 
-#: gui/modele.py:1485
+#: gui/modele.py:1488
 msgid "Service démarré"
 msgstr "Service started"
 
-#: gui/modele.py:1486
+#: gui/modele.py:1489
 msgid "Service arrêté"
 msgstr "Service stopped"
 
-#: gui/modele.py:1487 gui/modele.py:1295
+#: gui/modele.py:1490 gui/modele.py:1298
 msgid "Connecté"
 msgstr "Connected"
 
-#: gui/modele.py:1489
+#: gui/modele.py:1492
 msgid "Circuit mesuré : {debit}"
 msgstr "Circuit measured: {debit}"
 
-#: gui/modele.py:1491
+#: gui/modele.py:1494
 msgid "Circuit trop lent ({debit}) : nouveau tirage"
 msgstr "Circuit too slow ({debit}): picking a new one"
 
-#: gui/modele.py:1493 gui/modele.py:1495
+#: gui/modele.py:1496 gui/modele.py:1498
 msgid "Circuit lent conservé ({debit})"
 msgstr "Slow circuit kept ({debit})"
 
-#: gui/modele.py:1497
+#: gui/modele.py:1500
 msgid "Circuit lent à répondre conservé ({ms} ms)"
 msgstr "Circuit slow to respond kept ({ms} ms)"
 
-#: gui/modele.py:1499
+#: gui/modele.py:1502
 msgid "Circuit lent à répondre ({ms} ms) : nouveau tirage"
 msgstr "Circuit slow to respond ({ms} ms): picking a new one"
 
-#: gui/modele.py:1501
+#: gui/modele.py:1504
 msgid "Circuit mesuré : {ms} ms"
 msgstr "Circuit measured: {ms} ms"
 
-#: gui/modele.py:1503
+#: gui/modele.py:1506
 msgid "Connexion perdue : relance du VPN"
 msgstr "Connection lost: restarting the VPN"
 
-#: gui/modele.py:1505
+#: gui/modele.py:1508
 msgid "Connexion perdue : redémarrage complet"
 msgstr "Connection lost: full restart"
 
-#: gui/modele.py:1507
+#: gui/modele.py:1510
 msgid "Compte {n} refusé par le fournisseur"
 msgstr "Account {n} refused by the provider"
 
-#: gui/modele.py:1509
+#: gui/modele.py:1512
 msgid "Fichier WireGuard {n} : aucune réponse du serveur"
 msgstr "WireGuard file {n}: no response from the server"
 
-#: gui/modele.py:1511
+#: gui/modele.py:1514
 msgid "Serveur WireGuard {n} : aucune réponse"
 msgstr "WireGuard server {n}: no response"
 
-#: gui/modele.py:1513
+#: gui/modele.py:1516
 msgid "Session {service} ouverte (compte {n})"
 msgstr "{service} session opened (account {n})"
 
-#: gui/modele.py:1515
+#: gui/modele.py:1518
 msgid "Clé WireGuard renouvelée"
 msgstr "WireGuard key renewed"
 
-#: gui/modele.py:1517
+#: gui/modele.py:1520
 msgid "Session {service} fermée : nouvel enregistrement"
 msgstr "{service} session closed: registering again"
 
-#: gui/modele.py:1519
+#: gui/modele.py:1522
 msgid "{service} : tous les comptes sont pleins"
 msgstr "{service}: every account is full"
 
-#: gui/modele.py:1520
+#: gui/modele.py:1523
 msgid "Bascule vers le fournisseur suivant"
 msgstr "Switching to the next provider"
 
-#: gui/modele.py:1522
+#: gui/modele.py:1525
 msgid "Bascule vers {vers}"
 msgstr "Switching to {vers}"
 
-#: gui/modele.py:320
+#: gui/modele.py:323
 msgid "Un numéro de compte Mullvad a 16 chiffres."
 msgstr "A Mullvad account number has 16 digits."
 
-#: gui/modele.py:356
+#: gui/modele.py:359
 msgid "réponse illisible"
 msgstr "unreadable response"
 
-#: gui/modele.py:477
+#: gui/modele.py:480
 msgid "Transports : wireguard, openvpn, ou les deux dans l'ordre voulu."
 msgstr "Transports: wireguard, openvpn, or both in the desired order."
 
-#: gui/modele.py:531
+#: gui/modele.py:534
 msgid "Modifications apportées :"
 msgstr "Changes made:"
 
-#: gui/modele.py:692
+#: gui/modele.py:695
 msgid "Entrée illisible"
 msgstr "Unreadable entry"
 
-#: gui/modele.py:692
+#: gui/modele.py:695
 msgid "aucun fichier WireGuard"
 msgstr "no WireGuard file"
 
-#: gui/modele.py:695
+#: gui/modele.py:698
 msgid "chemin refusé"
 msgstr "path refused"
 
-#: gui/modele.py:714 katakomba-cli.sh:497
+#: gui/modele.py:717 katakomba-cli.sh:503
 msgid "WireGuard géré"
 msgstr "Managed WireGuard"
 
-#: gui/modele.py:1002
+#: gui/modele.py:1005
 msgid "Transports : valeur illisible, remplacée par « wireguard, openvpn »"
 msgstr "Transports: unreadable value, replaced with “wireguard, openvpn”"
 
-#: gui/modele.py:1025
+#: gui/modele.py:1028
 msgid "Blocage hors tunnel : désactivé dans la sauvegarde, réactivé (à désactiver dans les réglages si c'est voulu)"
 msgstr "Kill switch: turned off in the backup, turned back on (turn it off in the settings if that is what you want)"
 
-#: gui/modele.py:1027
+#: gui/modele.py:1030
 msgid "Blocage IPv6 : désactivé dans la sauvegarde, réactivé (à désactiver dans les réglages si c'est voulu)"
 msgstr "IPv6 blocking: turned off in the backup, turned back on (turn it off in the settings if that is what you want)"
 
-#: gui/modele.py:1278 gui/modele.py:1360 gui/page_fournisseurs.py:26
+#: gui/modele.py:1281 gui/modele.py:1363 gui/page_fournisseurs.py:26
 msgid "Aucun fournisseur"
 msgstr "No provider"
 
-#: gui/modele.py:1279
+#: gui/modele.py:1282
 msgid "Ajoutez votre fournisseur VPN pour commencer : l'assistant vous guide."
 msgstr "Add your VPN provider to get started: the assistant guides you."
 
-#: gui/modele.py:1283
+#: gui/modele.py:1286
 msgid "Arrêté sur une erreur"
 msgstr "Stopped on an error"
 
-#: gui/modele.py:1284
+#: gui/modele.py:1287
 msgid "Le détail est dans le journal. Vous pouvez relancer la connexion."
 msgstr "Details are in the log. You can restart the connection."
 
-#: gui/modele.py:1288
+#: gui/modele.py:1291
 msgid "Démarrage…"
 msgstr "Starting…"
 
-#: gui/modele.py:1289
+#: gui/modele.py:1292
 msgid "Le service démarre."
 msgstr "The service is starting."
 
-#: gui/modele.py:1291
+#: gui/modele.py:1294
 msgid "Déconnecté"
 msgstr "Disconnected"
 
-#: gui/modele.py:1292
+#: gui/modele.py:1295
 msgid "Votre trafic ne passe pas par Katakomba."
 msgstr "Your traffic does not go through Katakomba."
 
-#: gui/modele.py:1296
+#: gui/modele.py:1299
 msgid "Tout le trafic de cet ordinateur passe par le VPN, à travers Tor."
 msgstr "All of this computer's traffic goes through the VPN, via Tor."
 
-#: gui/modele.py:1301 gui/modele.py:1355
+#: gui/modele.py:1304 gui/modele.py:1358
 msgid "Reconnexion…"
 msgstr "Reconnecting…"
 
-#: gui/modele.py:1307
+#: gui/modele.py:1310
 msgid "Connexion au réseau Tor…"
 msgstr "Connecting to the Tor network…"
 
-#: gui/modele.py:1308
+#: gui/modele.py:1311
 msgid "1 à 3 minutes la première fois."
 msgstr "1 to 3 minutes the first time."
 
-#: gui/modele.py:1325
+#: gui/modele.py:1328
 msgid "Trafic redirigé"
 msgstr "Traffic redirected"
 
-#: gui/modele.py:1327
+#: gui/modele.py:1330
 msgid "Trafic direct"
 msgstr "Direct traffic"
 
-#: gui/modele.py:1367
+#: gui/modele.py:1370
 msgid "Via le VPN"
 msgstr "Via the VPN"
 
-#: gui/modele.py:1374
+#: gui/modele.py:1377
 msgid "Cet ordinateur"
 msgstr "This computer"
 
-#: gui/modele.py:1376
+#: gui/modele.py:1379
 msgid "Réseau Tor"
 msgstr "Tor network"
 
-#: gui/modele.py:1382
+#: gui/modele.py:1385
 msgid "Internet"
 msgstr "Internet"
 
-#: gui/modele.py:1401
+#: gui/modele.py:1404
 msgid "relance légère"
 msgid_plural "relances légères"
 msgstr[0] "quick restart"
 msgstr[1] "quick restarts"
 
-#: gui/modele.py:1409
+#: gui/modele.py:1412
 msgid "Selon les réglages"
 msgstr "Depends on settings"
 
-#: gui/modele.py:1415
+#: gui/modele.py:1418
 msgid "Connecté depuis"
 msgstr "Connected for"
 
-#: gui/modele.py:1418
+#: gui/modele.py:1421
 msgid "Circuit Tor"
 msgstr "Tor circuit"
 
-#: gui/modele.py:1420
+#: gui/modele.py:1423
 msgid "Reprises"
 msgstr "Recoveries"
 
-#: gui/modele.py:1422 katakomba-cli.sh:694 katakomba-cli.sh:696 katakomba-cli.sh:698
+#: gui/modele.py:1425 katakomba-cli.sh:689 katakomba-cli.sh:691 katakomba-cli.sh:693
 msgid "IPv6"
 msgstr "IPv6"
 
-#: gui/modele.py:1433
+#: gui/modele.py:1436
 msgid "Le service s'est arrêté sur une erreur. Le détail est visible dans la page Journal."
 msgstr "The service stopped on an error. Details are on the Log page."
 
-#: gui/modele.py:1460
+#: gui/modele.py:1463
 msgid "Connexion au réseau Tor… (1 à 3 minutes la première fois)"
 msgstr "Connecting to the Tor network… (1 to 3 minutes the first time)"
 
-#: gui/modele.py:66
+#: gui/modele.py:67
 msgid "{valeur} Mb/s"
 msgstr "{valeur} Mbps"
 
-#: gui/modele.py:70
+#: gui/modele.py:71
 msgid "{valeur} Ko/s"
 msgstr "{valeur} KB/s"
 
-#: gui/modele.py:76
+#: gui/modele.py:77
 msgid "{n} s"
 msgstr "{n}s"
 
-#: gui/modele.py:352
+#: gui/modele.py:355
 msgid "pas de réponse par Tor"
 msgstr "no answer through Tor"
 
-#: gui/modele.py:354
+#: gui/modele.py:357
 msgid "assistant Mullvad impossible à lancer"
 msgstr "Mullvad helper could not be started"
 
-#: gui/modele.py:443
+#: gui/modele.py:446
 msgid "Qualité du circuit : débit minimum entier ≥ 0, essais entre 1 et 10."
 msgstr "Circuit quality: minimum speed must be a whole number ≥ 0, attempts between 1 and 10."
 
-#: gui/modele.py:450
+#: gui/modele.py:453
 msgid "Retour à la première étape : 0 (jamais), ou de 5 à 1440 minutes."
 msgstr "Return to the first stage: 0 (never), or 5 to 1440 minutes."
 
-#: gui/modele.py:457
+#: gui/modele.py:460
 msgid "Latence maximale du circuit : 0 (pas de critère), ou de 100 à 10000 ms."
 msgstr "Maximum circuit latency: 0 (no criterion), or 100 to 10000 ms."
 
-#: gui/modele.py:464
+#: gui/modele.py:467
 msgid "Seuil relatif du circuit : de 0 (désactivé) à 50 %."
 msgstr "Relative circuit threshold: 0 (off) to 50%."
 
-#: gui/modele.py:470
+#: gui/modele.py:473
 msgid "Nouvelle mesure du circuit : 0 (une par démarrage), ou de 5 à 1440 minutes entre deux mesures."
 msgstr "New circuit measurement: 0 (once per start), or 5 to 1440 minutes between two measurements."
 
-#: gui/modele.py:507
+#: gui/modele.py:510
 msgid "Un fournisseur « {nom} » existe déjà."
 msgstr "A provider named “{nom}” already exists."
 
-#: gui/modele.py:528
+#: gui/modele.py:531
 msgid "{n} serveur retenu."
 msgid_plural "{n} serveurs retenus."
 msgstr[0] "{n} server kept."
 msgstr[1] "{n} servers kept."
 
-#: gui/modele.py:639
+#: gui/modele.py:642
 msgid "{n} fichier prêt :"
 msgid_plural "{n} fichiers prêts :"
 msgstr[0] "{n} file ready:"
 msgstr[1] "{n} files ready:"
 
-#: gui/modele.py:699
+#: gui/modele.py:702
 msgid "fichier introuvable ou illisible"
 msgstr "file missing or unreadable"
 
-#: gui/modele.py:958 console.py:624
+#: gui/modele.py:961 console.py:624
 msgid "Ce fichier n'est pas une sauvegarde Katakomba."
 msgstr "This file is not a Katakomba backup."
 
-#: gui/modele.py:961
+#: gui/modele.py:964
 msgid "config.json ne contient pas un objet JSON"
 msgstr "config.json does not contain a JSON object"
 
-#: gui/modele.py:1240
+#: gui/modele.py:1243
 msgid "Veille sur la connexion et prévient en cas de coupure"
 msgstr "Watches over the connection and warns you when it drops"
 
-#: gui/modele.py:1333
+#: gui/modele.py:1336
 msgid "Circuit établi"
 msgstr "Circuit ready"
 
-#: gui/modele.py:1369
+#: gui/modele.py:1372
 msgid "En attente du tunnel"
 msgstr "Waiting for the tunnel"
 
-#: gui/modele.py:1371
+#: gui/modele.py:1374
 msgid "Sans Katakomba"
 msgstr "Without Katakomba"
 
-#: gui/modele.py:1380
+#: gui/modele.py:1383
 msgid "VPN"
 msgstr "VPN"
 
-#: gui/modele.py:1411
+#: gui/modele.py:1414
 msgid "Bloqué"
 msgstr "Blocked"
 
-#: gui/modele.py:1411
+#: gui/modele.py:1414
 msgid "Pas de fuite IPv6"
 msgstr "No IPv6 leak"
 
-#: gui/modele.py:1413
+#: gui/modele.py:1416
 msgid "Autorisé"
 msgstr "Allowed"
 
-#: gui/modele.py:1413
+#: gui/modele.py:1416
 msgid "Peut contourner le tunnel"
 msgstr "May bypass the tunnel"
 
-#: gui/modele.py:1417
+#: gui/modele.py:1420
 msgid "Tunnel actif"
 msgstr "Tunnel up"
 
-#: gui/modele.py:1417
+#: gui/modele.py:1420
 msgid "Pas de tunnel"
 msgstr "No tunnel"
 
-#: gui/modele.py:1446
+#: gui/modele.py:1449
 msgid "Mesure du débit en cours…"
 msgstr "Measuring speed…"
 
-#: gui/modele.py:1451
+#: gui/modele.py:1454
 msgid "Le serveur n'a pas répondu (aucune poignée de main WireGuard) : clé révoquée, serveur arrêté ou mode TCP non proposé. Essayez un autre fichier .conf."
 msgstr "The server did not respond (no WireGuard handshake): revoked key, server down, or TCP mode not offered. Try another .conf file."
 
-#: gui/modele.py:1455
+#: gui/modele.py:1458
 msgid "Le fournisseur a refusé l'identifiant ou le mot de passe. Vérifiez-les : ce sont les identifiants OpenVPN, souvent différents de ceux de votre compte sur le site du fournisseur."
 msgstr "The provider refused the username or password. Check them: these are the OpenVPN credentials, often different from those of your account on the provider's website."
 
-#: gui/modele.py:78
+#: gui/modele.py:79
 msgid "{n} min"
 msgstr "{n} min"
 
-#: gui/modele.py:152 gui/modele.py:973 gui/modele.py:977
+#: gui/modele.py:153 gui/modele.py:976 gui/modele.py:980
 msgid "{fichier} : trop volumineux"
 msgstr "{fichier}: too large"
 
-#: gui/modele.py:432 gui/modele.py:999 gui/page_exclusions.py:82
+#: gui/modele.py:435 gui/modele.py:1002 gui/page_exclusions.py:82
 msgid "Serveur DNS local : {erreur}"
 msgstr "Local DNS server: {erreur}"
 
-#: gui/modele.py:480
+#: gui/modele.py:483
 msgid "Partage LAN : {erreur}"
 msgstr "LAN sharing: {erreur}"
 
-#: gui/modele.py:709
+#: gui/modele.py:712
 msgid "{n} compte Mullvad"
 msgid_plural "{n} comptes Mullvad"
 msgstr[0] "{n} Mullvad account"
 msgstr[1] "{n} Mullvad accounts"
 
-#: gui/modele.py:1019
+#: gui/modele.py:1022
 msgid "Partage LAN : interface « {nom} » refusée"
 msgstr "LAN sharing: interface “{nom}” refused"
 
-#: gui/modele.py:1302
+#: gui/modele.py:1305
 msgid "{raison} — depuis {duree}."
 msgstr "{raison} — for {duree}."
 
-#: gui/modele.py:1337 gui/modele.py:1356 gui/page_connexion.py:545
+#: gui/modele.py:1340 gui/modele.py:1359 gui/page_connexion.py:545
 msgid "Connexion…"
 msgstr "Connecting…"
 
-#: gui/modele.py:1339 gui/modele.py:1362
+#: gui/modele.py:1342 gui/modele.py:1365
 msgid "Arrêté"
 msgstr "Stopped"
 
-#: gui/modele.py:1341 gui/modele.py:1364
+#: gui/modele.py:1344 gui/modele.py:1367
 msgid "Inactif"
 msgstr "Inactive"
 
-#: gui/modele.py:1358
+#: gui/modele.py:1361
 msgid "En attente de Tor"
 msgstr "Waiting for Tor"
 
-#: gui/modele.py:1398
+#: gui/modele.py:1401
 msgid "dont {n} redémarrage complet"
 msgid_plural "dont {n} redémarrages complets"
 msgstr[0] "including {n} full restart"
 msgstr[1] "including {n} full restarts"
 
-#: gui/modele.py:1403
+#: gui/modele.py:1406
 msgid "{debit} · il y a {duree}"
 msgstr "{debit} · {duree} ago"
 
-#: gui/modele.py:81 katakomba-cli.sh:360
+#: gui/modele.py:82 katakomba-cli.sh:366
 msgid "{h} h {m:02d}"
 msgstr "{h}h {m:02d}m"
 
-#: gui/modele.py:84
+#: gui/modele.py:85
 msgid "{j} j {h} h"
 msgstr "{j}d {h}h"
 
-#: gui/modele.py:149
+#: gui/modele.py:150
 msgid "{fichier} : pas un fichier ordinaire"
 msgstr "{fichier}: not a regular file"
 
-#: gui/modele.py:212
+#: gui/modele.py:215
 msgid "Sous-réseau « {valeur} » invalide."
 msgstr "Invalid subnet “{valeur}”."
 
-#: gui/modele.py:215
+#: gui/modele.py:218
 msgid "{adresse} n'appartient pas à {reseau}."
 msgstr "{adresse} is not in {reseau}."
 
-#: gui/modele.py:218 validation.py:381
+#: gui/modele.py:221 validation.py:381
 msgid "« {valeur} » n'est pas une adresse IP."
 msgstr "“{valeur}” is not an IP address."
 
-#: gui/modele.py:404
+#: gui/modele.py:407
 msgid "« {code} » n'est pas un code pays à deux lettres (ex. NL, CH)."
 msgstr "“{code}” is not a two-letter country code (e.g. NL, CH)."
 
-#: gui/modele.py:474
+#: gui/modele.py:477
 msgid "« {nom} » : random_account vaut true ou false."
 msgstr "“{nom}”: random_account must be true or false."
 
-#: gui/modele.py:535
+#: gui/modele.py:538
 msgid "… et {n} autre, détaillée en tête du fichier."
 msgid_plural "… et {n} autres, détaillées en tête du fichier."
 msgstr[0] "… and {n} more, listed at the top of the file."
 msgstr[1] "… and {n} more, listed at the top of the file."
 
-#: gui/modele.py:615
+#: gui/modele.py:618
 msgid "{fichier} : un fichier WireGuard .conf est attendu"
 msgstr "{fichier}: a WireGuard .conf file is expected"
 
-#: gui/modele.py:626 gui/modele.py:1061 gui/modele.py:1096 gui/modele.py:621 gui/modele.py:1068
+#: gui/modele.py:629 gui/modele.py:1064 gui/modele.py:1099 gui/modele.py:624 gui/modele.py:1071
 msgid "{fichier} : {raison}"
 msgstr "{fichier}: {raison}"
 
-#: gui/modele.py:711
+#: gui/modele.py:714
 msgid "{n} compte OpenVPN"
 msgid_plural "{n} comptes OpenVPN"
 msgstr[0] "{n} OpenVPN account"
 msgstr[1] "{n} OpenVPN accounts"
 
-#: gui/modele.py:716
+#: gui/modele.py:719
 msgid "{n} fichier WireGuard"
 msgid_plural "{n} fichiers WireGuard"
 msgstr[0] "{n} WireGuard file"
 msgstr[1] "{n} WireGuard files"
 
-#: gui/modele.py:1008
+#: gui/modele.py:1011
 msgid "{fournisseur} : réglage du WireGuard géré illisible, retiré"
 msgstr "{fournisseur}: unreadable managed WireGuard setting, removed"
 
-#: gui/modele.py:1014
+#: gui/modele.py:1017
 msgid "{fournisseur} : ordre des transports illisible, réglage général utilisé"
 msgstr "{fournisseur}: unreadable transport order, general setting used"
 
-#: gui/modele.py:1046
+#: gui/modele.py:1049
 msgid "{fichier} : chemin refusé"
 msgstr "{fichier}: path refused"
 
-#: gui/modele.py:1076
+#: gui/modele.py:1079
 msgid "{fournisseur} : chemin .ovpn refusé (hors de providers/)"
 msgstr "{fournisseur}: .ovpn path refused (outside providers/)"
 
-#: gui/modele.py:1084
+#: gui/modele.py:1087
 msgid "{fournisseur} : fichier(s) WireGuard au chemin refusé (hors de providers/)"
 msgstr "{fournisseur}: WireGuard file(s) with a refused path (outside providers/)"
 
-#: gui/modele.py:1331
+#: gui/modele.py:1334
 msgid "{n} relais d'entrée"
 msgid_plural "{n} relais d'entrée"
 msgstr[0] "{n} entry relay"
 msgstr[1] "{n} entry relays"
 
-#: gui/modele.py:1347
+#: gui/modele.py:1350
 msgid "WireGuard géré · compte {n}"
 msgstr "Managed WireGuard · account {n}"
 
-#: gui/modele.py:1588 gui/page_diagnostic.py:107
+#: gui/modele.py:1591 gui/page_diagnostic.py:107
 msgid "Diagnostic impossible : {erreur}"
 msgstr "Diagnostics failed: {erreur}"
 
-#: gui/modele.py:341
+#: gui/modele.py:344
 msgid "utilisateur {nom} absent"
 msgstr "user {nom} missing"
 
-#: gui/modele.py:1063
+#: gui/modele.py:1066
 msgid "trop volumineux"
 msgstr "too large"
 
-#: gui/modele.py:1349
+#: gui/modele.py:1352
 msgid "WireGuard · fichier {n}"
 msgstr "WireGuard · file {n}"
 
-#: gui/modele.py:1441
+#: gui/modele.py:1444
 msgid "Débit mesuré : {debit}."
 msgstr "Measured speed: {debit}."
 
-#: gui/modele.py:1336
+#: gui/modele.py:1339
 msgid "Démarrage : {n} %"
 msgstr "Starting: {n}%"
 
-#: gui/modele.py:1351
+#: gui/modele.py:1354
 msgid "OpenVPN · compte {n}"
 msgstr "OpenVPN · account {n}"
 
-#: gui/modele.py:1353
+#: gui/modele.py:1356
 msgid "Compte {n}"
 msgstr "Account {n}"
 
@@ -1418,7 +1418,7 @@ msgstr "Log empty or unreadable for this account (adm or systemd-journal group r
 msgid "Aucune ligne ne correspond aux filtres."
 msgstr "No line matches the filters."
 
-#: gui/page_journal.py:186 gui/page_reglages.py:332
+#: gui/page_journal.py:186 gui/page_reglages.py:338
 msgid "Export impossible"
 msgstr "Could not export"
 
@@ -1507,8 +1507,8 @@ msgid "Le tunnel ne transporte que l'IPv4 : sans ce blocage, le trafic IPv6 sort
 msgstr "The tunnel only carries IPv4: without this block, IPv6 traffic would go out unprotected."
 
 #: gui/page_reglages.py:96
-msgid "Mesurer le débit à la connexion"
-msgstr "Measure speed on connection"
+msgid "Mesurer le circuit à la connexion"
+msgstr "Measure the circuit on connection"
 
 #: gui/page_reglages.py:98
 msgid "Débit minimum (Ko/s)"
@@ -1554,27 +1554,27 @@ msgstr "Return to the first stage (minutes)"
 msgid "En secours, Katakomba essaie la première étape WireGuard à côté du tunnel, sans le couper, et n'y revient que si elle répond. 0 : jamais."
 msgstr "On a fallback, Katakomba tries the first WireGuard stage next to the tunnel, without cutting it, and only returns if it answers. 0: never."
 
-#: gui/page_reglages.py:336 gui/page_reglages.py:145
+#: gui/page_reglages.py:342 gui/page_reglages.py:145
 msgid "Exporter la configuration"
 msgstr "Export the configuration"
 
-#: gui/page_reglages.py:337 gui/page_reglages.py:342
+#: gui/page_reglages.py:343 gui/page_reglages.py:348
 msgid "Sauvegarde Katakomba"
 msgstr "Katakomba backup"
 
-#: gui/page_reglages.py:342 gui/page_reglages.py:146
+#: gui/page_reglages.py:348 gui/page_reglages.py:146
 msgid "Importer une sauvegarde"
 msgstr "Import a backup"
 
-#: gui/page_reglages.py:381
+#: gui/page_reglages.py:387
 msgid "Réparer le réseau ?"
 msgstr "Repair the network?"
 
-#: gui/page_reglages.py:382
+#: gui/page_reglages.py:388
 msgid "Le service va s'arrêter et toutes les règles réseau de Katakomba seront nettoyées. Le mot de passe administrateur sera demandé."
 msgstr "The service will stop and all of Katakomba's network rules will be cleaned up. The administrator password will be asked for."
 
-#: gui/page_reglages.py:385
+#: gui/page_reglages.py:391
 msgid "Réparer"
 msgstr "Repair"
 
@@ -1635,8 +1635,8 @@ msgid "Qualité du circuit Tor"
 msgstr "Tor circuit quality"
 
 #: gui/page_reglages.py:92
-msgid "Une mesure juste après la connexion : la latence, puis le débit sur 2 Mo. Un circuit trop lent est aussitôt remplacé. Aucune surveillance continue."
-msgstr "One measurement right after connecting: latency, then speed over 2 MB. A circuit that is too slow is replaced at once. No continuous monitoring."
+msgid "Une mesure juste après la connexion : la latence, et le débit sur 2 Mo s'il a un seuil. Un circuit trop lent est aussitôt remplacé. Aucune surveillance continue."
+msgstr "One measurement right after connecting: latency, and speed over 2 MB if it has a threshold. A circuit that is too slow is replaced at once. No continuous monitoring."
 
 #: gui/page_reglages.py:130
 msgid "Fournisseur de secours"
@@ -1678,55 +1678,59 @@ msgstr "Repair…"
 msgid "Retire les règles de pare-feu, routes et DNS laissés par une coupure, puis arrête le service."
 msgstr "Removes firewall rules, routes and DNS settings left behind by an outage, then stops the service."
 
-#: gui/page_reglages.py:320
+#: gui/page_reglages.py:216
+msgid "0 : pas de test de débit, rien n'est téléchargé."
+msgstr "0: no speed test, nothing is downloaded."
+
+#: gui/page_reglages.py:326
 msgid "Katakomba se lancera à l'ouverture de session"
 msgstr "Katakomba will launch at login"
 
-#: gui/page_reglages.py:321
+#: gui/page_reglages.py:327
 msgid "Plus de lancement à l'ouverture de session"
 msgstr "No longer launched at login"
 
-#: gui/page_reglages.py:337
+#: gui/page_reglages.py:343
 msgid "sauvegarde"
 msgstr "backup"
 
-#: gui/page_reglages.py:360
+#: gui/page_reglages.py:366
 msgid "Import partiel"
 msgstr "Partial import"
 
-#: gui/page_reglages.py:363
+#: gui/page_reglages.py:369
 msgid "Configuration importée"
 msgstr "Configuration imported"
 
-#: gui/page_reglages.py:213
+#: gui/page_reglages.py:219
 msgid "≈ {debit} sur un test de débit"
 msgstr "≈ {debit} on a speed test"
 
-#: gui/page_reglages.py:275
+#: gui/page_reglages.py:281
 msgid "Connexion au démarrage activée"
 msgstr "Connect at startup turned on"
 
-#: gui/page_reglages.py:276
+#: gui/page_reglages.py:282
 msgid "Connexion au démarrage désactivée"
 msgstr "Connect at startup turned off"
 
-#: gui/page_reglages.py:318 gui/page_reglages.py:269
+#: gui/page_reglages.py:324 gui/page_reglages.py:275
 msgid "Réglage impossible"
 msgstr "Could not change the setting"
 
-#: gui/page_reglages.py:345
+#: gui/page_reglages.py:351
 msgid "Remplacer la configuration ?"
 msgstr "Replace the configuration?"
 
-#: gui/page_reglages.py:346
+#: gui/page_reglages.py:352
 msgid "Fournisseurs, comptes et réglages actuels seront remplacés par ceux de la sauvegarde."
 msgstr "Current providers, accounts and settings will be replaced by those in the backup."
 
-#: gui/page_reglages.py:347
+#: gui/page_reglages.py:353
 msgid "Remplacer"
 msgstr "Replace"
 
-#: gui/page_reglages.py:355
+#: gui/page_reglages.py:361
 msgid "Import impossible"
 msgstr "Could not import"
 
@@ -1734,23 +1738,23 @@ msgstr "Could not import"
 msgid "Notification si la connexion tombe plus de {n} s, puis quand elle revient, ou si le service s'arrête."
 msgstr "A notification if the connection is down for more than {n} s, then when it comes back, or if the service stops."
 
-#: gui/page_reglages.py:334
+#: gui/page_reglages.py:340
 msgid "Configuration exportée : {fichier}"
 msgstr "Configuration exported: {fichier}"
 
-#: gui/page_reglages.py:361
+#: gui/page_reglages.py:367
 msgid "Configuration importée, sauf :"
 msgstr "Configuration imported, except:"
 
-#: gui/page_reglages.py:371
+#: gui/page_reglages.py:377
 msgid "Réparation impossible"
 msgstr "Could not repair"
 
-#: gui/page_reglages.py:375
+#: gui/page_reglages.py:381
 msgid "Réseau réparé"
 msgstr "Network repaired"
 
-#: gui/page_reglages.py:376
+#: gui/page_reglages.py:382
 msgid "Le service est arrêté. Reconnectez-vous depuis l'écran Connexion."
 msgstr "The service is stopped. Reconnect from the Connection screen."
 
@@ -2792,483 +2796,479 @@ msgstr "“{ligne}”: credentials file ignored, the daemon supplies its own"
 msgid "directive non prise en charge par le daemon"
 msgstr "directive not supported by the daemon"
 
-#: katakomba-cli.sh:344
+#: katakomba-cli.sh:350
 msgid "reporté — le tunnel se reconnecte"
 msgstr "postponed — the tunnel is reconnecting"
 
-#: katakomba-cli.sh:388 katakomba-cli.sh:386
+#: katakomba-cli.sh:394 katakomba-cli.sh:392
 msgid "Service"
 msgstr "Service"
 
-#: katakomba-cli.sh:388
+#: katakomba-cli.sh:394
 msgid "actif"
 msgstr "active"
 
-#: katakomba-cli.sh:386
+#: katakomba-cli.sh:392
 msgid "katakomba n'est pas actif — sudo katakomba start"
 msgstr "katakomba is not active — sudo katakomba start"
 
-#: katakomba-cli.sh:410 katakomba-cli.sh:414
+#: katakomba-cli.sh:416 katakomba-cli.sh:420
 msgid "Socket de statut"
 msgstr "Status socket"
 
-#: katakomba-cli.sh:411
+#: katakomba-cli.sh:417
 msgid "non vérifiable — réservé aux groupes katakomba et katakomba-statut (ou sudo)"
 msgstr "cannot be checked — restricted to the katakomba and katakomba-statut groups (or sudo)"
 
-#: katakomba-cli.sh:423
+#: katakomba-cli.sh:429
 msgid "Version du daemon"
 msgstr "Daemon version"
 
-#: katakomba-cli.sh:534 katakomba-cli.sh:536 katakomba-cli.sh:539
+#: katakomba-cli.sh:540 katakomba-cli.sh:542 katakomba-cli.sh:545
 msgid "Route par défaut"
 msgstr "Default route"
 
-#: katakomba-cli.sh:534
+#: katakomba-cli.sh:540
 msgid "absente"
 msgstr "missing"
 
-#: katakomba-cli.sh:575 katakomba-cli.sh:577
+#: katakomba-cli.sh:581 katakomba-cli.sh:583
 msgid "Redirection du trafic"
 msgstr "Traffic redirection"
 
-#: katakomba-cli.sh:587 katakomba-cli.sh:591
+#: katakomba-cli.sh:593 katakomba-cli.sh:597
 msgid "Réseaux locaux"
 msgstr "Local networks"
 
-#: katakomba-cli.sh:640
+#: katakomba-cli.sh:646
 msgid "serveur"
 msgstr "server"
 
-#: katakomba-cli.sh:642
+#: katakomba-cli.sh:648
 msgid "domaine ~."
 msgstr "~. domain"
 
-#: katakomba-cli.sh:646 katakomba-cli.sh:648 katakomba-cli.sh:652 katakomba-cli.sh:656
+#: katakomba-cli.sh:652 katakomba-cli.sh:654 katakomba-cli.sh:658 katakomba-cli.sh:662
 msgid "DNS du tunnel"
 msgstr "Tunnel DNS"
 
-#: katakomba-cli.sh:659
+#: katakomba-cli.sh:665
 msgid "DNS split"
 msgstr "Split DNS"
 
-#: katakomba-cli.sh:659
+#: katakomba-cli.sh:665
 msgid "drop-in en place"
 msgstr "drop-in in place"
 
-#: katakomba-cli.sh:680 katakomba-cli.sh:682 katakomba-cli.sh:687
+#: katakomba-cli.sh:677 katakomba-cli.sh:679 katakomba-cli.sh:682
 msgid "Chemin des requêtes DNS"
 msgstr "DNS query path"
 
-#: katakomba-cli.sh:701 katakomba-cli.sh:704 katakomba-cli.sh:708
+#: katakomba-cli.sh:696 katakomba-cli.sh:699 katakomba-cli.sh:703
 msgid "Blocage hors tunnel"
 msgstr "Kill switch"
 
-#: katakomba-cli.sh:702
+#: katakomba-cli.sh:697
 msgid "actif — seuls le tunnel, Tor et le réseau local sortent"
 msgstr "active — only the tunnel, Tor and the local network get out"
 
-#: katakomba-cli.sh:799
+#: katakomba-cli.sh:794
 msgid "Exclusions vers Internet"
 msgstr "Exclusions towards the Internet"
 
-#: katakomba-cli.sh:811 katakomba-cli.sh:819 katakomba-cli.sh:823
+#: katakomba-cli.sh:806 katakomba-cli.sh:814 katakomba-cli.sh:818
 msgid "Sortie Internet"
 msgstr "Internet exit"
 
-#: katakomba-cli.sh:834
+#: katakomba-cli.sh:829
 msgid "C'est normal et passager : relancez le diagnostic dans 30 s."
 msgstr "This is normal and temporary: run the diagnostics again in 30 s."
 
-#: katakomba-cli.sh:387
+#: katakomba-cli.sh:393
 msgid "Le service est arrêté : aucun autre contrôle n'a de sens."
 msgstr "The service is stopped: no other check makes sense."
 
-#: katakomba-cli.sh:425
+#: katakomba-cli.sh:431
 msgid "bootstrap terminé"
 msgstr "bootstrap complete"
 
-#: katakomba-cli.sh:433 katakomba-cli.sh:439 katakomba-cli.sh:444 katakomba-cli.sh:448 katakomba-cli.sh:453
+#: katakomba-cli.sh:439 katakomba-cli.sh:445 katakomba-cli.sh:450 katakomba-cli.sh:454 katakomba-cli.sh:459
 msgid "Tunnel"
 msgstr "Tunnel"
 
-#: katakomba-cli.sh:456
+#: katakomba-cli.sh:462
 msgid "composant manquant"
 msgstr "missing component"
 
-#: katakomba-cli.sh:457
+#: katakomba-cli.sh:463
 msgid "comptes pleins"
 msgstr "accounts full"
 
-#: katakomba-cli.sh:458
+#: katakomba-cli.sh:464
 msgid "API injoignable"
 msgstr "API unreachable"
 
-#: katakomba-cli.sh:459
+#: katakomba-cli.sh:465
 msgid "captcha demandé par l'API"
 msgstr "captcha requested by the API"
 
-#: katakomba-cli.sh:460
+#: katakomba-cli.sh:466
 msgid "abonnement expiré"
 msgstr "subscription expired"
 
-#: katakomba-cli.sh:461
+#: katakomba-cli.sh:467
 msgid "comptes refusés"
 msgstr "accounts refused"
 
-#: katakomba-cli.sh:462
+#: katakomba-cli.sh:468
 msgid "serveurs muets"
 msgstr "servers silent"
 
-#: katakomba-cli.sh:463
+#: katakomba-cli.sh:469
 msgid "connexion instable"
 msgstr "unstable connection"
 
-#: katakomba-cli.sh:464
+#: katakomba-cli.sh:470
 msgid "fichier de configuration refusé"
 msgstr "configuration file refused"
 
-#: katakomba-cli.sh:465
+#: katakomba-cli.sh:471
 msgid "Mode secours"
 msgstr "Fallback mode"
 
-#: katakomba-cli.sh:497
+#: katakomba-cli.sh:503
 msgid "python3-cryptography manque : aucune clé ne peut être créée (sudo apt install python3-cryptography)"
 msgstr "python3-cryptography is missing: no key can be created (sudo apt install python3-cryptography)"
 
-#: katakomba-cli.sh:507
+#: katakomba-cli.sh:513
 msgid "débit non mesuré"
 msgstr "speed not measured"
 
-#: katakomba-cli.sh:508 katakomba-cli.sh:513
+#: katakomba-cli.sh:514 katakomba-cli.sh:519
 msgid "Qualité du circuit"
 msgstr "Circuit quality"
 
-#: katakomba-cli.sh:522
+#: katakomba-cli.sh:528
 msgid "Comptes en quarantaine"
 msgstr "Accounts in quarantine"
 
-#: katakomba-cli.sh:524
+#: katakomba-cli.sh:530
 msgid "Comptes"
 msgstr "Accounts"
 
-#: katakomba-cli.sh:524
+#: katakomba-cli.sh:530
 msgid "aucun écarté"
 msgstr "none set aside"
 
-#: katakomba-cli.sh:550 katakomba-cli.sh:566 katakomba-cli.sh:570 katakomba-cli.sh:556 katakomba-cli.sh:558
+#: katakomba-cli.sh:556 katakomba-cli.sh:572 katakomba-cli.sh:576 katakomba-cli.sh:562 katakomba-cli.sh:564
 msgid "Protection des guards Tor"
 msgstr "Tor guard protection"
 
-#: katakomba-cli.sh:571
+#: katakomba-cli.sh:577
 msgid "aucune route /32 — Tor risque de joindre ses relais par le tunnel"
 msgstr "no /32 route — Tor may reach its relays through the tunnel"
 
-#: katakomba-cli.sh:609 katakomba-cli.sh:614
+#: katakomba-cli.sh:615 katakomba-cli.sh:620
 msgid "systemd-networkd"
 msgstr "systemd-networkd"
 
-#: katakomba-cli.sh:614
+#: katakomba-cli.sh:620
 msgid "ne retire pas les routes du tunnel"
 msgstr "does not remove the tunnel's routes"
 
-#: katakomba-cli.sh:683
+#: katakomba-cli.sh:680
 msgid "trop rapide pour passer par Tor — vérifiez une éventuelle fuite"
 msgstr "too fast to go through Tor — check for a possible leak"
 
-#: katakomba-cli.sh:694
+#: katakomba-cli.sh:689
 msgid "bloqué"
 msgstr "blocked"
 
-#: katakomba-cli.sh:705
+#: katakomba-cli.sh:700
 msgid "activé dans les réglages mais inactif — cause dans le journal (katakomba logs)"
 msgstr "enabled in the settings but inactive — cause in the log (katakomba logs)"
 
-#: katakomba-cli.sh:715 katakomba-cli.sh:718
+#: katakomba-cli.sh:710 katakomba-cli.sh:713
 msgid "Connexions entrantes"
 msgstr "Incoming connections"
 
-#: katakomba-cli.sh:716
+#: katakomba-cli.sh:711
 msgid "réponses par la carte réseau — SSH et services restent joignables"
 msgstr "replies through the network card — SSH and services stay reachable"
 
-#: katakomba-cli.sh:719
+#: katakomba-cli.sh:714
 msgid "réponses envoyées dans le tunnel — une session SSH distante serait coupée (cause dans le journal)"
 msgstr "replies sent into the tunnel — a remote SSH session would be cut (cause in the log)"
 
-#: katakomba-cli.sh:726 katakomba-cli.sh:729
+#: katakomba-cli.sh:721 katakomba-cli.sh:724
 msgid "Tor hors du tunnel"
 msgstr "Tor outside the tunnel"
 
-#: katakomba-cli.sh:727
+#: katakomba-cli.sh:722
 msgid "ses connexions sortent toutes par la carte réseau"
 msgstr "all its connections leave through the network card"
 
-#: katakomba-cli.sh:730
+#: katakomba-cli.sh:725
 msgid "relais protégés seulement toutes les 30 s (cause dans le journal)"
 msgstr "relays protected only every 30 s (cause in the log)"
 
-#: katakomba-cli.sh:844
+#: katakomba-cli.sh:839
 msgid "Piste : sudo katakomba restart (3 s de coupure), puis relancez ce diagnostic."
 msgstr "Suggestion: sudo katakomba restart (3 s of downtime), then run these diagnostics again."
 
-#: katakomba-cli.sh:427
+#: katakomba-cli.sh:433
 msgid "démarrage en cours"
 msgstr "starting"
 
-#: katakomba-cli.sh:429
+#: katakomba-cli.sh:435
 msgid "pas prêt"
 msgstr "not ready"
 
-#: katakomba-cli.sh:475
+#: katakomba-cli.sh:481
 msgid "Compte {fournisseur}"
 msgstr "{fournisseur} account"
 
-#: katakomba-cli.sh:502
+#: katakomba-cli.sh:508
 msgid ", {ms} ms à l'ouverture d'une connexion"
 msgstr ", {ms} ms to open a connection"
 
-#: katakomba-cli.sh:513
+#: katakomba-cli.sh:519
 msgid "aucune mesure pour ce tunnel"
 msgstr "no measurement for this tunnel"
 
-#: katakomba-cli.sh:522
+#: katakomba-cli.sh:528
 msgid " — essayés en dernier"
 msgstr " — tried last"
 
-#: katakomba-cli.sh:559
+#: katakomba-cli.sh:565
 msgid "aucun relais protégé dans la table de routage — Tor risque de joindre ses relais par le tunnel"
 msgstr "no protected relay in the routing table — Tor may reach its relays through the tunnel"
 
-#: katakomba-cli.sh:578
+#: katakomba-cli.sh:584
 msgid "{n}/2 routes def1 présentes"
 msgstr "{n}/2 def1 routes present"
 
-#: katakomba-cli.sh:588
+#: katakomba-cli.sh:594
 msgid "détourné(s) par une route via : {reseaux} — casse l'accès aux machines du segment"
 msgstr "diverted by a via route: {reseaux} — breaks access to machines on that segment"
 
-#: katakomba-cli.sh:592
+#: katakomba-cli.sh:598
 msgid "{n} réseau en accès direct"
 msgid_plural "{n} réseaux en accès direct"
 msgstr[0] "{n} network reached directly"
 msgstr[1] "{n} networks reached directly"
 
-#: katakomba-cli.sh:696
+#: katakomba-cli.sh:691
 msgid "bloqué hors tunnel"
 msgstr "blocked outside the tunnel"
 
-#: katakomba-cli.sh:698
+#: katakomba-cli.sh:693
 msgid "non bloqué (option désactivée dans les paramètres)"
 msgstr "not blocked (option turned off in the settings)"
 
-#: katakomba-cli.sh:709
+#: katakomba-cli.sh:704
 msgid "désactivé — pendant une reconnexion, le trafic peut sortir à découvert"
 msgstr "disabled — during a reconnection, traffic may leave unprotected"
 
-#: katakomba-cli.sh:786 katakomba-cli.sh:791
+#: katakomba-cli.sh:781 katakomba-cli.sh:786
 msgid "Connexions de Tor"
 msgstr "Tor connections"
 
-#: katakomba-cli.sh:800
+#: katakomba-cli.sh:795
 msgid "{reseaux} — ce trafic sort hors du tunnel, avec votre adresse réelle"
 msgstr "{reseaux} — this traffic leaves outside the tunnel, with your real address"
 
-#: katakomba-cli.sh:832
+#: katakomba-cli.sh:827
 msgid "Reconnexion en cours ({raison}) : les contrôles du tunnel sont reportés."
 msgstr "Reconnecting ({raison}): tunnel checks are postponed."
 
-#: katakomba-cli.sh:414
+#: katakomba-cli.sh:420
 msgid "injoignable ({erreur})"
 msgstr "unreachable ({erreur})"
 
-#: katakomba-cli.sh:433
+#: katakomba-cli.sh:439
 msgid "{iface} depuis {duree} ({fournisseur}, WireGuard géré, compte {n}, clé du {date})"
 msgstr "{iface} for {duree} ({fournisseur}, managed WireGuard, account {n}, key from {date})"
 
-#: katakomba-cli.sh:479
+#: katakomba-cli.sh:485
 msgid "aucune place enregistrée pour ce PC"
 msgstr "no slot registered for this PC"
 
-#: katakomba-cli.sh:505
+#: katakomba-cli.sh:511
 msgid "{kbs} Ko/s (~{mbps} Mb/s)"
 msgstr "{kbs} KB/s (~{mbps} Mbps)"
 
-#: katakomba-cli.sh:511
+#: katakomba-cli.sh:517
 msgid " — sur un circuit précédent"
 msgstr " — on an earlier circuit"
 
-#: katakomba-cli.sh:537
+#: katakomba-cli.sh:543
 msgid "pointe sur {tun} — boucle de routage probable"
 msgstr "points to {tun} — likely routing loop"
 
-#: katakomba-cli.sh:540
+#: katakomba-cli.sh:546
 msgid "{route} (hors tunnel)"
 msgstr "{route} (outside the tunnel)"
 
-#: katakomba-cli.sh:551
+#: katakomba-cli.sh:557
 msgid "{n}/{total} relais routé hors tunnel"
 msgid_plural "{n}/{total} relais routés hors tunnel"
 msgstr[0] "{n}/{total} relay routed outside the tunnel"
 msgstr[1] "{n}/{total} relays routed outside the tunnel"
 
-#: katakomba-cli.sh:567
+#: katakomba-cli.sh:573
 msgid "{n} route /32 hors tunnel"
 msgid_plural "{n} routes /32 hors tunnel"
 msgstr[0] "{n} /32 route outside the tunnel"
 msgstr[1] "{n} /32 routes outside the tunnel"
 
-#: katakomba-cli.sh:610
+#: katakomba-cli.sh:616
 msgid "{reglages} actif : à chaque redémarrage de networkd, le tunnel est coupé jusqu'à 30 s — « =no » dans networkd.conf l'évite (README)"
 msgstr "{reglages} on: each time networkd restarts, the tunnel is cut for up to 30 s — “=no” in networkd.conf avoids it (README)"
 
-#: katakomba-cli.sh:649
+#: katakomba-cli.sh:655
 msgid "incomplet ({manquants}) — risque de requêtes hors tunnel"
 msgstr "incomplete ({manquants}) — queries may leave outside the tunnel"
 
-#: katakomba-cli.sh:685
-msgid " (résolveur local via {uplink} : {ms} ms)"
-msgstr " (local resolver via {uplink}: {ms} ms)"
-
-#: katakomba-cli.sh:789
+#: katakomba-cli.sh:784
 msgid " — les circuits qui y passent calent"
 msgstr " — circuits using them stall"
 
-#: katakomba-cli.sh:821
+#: katakomba-cli.sh:816
 msgid " — adresse privée, sortie anormale"
 msgstr " — private address, abnormal exit"
 
-#: katakomba-cli.sh:823
+#: katakomba-cli.sh:818
 msgid "aucune réponse via {tun}"
 msgstr "no response via {tun}"
 
-#: katakomba-cli.sh:836
+#: katakomba-cli.sh:831
 msgid "{n} autre problème bloquant ci-dessus, à revoir ensuite."
 msgid_plural "{n} autres problèmes bloquants ci-dessus, à revoir ensuite."
 msgstr[0] "{n} other blocking problem above, to look at afterwards."
 msgstr[1] "{n} other blocking problems above, to look at afterwards."
 
-#: katakomba-cli.sh:851
+#: katakomba-cli.sh:846
 msgid "Aucun problème vu, mais l'état du daemon (Tor, tunnel, blocage hors tunnel) n'est pas lisible par ce compte."
 msgstr "No problem seen, but the daemon's state (Tor, tunnel, kill switch) cannot be read by this account."
 
-#: katakomba-cli.sh:853
+#: katakomba-cli.sh:848
 msgid "Supervision : sudo katakomba autoriser <compte> --statut (lecture seule), ou lancez avec sudo."
 msgstr "Monitoring: sudo katakomba autoriser <account> --statut (read-only), or run with sudo."
 
-#: katakomba-cli.sh:856
+#: katakomba-cli.sh:851
 msgid "Tout est conforme."
 msgstr "Everything is in order."
 
-#: katakomba-cli.sh:372
+#: katakomba-cli.sh:378
 msgid "Diagnostic Katakomba"
 msgstr "Katakomba diagnostics"
 
-#: katakomba-cli.sh:439
+#: katakomba-cli.sh:445
 msgid "{iface} depuis {duree} ({fournisseur}, WireGuard, fichier {n})"
 msgstr "{iface} for {duree} ({fournisseur}, WireGuard, file {n})"
 
-#: katakomba-cli.sh:466
+#: katakomba-cli.sh:472
 msgid "étape {rang}/{total} depuis {duree} : {raison}"
 msgstr "stage {rang}/{total} for {duree}: {raison}"
 
-#: katakomba-cli.sh:483
+#: katakomba-cli.sh:489
 msgid "{compte} — échéance relevée au prochain renouvellement"
 msgstr "{compte} — expiry read at the next renewal"
 
-#: katakomba-cli.sh:489
+#: katakomba-cli.sh:495
 msgid "{compte} — abonnement expiré le {date}"
 msgstr "{compte} — subscription expired on {date}"
 
-#: katakomba-cli.sh:509
+#: katakomba-cli.sh:515
 msgid "{mesure}{latence}, mesuré il y a {age}"
 msgstr "{mesure}{latence}, measured {age} ago"
 
-#: katakomba-cli.sh:520
+#: katakomba-cli.sh:526
 msgid "compte {n} ({min} min)"
 msgstr "account {n} ({min} min)"
 
-#: katakomba-cli.sh:653
+#: katakomba-cli.sh:659
 msgid "{serveurs} · ~. — default-route non vérifiable (format resolvectl inconnu)"
 msgstr "{serveurs} · ~. — default-route cannot be checked (unknown resolvectl format)"
 
-#: katakomba-cli.sh:820
+#: katakomba-cli.sh:815
 msgid "IP publique {ip}"
 msgstr "Public IP {ip}"
 
-#: katakomba-cli.sh:842
+#: katakomba-cli.sh:837
 msgid "{n} avertissement."
 msgid_plural "{n} avertissements."
 msgstr[0] "{n} warning."
 msgstr[1] "{n} warnings."
 
-#: katakomba-cli.sh:847
+#: katakomba-cli.sh:842
 msgid "Aucun problème bloquant, {n} avertissement à surveiller."
 msgid_plural "Aucun problème bloquant, {n} avertissements à surveiller."
 msgstr[0] "No blocking problem, {n} warning to keep an eye on."
 msgstr[1] "No blocking problem, {n} warnings to keep an eye on."
 
-#: katakomba-cli.sh:444
+#: katakomba-cli.sh:450
 msgid "{iface} depuis {duree} ({fournisseur}, compte {n})"
 msgstr "{iface} for {duree} ({fournisseur}, account {n})"
 
-#: katakomba-cli.sh:469
+#: katakomba-cli.sh:475
 msgid "cause inconnue"
 msgstr "unknown cause"
 
-#: katakomba-cli.sh:470
+#: katakomba-cli.sh:476
 msgid " — prochain essai dans {duree}"
 msgstr " — next try in {duree}"
 
-#: katakomba-cli.sh:492
+#: katakomba-cli.sh:498
 msgid "{compte} — expire le {date}, dans {n} j"
 msgstr "{compte} — expires on {date}, in {n} d"
 
-#: katakomba-cli.sh:495
+#: katakomba-cli.sh:501
 msgid "{compte} — expire le {date}"
 msgstr "{compte} — expires on {date}"
 
-#: katakomba-cli.sh:780
+#: katakomba-cli.sh:775
 msgid "{n} part du tunnel"
 msgid_plural "{n} partent du tunnel"
 msgstr[0] "{n} leaves from the tunnel"
 msgstr[1] "{n} leave from the tunnel"
 
-#: katakomba-cli.sh:783
+#: katakomba-cli.sh:778
 msgid "{n} d'une adresse disparue (tunnel précédent)"
 msgid_plural "{n} d'une adresse disparue (tunnel précédent)"
 msgstr[0] "{n} from a vanished address (previous tunnel)"
 msgstr[1] "{n} from a vanished address (previous tunnel)"
 
-#: katakomba-cli.sh:792
+#: katakomba-cli.sh:787
 msgid "{n} connexion vers un relais, par la carte réseau"
 msgid_plural "{n} connexions vers des relais, toutes par la carte réseau"
 msgstr[0] "{n} connection to a relay, through the network card"
 msgstr[1] "{n} connections to relays, all through the network card"
 
-#: katakomba-cli.sh:840
+#: katakomba-cli.sh:835
 msgid "{n} problème bloquant"
 msgid_plural "{n} problèmes bloquants"
 msgstr[0] "{n} blocking problem"
 msgstr[1] "{n} blocking problems"
 
-#: katakomba-cli.sh:448
+#: katakomba-cli.sh:454
 msgid "reconnexion en cours depuis {s} s ({raison})"
 msgstr "reconnecting for {s} s ({raison})"
 
-#: katakomba-cli.sh:451
+#: katakomba-cli.sh:457
 msgid " depuis {m} min {s:02d} s"
 msgstr " for {m} min {s:02d} s"
 
-#: katakomba-cli.sh:452
+#: katakomba-cli.sh:458
 msgid " — dernière cause : {raison}"
 msgstr " — last cause: {raison}"
 
-#: katakomba-cli.sh:453
+#: katakomba-cli.sh:459
 msgid "fermé{depuis}{cause}"
 msgstr "down{depuis}{cause}"
 
-#: katakomba-cli.sh:787
+#: katakomba-cli.sh:782
 msgid "{total} connexion vers un relais"
 msgid_plural "{total} connexions vers des relais"
 msgstr[0] "{total} connection to a relay"

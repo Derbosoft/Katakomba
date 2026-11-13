@@ -95,6 +95,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.9.0" date="2026-11-13">
+      <description>
+        <p>A quieter Katakomba: fewer connections of its own, and none outside Tor.</p>
+        <ul>
+          <li>The watchdog takes received traffic as proof that the tunnel works. It probes only when in doubt, and every 5 minutes at most when the tunnel is idle, instead of about 800 connections an hour</li>
+          <li>The circuit check measures latency only by default, to an address, with no DNS query. The throughput test, which downloaded 4.5 MB from a speed-test host at every start, is now optional</li>
+          <li>The diagnostic no longer sends a DNS query through the network card, and the public address is only ever requested through the tunnel</li>
+          <li>Requests to the Mullvad and IVPN APIs no longer name Katakomba</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.9.0</url>
+    </release>
     <release version="4.8.0" date="2026-11-13">
       <description>
         <p>Circuit choice by response time, and a diagnostic that checks where Tor actually goes.</p>

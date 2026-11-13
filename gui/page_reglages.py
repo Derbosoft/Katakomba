@@ -89,11 +89,11 @@ class PageReglages(Adw.PreferencesPage):
 
         self.circuit = Adw.PreferencesGroup(
             title=_("Qualité du circuit Tor"),
-            description=_("Une mesure juste après la connexion : la latence, puis "
-                          "le débit sur 2 Mo. Un circuit trop lent est aussitôt "
-                          "remplacé. Aucune surveillance continue."))
+            description=_("Une mesure juste après la connexion : la latence, et le "
+                          "débit sur 2 Mo s'il a un seuil. Un circuit trop lent est "
+                          "aussitôt remplacé. Aucune surveillance continue."))
         self.mesure = self._interrupteur(
-            self.circuit, "circuit_check", _("Mesurer le débit à la connexion"), "")
+            self.circuit, "circuit_check", _("Mesurer le circuit à la connexion"), "")
         self.seuil = Adw.SpinRow.new_with_range(0, 10000, 50)
         self.seuil.set_title(_("Débit minimum (Ko/s)"))
         self.seuil.connect("notify::value", self._seuil_change)
@@ -175,8 +175,8 @@ class PageReglages(Adw.PreferencesPage):
             self.blocage.set_active(c.get("kill_switch", True))
             self.ipv6.set_active(c.get("block_ipv6", True))
             self.mesure.set_active(c.get("circuit_check", True))
-            self.seuil.set_value(int(c.get("circuit_min_kbs", 250)))
-            self.latence.set_value(int(c.get("circuit_max_ms", 0)))
+            self.seuil.set_value(int(c.get("circuit_min_kbs", 0)))
+            self.latence.set_value(int(c.get("circuit_max_ms", 1500)))
             self.relatif.set_value(int(c.get("circuit_relative_pct", 0)))
             self.essais.set_value(int(c.get("circuit_max_retries", 3)))
             self.retour.set_value(int(c.get("primary_retry_min", 30)))
@@ -210,6 +210,12 @@ class PageReglages(Adw.PreferencesPage):
         self.fen.reglage_modifie()
 
     def _maj_seuil(self):
+        if self.seuil.get_value() <= 0:
+            # Le défaut depuis la v4.9.0 : le test téléchargeait 4,5 Mo depuis
+            # un hôte de test de débit, reconnaissable par le fournisseur VPN.
+            self.seuil.set_subtitle(_("0 : pas de test de débit, rien n'est "
+                                      "téléchargé."))
+            return
         self.seuil.set_subtitle(_("≈ {debit} sur un test de débit").format(
             debit=modele.kbs_en_mbps(self.seuil.get_value())))
 

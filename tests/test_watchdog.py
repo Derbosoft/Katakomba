@@ -415,6 +415,78 @@ class MonitorLoopTest(unittest.TestCase):
         self.assertEqual(d._light_restart_at, 0.0)
 
 
+class PreuveParLeTraficTest(unittest.TestCase):
+    """v4.9.0 : un tunnel qui reçoit du trafic n'est plus sondé ; on ne sonde
+    que dans le doute, et au repos une fois toutes les 5 min."""
+
+    _boucle = MonitorLoopTest._boucle
+    _daemon = MonitorLoopTest._daemon
+
+    def _trafic(self, d, rx_tick, tx_tick):
+        d.compteurs = True
+        n = [0]
+
+        def compteurs():
+            n[0] += 1
+            return n[0] * rx_tick, n[0] * tx_tick
+        d._compteurs_tun = compteurs
+
+    def test_trafic_recu_dispense_de_sonde(self):
+        d = self._daemon()
+        self._trafic(d, 1500, 1000)
+        d._reprises_sans_succes, d._full_restart_count = 2, 1
+        self._boucle(d, ticks=60)                         # 3 min
+        self.assertEqual(d.verifs, [], "sondé malgré le trafic reçu")
+        self.assertGreater(d._derniere_preuve, 0)
+        self.assertEqual((d._reprises_sans_succes, d._full_restart_count), (0, 0),
+                         "le trafic reçu n'a pas soldé la panne")
+
+    def test_repos_une_sonde_toutes_les_cinq_minutes(self):
+        d = self._daemon()
+        self._boucle(d, ticks=210)                        # 10 min 30
+        self.assertEqual(len(d.verifs), 3, d.verifs)
+        self.assertGreaterEqual(d.verifs[1] - d.verifs[0], d._CONN_REPOS)
+        self.assertLess(d.verifs[1] - d.verifs[0], d._CONN_REPOS + 9)
+
+    def test_premiere_verification_du_tunnel_sondee(self):
+        """Rien de prouvé pour ce tunnel : on sonde, même au repos."""
+        d = self._daemon()
+        d._derniere_preuve = 999_000.0
+        d._tunnel_up_time = 999_500.0                     # tunnel plus récent
+        self._boucle(d, ticks=4)
+        self.assertEqual(len(d.verifs), 1)
+
+    def test_envoi_sans_reponse_sonde_aussitot(self):
+        d = self._daemon()
+        d._derniere_preuve = 1_000_000.0                  # vient d'être prouvé
+        self._trafic(d, 10, 1000)                         # pas un canal muet
+        self._boucle(d, ticks=12)
+        self.assertGreaterEqual(len(d.verifs), 3)
+
+    def test_une_sonde_n_en_appelle_pas_une_autre(self):
+        """Le trafic d'une sonde (SYN, SYN-ACK, FIN) reste sous les seuils."""
+        d = self._daemon()
+        d._derniere_preuve = 1_000_000.0
+        self._trafic(d, 100, 150)
+        self._boucle(d, ticks=60)
+        self.assertEqual(d.verifs, [])
+
+    def test_panne_ouverte_seule_une_sonde_la_clot(self):
+        d = self._daemon()
+        d._conn_fail_count = 1
+        self._trafic(d, 1000, 1000)
+        self._boucle(d, ticks=4, verifs=[True])
+        self.assertEqual(len(d.verifs), 1)
+        self.assertEqual(d._conn_fail_count, 0)
+
+    def test_keepalive_wireguard_ne_prouve_rien(self):
+        """32 octets toutes les 10 s : pas une preuve."""
+        d = self._daemon()
+        self._trafic(d, 32, 0)
+        self._boucle(d, ticks=4)
+        self.assertEqual(len(d.verifs), 1)
+
+
 class BoucleDu23OctobreTest(unittest.TestCase):
     """Relais d'entrée routé dans le tunnel (routes effacées par networkd) :
     chaque relance légère remontait le tunnel, la grâce passait pour un

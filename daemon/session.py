@@ -514,10 +514,14 @@ class SessionMixin:
     #
     # Une ouverture de connexion TCP à travers le tunnel = un aller-retour
     # complet : circuit Tor, serveur VPN, puis la cible.  Rien n'est envoyé ;
-    # la connexion est refermée aussitôt.  Même hôte que le débit : servi au
-    # plus près du serveur VPN.
-    _LAT_HOTE     = "speed.cloudflare.com"
-    _LAT_PORT     = 443
+    # la connexion est refermée aussitôt.
+    #
+    # Cibles (v4.9.0) : les adresses que la surveillance joint déjà, par leur
+    # IP.  Plus de requête DNS ni de nom de test de débit (speed.cloudflare.com)
+    # juste après chaque connexion.  Toutes deux anycast, servies au plus près
+    # du serveur VPN, comme l'ancien hôte (Cloudflare aussi).  La seconde ne
+    # sert que si la première refuse : mêler les deux fausserait la médiane.
+    _LAT_CIBLES   = (("1.1.1.1", 443), ("9.9.9.9", 443))
     _LAT_ESSAIS   = 10
     _LAT_TIMEOUT  = 3.0       # s ; une ouverture plus lente compte pour 3 s
     _LAT_VALIDES  = 6         # échantillons requis pour conclure
@@ -549,18 +553,16 @@ class SessionMixin:
         en ms (-1 si aucune mesure).  La médiane, pas le minimum : la question
         est « ce circuit répond-il vite d'ordinaire ? »."""
         fin = time.time() + self._LAT_BUDGET
-        try:
-            adresse = socket.getaddrinfo(self._LAT_HOTE, self._LAT_PORT,
-                                         socket.AF_INET, socket.SOCK_STREAM)[0][4]
-        except (OSError, IndexError):
-            return -1.0
+        cibles = list(self._LAT_CIBLES)
         mesures = []
         for _ in range(self._LAT_ESSAIS):
             if time.time() >= fin or (still_valid is not None and not still_valid()):
                 break
-            ms = self._ouvrir_connexion(iface, adresse)
+            ms = self._ouvrir_connexion(iface, cibles[0])
             if ms >= 0:
                 mesures.append(ms)
+            elif not mesures and len(cibles) > 1:
+                cibles.pop(0)            # refusée d'emblée : cible suivante
         # Que des dépassements : le tunnel ne passe rien, ce n'est pas une
         # latence.  La mesure du débit le dira.
         if (len(mesures) < self._LAT_VALIDES
@@ -627,8 +629,8 @@ class SessionMixin:
             return
         if self._circuit_controle_fait:
             return
-        min_kbs = self.config.get("circuit_min_kbs", 250)
-        max_ms = self.config.get("circuit_max_ms", 0)
+        min_kbs = self.config.get("circuit_min_kbs", 0)
+        max_ms = self.config.get("circuit_max_ms", 1500)
         pct = min(max(self.config.get("circuit_relative_pct", 0), 0), 50)
         max_try = self.config.get("circuit_max_retries", 3)
         mesurer_debit = min_kbs > 0 or pct > 0

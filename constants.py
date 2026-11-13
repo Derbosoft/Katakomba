@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "4.8.0"
+VERSION       = "4.9.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")
@@ -22,6 +22,12 @@ TUN_IFACE     = "tun-katakomba"
 TUN_SONDE     = "tun-kksonde"    # sonde du retour à la première étape : sans route
 VPN_RUN_DIR   = Path("/run/katakomba-vpn")    # 0750 root:katakomba-vpn, volatil
 AUTH_TMP      = VPN_RUN_DIR / "auth.tmp"
+
+# Défauts du contrôle de circuit avant la v4.9.0 : une config qui les porte
+# encore ne les a pas forcément choisis (l'interface enregistre toutes les
+# clés).
+LEGACY_CIRCUIT_MIN_KBS = 250
+LEGACY_CIRCUIT_MAX_MS  = 0
 
 # Clés de config.json laissées par d'anciennes versions (surveillance de débit
 # supprimée, mode unique).  Sans effet ; le GUI les retire à la sauvegarde.
@@ -62,13 +68,19 @@ DEFAULT_CONFIG = {
     "excluded_domains":  [],
     "local_dns":         "",
     # Contrôle qualité du circuit Tor, une seule fois après l'établissement
-    # du tunnel : si le débit mesuré est sous le seuil, on force un circuit
-    # neuf (NEWNYM) et on retente, dans la limite de circuit_max_retries.
+    # du tunnel : si la mesure est hors seuil, on force un circuit neuf
+    # (NEWNYM) et on retente, dans la limite de circuit_max_retries.
     "circuit_check":      True,
-    "circuit_min_kbs":    250,   # 250 KB/s ≈ 2 Mbps
+    # Débit minimum en KB/s (250 ≈ 2 Mbps).  0, le défaut depuis la v4.9.0 :
+    # pas de test de débit, qui téléchargeait 4,5 Mo depuis
+    # speed.cloudflare.com à chaque démarrage — une signature pour le
+    # fournisseur VPN.  Avant : 250 (LEGACY_CIRCUIT_MIN_KBS).
+    "circuit_min_kbs":    0,
     # Latence médiane maximale (ms) à l'ouverture d'une connexion à travers le
-    # tunnel, mesurée avant le débit ; 0 : pas de critère (v4.8.0).
-    "circuit_max_ms":     0,
+    # tunnel, mesurée avant le débit ; 0 : pas de critère (v4.8.0).  1500 par
+    # défaut depuis la v4.9.0 : au-dessus du pire circuit du parc (1083 ms),
+    # n'écarte que les circuits inutilisables.
+    "circuit_max_ms":     1500,
     # Rejeter les N % des circuits les moins bons de ceux que cette machine a
     # tirés (débit et latence) ; les seuils fixes restent plancher et plafond.
     # 0 : seuils fixes seuls (v4.8.0).

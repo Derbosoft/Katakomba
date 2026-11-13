@@ -29,7 +29,8 @@ from pathlib import Path
 
 from adaptation import adapter, lire_sources
 from constants import (
-    CONFIG_FILE, DEFAULT_CONFIG, OBSOLETE_CONFIG_KEYS, PROVIDERS_DIR,
+    CONFIG_FILE, DEFAULT_CONFIG, LEGACY_CIRCUIT_MAX_MS, LEGACY_CIRCUIT_MIN_KBS,
+    OBSOLETE_CONFIG_KEYS, PROVIDERS_DIR,
     SCRIPT_DIR, SERVICE_NAME, STATUS_SOCKET, TORRC_FILE, VPN_USER,
 )
 from constants import CONFIG_DIR  # noqa: F401  (réexporté : console.py lit modele.CONFIG_DIR)
@@ -193,8 +194,10 @@ def mode_avance_initial(config: dict) -> bool:
         or config.get("local_dns") or config.get("lan_auto")
         or config.get("lan_iface")
         or config.get("circuit_min_kbs", DEFAULT_CONFIG["circuit_min_kbs"])
-           != DEFAULT_CONFIG["circuit_min_kbs"]
-        or config.get("circuit_max_ms", 0) or config.get("circuit_relative_pct", 0)
+           not in (DEFAULT_CONFIG["circuit_min_kbs"], LEGACY_CIRCUIT_MIN_KBS)
+        or config.get("circuit_max_ms", DEFAULT_CONFIG["circuit_max_ms"])
+           not in (DEFAULT_CONFIG["circuit_max_ms"], LEGACY_CIRCUIT_MAX_MS)
+        or config.get("circuit_relative_pct", 0)
         or config.get("circuit_check", True) is False)
 
 
@@ -435,7 +438,7 @@ def erreurs_config(config: dict) -> list:
     erreurs += [e for e in (verifier_domaine(x)[1] for x in config.get("excluded_domains", []))
                 if e]
     try:
-        cmin = int(config.get("circuit_min_kbs", 250))
+        cmin = int(config.get("circuit_min_kbs", 0))
         cret = int(config.get("circuit_max_retries", 3))
         if cmin < 0 or not 1 <= cret <= 10:
             raise ValueError

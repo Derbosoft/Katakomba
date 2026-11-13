@@ -296,8 +296,14 @@ PYEOF
             echo "  DNS split  : inactif"
         fi
         echo ""
-        IP=$(curl -s --max-time 6 https://api.ipify.org 2>/dev/null)
-        echo "  IP publique: ${IP:-(inaccessible)}"
+        # Par le tunnel seulement (v4.9.0) : sans lui, la requête partait avec
+        # l'adresse réelle dès que le blocage hors tunnel était désactivé.
+        if ip link show tun-katakomba up 2>/dev/null | grep -q .; then
+            IP=$(curl -s --max-time 6 --interface tun-katakomba https://api.ipify.org 2>/dev/null)
+            echo "  IP publique: ${IP:-(inaccessible)}"
+        else
+            echo "  IP publique: (pas de tunnel, non demandée)"
+        fi
         echo ""
         echo "── Derniers logs ────────────────────────────────────────"
         journalctl -u "$SERVICE" -n 15 --no-pager --output=short-precise 2>/dev/null \
@@ -658,33 +664,22 @@ else:
 if os.path.exists("/etc/systemd/resolved.conf.d/katakomba-split.conf"):
     note(OK, _("DNS split"), _("drop-in en place"))
 
-# Où part réellement une requête publique ? Le résolveur local répond en
-# ~0 ms, celui du tunnel en dizaines/centaines de ms.
-uplink = ""
-if defauts:
-    champs = defauts[0].split()
-    if "dev" in champs:
-        uplink = champs[champs.index("dev") + 1]
-
+# Où part réellement une requête publique ? Un résolveur local répond en
+# ~0 ms, celui du tunnel en dizaines/centaines de ms.  Plus de requête de
+# comparaison par la carte réseau (v4.9.0) : elle partait en clair chez le
+# résolveur du FAI, à chaque diagnostic.
 if not en_cours:
     t0 = time.monotonic()
     sh("resolvectl", "query", "--cache=no", "wikipedia.org", timeout=20)
     lat_defaut = time.monotonic() - t0
-    lat_locale = None
-    if uplink:
-        t0 = time.monotonic()
-        sh("resolvectl", "query", "--cache=no", "-i", uplink, "wikipedia.org", timeout=20)
-        lat_locale = time.monotonic() - t0
 
 if en_cours:
     note(REPORTE, _("Chemin des requêtes DNS"), NON_VERIFIE)
-elif lat_defaut < 0.02 and (lat_locale is None or lat_locale < 0.02):
+elif lat_defaut < 0.02:
     note(WARN, _("Chemin des requêtes DNS"),
          _("trop rapide pour passer par Tor — vérifiez une éventuelle fuite"))
 else:
-    ref = _(" (résolveur local via {uplink} : {ms} ms)").format(
-        uplink=uplink, ms=f"{lat_locale * 1000:.0f}") if lat_locale is not None else ""
-    note(OK, _("Chemin des requêtes DNS"), f"{lat_defaut * 1000:.0f} ms{ref}")
+    note(OK, _("Chemin des requêtes DNS"), f"{lat_defaut * 1000:.0f} ms")
 
 # ── 5. IPv6 et blocage hors tunnel ────────────────────────────────────────────
 # Connus du daemon seul : sans son état, rien à conclure (pas de faux WARN).
@@ -869,7 +864,12 @@ PYEOF
         ;;
 
     ip)
-        IP=$(curl -s --max-time 8 https://api.ipify.org 2>/dev/null)
+        # Par le tunnel seulement (v4.9.0), comme « status ».
+        if ! ip link show tun-katakomba up 2>/dev/null | grep -q .; then
+            echo "Pas de tunnel : IP non demandée (elle partirait hors Tor)."
+            exit 1
+        fi
+        IP=$(curl -s --max-time 8 --interface tun-katakomba https://api.ipify.org 2>/dev/null)
         if [ -n "$IP" ]; then echo "$IP"; else echo "Impossible de récupérer l'IP."; fi
         ;;
 

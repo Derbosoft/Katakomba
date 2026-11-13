@@ -62,7 +62,7 @@ class LoadConfigTest(unittest.TestCase):
         cfg, logs = self._load('{"circuit_min_kbs": "250", "kill_switch": "non", '
                                '"excluded_ips": "1.2.3.4", "local_dns": 5, "lan_dhcp": 1, '
                                '"primary_retry_min": 12.5, "advanced_mode": true}')
-        self.assertEqual(cfg["circuit_min_kbs"], 250)
+        self.assertEqual(cfg["circuit_min_kbs"], DEFAULT_CONFIG["circuit_min_kbs"])
         self.assertIs(cfg["kill_switch"], True)
         self.assertEqual(cfg["excluded_ips"], [])
         self.assertEqual(cfg["local_dns"], "")
