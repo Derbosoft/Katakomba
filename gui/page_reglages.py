@@ -89,15 +89,29 @@ class PageReglages(Adw.PreferencesPage):
 
         self.circuit = Adw.PreferencesGroup(
             title=_("Qualité du circuit Tor"),
-            description=_("Une seule mesure de 2 Mo juste après la connexion : un "
-                          "circuit trop lent est aussitôt remplacé. Aucune "
-                          "surveillance continue."))
+            description=_("Une mesure juste après la connexion : la latence, puis "
+                          "le débit sur 2 Mo. Un circuit trop lent est aussitôt "
+                          "remplacé. Aucune surveillance continue."))
         self.mesure = self._interrupteur(
             self.circuit, "circuit_check", _("Mesurer le débit à la connexion"), "")
         self.seuil = Adw.SpinRow.new_with_range(0, 10000, 50)
         self.seuil.set_title(_("Débit minimum (Ko/s)"))
         self.seuil.connect("notify::value", self._seuil_change)
         self.circuit.add(self.seuil)
+        self.latence = Adw.SpinRow.new_with_range(0, 10000, 50)
+        self.latence.set_title(_("Latence maximale (ms)"))
+        self.latence.set_subtitle(_("Médiane de dix ouvertures de connexion à travers "
+                                    "le tunnel, mesurée avant le débit. 0 : pas de "
+                                    "critère."))
+        self.latence.connect("notify::value", self._latence_change)
+        self.circuit.add(self.latence)
+        self.relatif = Adw.SpinRow.new_with_range(0, 50, 5)
+        self.relatif.set_title(_("Seuil relatif (%)"))
+        self.relatif.set_subtitle(_("Remplacer les N % des circuits les moins bons parmi "
+                                    "ceux que ce PC a mesurés. Les seuils ci-dessus "
+                                    "restent des limites. 0 : seuils fixes seuls."))
+        self.relatif.connect("notify::value", self._relatif_change)
+        self.circuit.add(self.relatif)
         self.essais = Adw.SpinRow.new_with_range(1, 10, 1)
         self.essais.set_title(_("Nouveaux tirages au plus"))
         self.essais.set_subtitle(_("Avant de garder le circuit tel quel : mieux "
@@ -162,6 +176,8 @@ class PageReglages(Adw.PreferencesPage):
             self.ipv6.set_active(c.get("block_ipv6", True))
             self.mesure.set_active(c.get("circuit_check", True))
             self.seuil.set_value(int(c.get("circuit_min_kbs", 250)))
+            self.latence.set_value(int(c.get("circuit_max_ms", 0)))
+            self.relatif.set_value(int(c.get("circuit_relative_pct", 0)))
             self.essais.set_value(int(c.get("circuit_max_retries", 3)))
             self.retour.set_value(int(c.get("primary_retry_min", 30)))
             self.remesure.set_value(int(c.get("circuit_recheck_min", 0)))
@@ -207,6 +223,19 @@ class PageReglages(Adw.PreferencesPage):
         self._maj_seuil()
         if not self._charge:
             self.fen.config["circuit_min_kbs"] = int(self.seuil.get_value())
+            self.fen.reglage_modifie()
+
+    def _latence_change(self, *_args):
+        if self._charge:
+            return
+        # Entre 1 et 99 ms, aucune valeur n'a de sens (refusée à l'enregistrement).
+        v = int(self.latence.get_value())
+        self.fen.config["circuit_max_ms"] = v if v == 0 or v >= 100 else 100
+        self.fen.reglage_modifie()
+
+    def _relatif_change(self, *_args):
+        if not self._charge:
+            self.fen.config["circuit_relative_pct"] = int(self.relatif.get_value())
             self.fen.reglage_modifie()
 
     def _essais_change(self, *_args):

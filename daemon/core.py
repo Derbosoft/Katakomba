@@ -61,6 +61,8 @@ TOR_ROUTES_FILE   = STATE_DIR / "tor-routes.txt"
 # gardées pour le daemon que systemd relance après la réparation d'urgence.
 REPRISES_FILE     = STATE_DIR / "reprises.json"
 REPRISES_MEMOIRE  = 900   # s : au-delà, une ancienne panne ne compte plus
+# Mesures des circuits tirés par cette machine : base du seuil relatif (v4.8.0).
+CIRCUITS_FILE     = STATE_DIR / "circuits.json"
 
 # Processus orphelins d'une session précédente, reconnus à leur ligne de
 # commande.  Jamais « pkill -x openvpn » ni « pkill -x tor » : ce serait
@@ -374,6 +376,8 @@ class DaemonCore:
         self._last_circuit_kbs = 0.0
         self._last_circuit_at  = 0.0
         self._circuit_mesure_passee = False   # mesure d'un circuit précédent
+        self._last_circuit_ms  = 0.0     # latence médiane, ms (v4.8.0)
+        self._seuils_circuit   = (0.0, 0.0)  # (Ko/s, ms) du dernier contrôle
 
         self._vpn_dns_ips    = []
 

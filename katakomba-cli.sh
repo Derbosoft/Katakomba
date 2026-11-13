@@ -251,8 +251,12 @@ try:
         quand = f"il y a {age//3600}h{(age%3600)//60:02d}" if age >= 3600 \
                 else f"il y a {age//60} min" if age >= 60 else "à l'instant"
         passe = " (circuit précédent)" if d.get("last_circuit_past") else ""
-        print(f"  Circuit    : {kbs:.0f} KB/s (~{kbs*8/1000:.1f} Mbps) "
+        ms = d.get("last_circuit_ms", 0)
+        latence = f", {ms} ms" if ms else ""
+        print(f"  Circuit    : {kbs:.0f} KB/s (~{kbs*8/1000:.1f} Mbps){latence} "
               f"mesuré {quand}{passe}")
+    elif d["tunnel_up"] and d.get("last_circuit_ms"):
+        print(f"  Circuit    : {d['last_circuit_ms']} ms (débit non mesuré)")
     elif d["tunnel_up"]:
         print("  Circuit    : non mesuré")
     if d["lan_sharing"]:  print("  Partage LAN: actif")
@@ -494,11 +498,16 @@ if st:
                                         "peut être créée (sudo apt install "
                                         "python3-cryptography)"))
     kbs, age = st.get("last_circuit_kbs", 0), st.get("last_circuit_age", 0)
-    if kbs:
+    ms = st.get("last_circuit_ms", 0)
+    latence = _(", {ms} ms à l'ouverture d'une connexion").format(ms=ms) if ms else ""
+    if kbs or ms:
         # Une seule mesure par démarrage (v4.4.1) : son âge n'annonce rien.
+        mesure = (_("{kbs} Ko/s (~{mbps} Mb/s)").format(kbs=f"{kbs:.0f}",
+                                                        mbps=nombre(kbs * 8 / 1000))
+                  if kbs else _("débit non mesuré"))
         note(OK, _("Qualité du circuit"),
-             _("{kbs} Ko/s (~{mbps} Mb/s), mesuré il y a {age}").format(
-                 kbs=f"{kbs:.0f}", mbps=nombre(kbs * 8 / 1000), age=duree(age))
+             _("{mesure}{latence}, mesuré il y a {age}").format(
+                 mesure=mesure, latence=latence, age=duree(age))
              + (_(" — sur un circuit précédent") if st.get("last_circuit_past") else ""))
     elif st.get("tunnel_up") and st.get("circuit_pending", True):
         note(WARN, _("Qualité du circuit"), _("aucune mesure pour ce tunnel"))
@@ -719,6 +728,71 @@ if st.get("tunnel_up") and "tor_outside_tunnel" in st:
     else:
         note(WARN, _("Tor hors du tunnel"),
              _("relais protégés seulement toutes les 30 s (cause dans le journal)"))
+# ── Connexions de Tor ──
+# Les règles ci-dessus disent où Tor DEVRAIT sortir ; ses sockets disent où il
+# est sorti.  L'adresse source est figée au connect() : une connexion ouverte
+# pendant que les règles manquaient (daemon antérieur à la v4.4.2, règles
+# retirées par networkd entre deux vérifications) garde l'adresse du tunnel.
+# Elle passe dans le tunnel qui dépend de Tor, puis meurt avec lui quand il est
+# refait ; les circuits qui l'empruntent calent jusqu'à ce que Tor l'abandonne.
+# ss -e donne l'uid sans root.  Relais jamais affichés : la sortie de doctor
+# finit dans des tickets, et les gardes d'un poste ne regardent personne.
+if st.get("tunnel_up") and not en_cours:
+    import ipaddress, pwd
+    try:
+        uid_tor = pwd.getpwnam("debian-tor").pw_uid      # daemon.core.TOR_USER
+    except KeyError:
+        uid_tor = None
+    rc_ss, sockets = sh("ss", "-Htne", "state", "connected")
+    _rc, adresses = sh("ip", "-o", "addr", "show")
+    if uid_tor is not None and rc_ss == 0:
+        iface_de = {}
+        for l in adresses.splitlines():
+            champs = l.split()
+            if len(champs) > 3 and champs[2] in ("inet", "inet6"):
+                try:
+                    iface_de[ipaddress.ip_address(champs[3].split("/")[0])] = champs[1]
+                except ValueError:
+                    pass
+        tunnels = {tun, "tun-katakomba", "tun-kksonde"}
+        relais = par_tunnel = disparues = 0
+        for l in sockets.splitlines():
+            champs = l.split()
+            if f"uid:{uid_tor}" not in champs or len(champs) < 5:
+                continue
+            hote = champs[3].rsplit(":", 1)[0].strip("[]").split("%")[0]
+            try:
+                locale = ipaddress.ip_address(hote)
+            except ValueError:
+                continue
+            if getattr(locale, "ipv4_mapped", None):
+                locale = locale.ipv4_mapped
+            if locale.is_loopback:
+                continue                 # clients SOCKS, port de contrôle
+            relais += 1
+            if locale not in iface_de:
+                disparues += 1
+            elif iface_de[locale] in tunnels:
+                par_tunnel += 1
+        if par_tunnel or disparues:
+            causes = []
+            if par_tunnel:
+                causes.append(ngettext("{n} part du tunnel", "{n} partent du tunnel",
+                                       par_tunnel).format(n=par_tunnel))
+            if disparues:
+                causes.append(ngettext("{n} d'une adresse disparue (tunnel précédent)",
+                                       "{n} d'une adresse disparue (tunnel précédent)",
+                                       disparues).format(n=disparues))
+            note(KO, _("Connexions de Tor"),
+                 ngettext("{total} connexion vers un relais", "{total} connexions vers des "
+                          "relais", relais).format(total=relais) + " : "
+                 + ", ".join(causes) + _(" — les circuits qui y passent calent"))
+        elif relais:
+            note(OK, _("Connexions de Tor"),
+                 ngettext("{n} connexion vers un relais, par la carte réseau",
+                          "{n} connexions vers des relais, toutes par la carte réseau",
+                          relais).format(n=relais))
+# ── Fin des connexions de Tor ──
 # Une exclusion vers Internet est légitime (un service qui refuse Tor), mais
 # elle doit rester visible : elle a pu être ajoutée hors de l'interface.
 if st.get("public_exclusions"):

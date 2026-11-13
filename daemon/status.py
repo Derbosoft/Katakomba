@@ -100,10 +100,17 @@ class StatusMixin:
             "last_circuit_age": int(time.time() - self._last_circuit_at)
                                 if self._last_circuit_at else 0,
             "last_circuit_past": self._circuit_mesure_passee,
+            # Latence médiane à l'ouverture d'une connexion (v4.8.0) ; 0 :
+            # non mesurée.  Seuils du dernier contrôle, relatifs compris.
+            "last_circuit_ms": round(self._last_circuit_ms),
+            "circuit_threshold_kbs": round(self._seuils_circuit[0]),
+            "circuit_threshold_ms": round(self._seuils_circuit[1]),
             # Faux : contrôle désactivé, ou conclu pour ce démarrage.  Aucune
             # mesure n'est plus à attendre.
             "circuit_pending": bool(self.config.get("circuit_check", True)
-                                    and self.config.get("circuit_min_kbs", 250) > 0
+                                    and (self.config.get("circuit_min_kbs", 250) > 0
+                                         or self.config.get("circuit_max_ms", 0) > 0
+                                         or self.config.get("circuit_relative_pct", 0) > 0)
                                     and not self._circuit_controle_fait),
             "conn_failures":  self._conn_fail_count,
             "vpn_reconnects": self._reconnect_vpn_count,

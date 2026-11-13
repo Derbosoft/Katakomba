@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.7.0
+# Katakomba — v4.8.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.7.0-blue)
+![Version](https://img.shields.io/badge/Version-4.8.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -981,7 +981,7 @@ Sans cela, la réponse à une connexion entrante (SSH, serveur web…) suivrait 
 
 Les connexions que la machine ouvre elle-même ne sont jamais marquées : elles restent dans le tunnel. Tout est retiré au démontage du tunnel, ainsi que par le script de nettoyage et `repair_network.sh`. Sans passerelle d'origine, ou si le noyau refuse une règle, le tunnel monte quand même, et le journal comme `doctor` signalent le problème. Vérifié sur un vrai noyau, avec un vrai OpenVPN, dans un espace réseau isolé, avec filtrage de chemin inverse strict : une session ouverte avant le tunnel lui survit, les nouvelles connexions entrantes sont acceptées, le trafic émis par la machine vers ce même correspondant ne sort jamais hors du tunnel.
 
-**Tor hors du tunnel (v4.4.2) :** les routes `/32` ne peuvent venir qu'après coup, car le daemon lit les connexions de Tor toutes les 30 s. Une connexion vers un nouveau relais partait donc dans le tunnel, qui dépend de Tor, puis la route `/32` la coupait : elle sortait par la carte réseau en gardant l'adresse du tunnel comme source. Tor le signalait par « Our IP address has changed ». Deux règles de routage sur l'utilisateur de Tor (`debian-tor`, priorités `30302` et `30303`) choisissent désormais la carte réseau dès l'ouverture de la connexion, donc aussi la bonne source. Ses connexions reçoivent la marque du retour : le filtrage de chemin inverse strict, qui ne connaît pas l'utilisateur, accepte ainsi leurs réponses. Les autres utilisateurs de la machine restent dans le tunnel. Les routes `/32` restent en place pour les connexions déjà ouvertes, et comme repli si ces règles ne peuvent pas être posées. `katakomba doctor` affiche l'état de cette protection.
+**Tor hors du tunnel (v4.4.2) :** les routes `/32` ne peuvent venir qu'après coup, car le daemon lit les connexions de Tor toutes les 30 s. Une connexion vers un nouveau relais partait donc dans le tunnel, qui dépend de Tor, puis la route `/32` la coupait : elle sortait par la carte réseau en gardant l'adresse du tunnel comme source. Tor le signalait par « Our IP address has changed ». Deux règles de routage sur l'utilisateur de Tor (`debian-tor`, priorités `30302` et `30303`) choisissent désormais la carte réseau dès l'ouverture de la connexion, donc aussi la bonne source. Ses connexions reçoivent la marque du retour : le filtrage de chemin inverse strict, qui ne connaît pas l'utilisateur, accepte ainsi leurs réponses. Les autres utilisateurs de la machine restent dans le tunnel. Les routes `/32` restent en place pour les connexions déjà ouvertes, et comme repli si ces règles ne peuvent pas être posées. `katakomba doctor` affiche l'état de cette protection et, depuis la v4.8.0, vérifie aussi son effet : aucune connexion de Tor vers un relais ne doit partir de l'adresse du tunnel, ni d'une adresse disparue avec un tunnel précédent. Une telle connexion reste figée sur sa source et fait caler les circuits qui l'empruntent. Les relais ne sont pas affichés.
 
 Les IP des relais viennent du ControlPort (`GETINFO orconn-status`), avec `ss` en repli. **v3.7.0 :** deux défauts de lecture corrigés. Avec une seule connexion, Tor répond sur une ligne (`250-orconn-status=$FP~nom CONNECTED`), forme qui n'était pas lue. Et une erreur `552` en première ligne (relais absent du consensus) n'était pas reconnue comme fin de réponse : la lecture attendait le timeout (8 s, pendant qu'OpenVPN installe ses routes) puis perdait toute la liste.
 
@@ -1155,7 +1155,7 @@ Si **3 redémarrages complets consécutifs** échouent tous (compteur `_full_res
 Le circuit Tor est **tiré au sort à chaque connexion** : sa qualité varie fortement d'un tirage à l'autre (de ~100 KB/s à plusieurs Mo/s). Juste après l'établissement du tunnel, le daemon mesure le débit réel *à travers* le tunnel :
 
 ```
-Tunnel actif → 5 s de stabilisation → mesure du débit
+Tunnel actif → 5 s de stabilisation → latence (v4.8.0) → mesure du débit
    ├─ ≥ seuil  → circuit conservé, aucune autre mesure
    └─ < seuil  → SIGNAL NEWNYM  (force un circuit neuf)
                  → reconnexion OpenVPN (même fournisseur/compte)
@@ -1171,6 +1171,15 @@ Deux points de conception importants :
 **Aucune surveillance continue** : ce test ne tourne pas en tâche de fond et ne consomme rien après la connexion.
 
 *(v4.4.1)* **Une seule fois par démarrage du daemon** : une fois le contrôle conclu (débit suffisant, mesure impossible ou plafond d'essais atteint), les reconnexions suivantes (coupure, relance par la surveillance) ne mesurent plus. Chaque mesure télécharge 4,5 Mo vers un tiers ; avec WireGuard, qui change de serveur à chaque reconnexion, elle se répétait sinon à chaque fois. **Pendant la mesure, la surveillance ne conclut pas à une panne** : la mesure sature le circuit, qui peut se taire plusieurs secondes sans être mort. Si le tunnel meurt vraiment, la mesure échoue et s'arrête au plus tard après 75 s. *(v4.6.0)* `katakomba set circuit-recheck-min <minutes>` (ou la page Réglages) mesure de nouveau **chaque nouveau circuit** : après une reconnexion ou une relance par la surveillance, et quand le pont WireGuard rouvre sa connexion à travers Tor sous un tunnel qui reste en place. Au plus une mesure par intervalle (5 minutes au minimum) ; `0`, le défaut, garde une seule mesure par démarrage. À travers Tor, un VPN voyage dans un flux TCP : les échantillons de 2 Mo passent l'essentiel de leur temps à monter en débit et sous-estiment ce qu'un long transfert obtient ; un seuil au-dessus de 250 KB/s fait rejeter la plupart des circuits.
+
+#### Latence et seuil relatif (v4.8.0)
+
+Le débit ne dit rien du temps de réponse : sur 44 circuits mesurés par un parc, débit et latence n'avaient **aucun lien** (corrélation ≈ 0). Un circuit à 211 ms d'ouverture de connexion débitait 257 KB/s, un autre à 673 ms en débitait 852. Le critère de débit laissait donc passer des circuits lents à répondre, ceux qui font un détour par un relais lointain. C'est ce que la navigation fait sentir.
+
+- **Latence** (`circuit_max_ms`, `katakomba set circuit-max-ms <ms>`, 0 par défaut = pas de critère) : médiane de dix ouvertures de connexion TCP à travers le tunnel, vers le même hôte que le débit. Rien n'est envoyé, et chaque connexion est refermée aussitôt. Elle est mesurée **avant** le débit : elle coûte quelques Ko, écarte un circuit sans télécharger les 4,5 Mo, et n'est pas gonflée par les files d'attente qu'un téléchargement laisse pleines. Elle est mesurée et affichée (`katakomba status`, `doctor`) même sans critère. Repères du parc, sur 32 circuits : médiane 406 ms, 75 % sous 512 ms, 90 % sous 586 ms, pire 1 083 ms ; les circuits dont le téléchargement de test n'aboutissait pas avaient presque tous plus de 450 ms.
+- **Seuil relatif** (`circuit_relative_pct`, `katakomba set circuit-relative-pct <N>`, de 0 à 50, 0 par défaut) : un circuit est remplacé s'il fait partie des N % les moins bons, en débit ou en latence, de ceux que **cette machine** a mesurés. Un seuil fixe vieillit mal quand toute la vitesse de Tor varie de 30 % en deux mois ; un seuil relatif fixe d'avance le taux de nouveaux tirages et suit la garde de la machine, qui ne change presque jamais. `circuit_min_kbs` et `circuit_max_ms` restent un plancher et un plafond : le seuil relatif ne peut que durcir, pour qu'une mauvaise garde ne fasse pas tout accepter. Avec ce mode, réglez `circuit_min_kbs` en plancher de sécurité (150 par exemple). L'historique (50 mesures au plus, 60 jours) est dans `/var/lib/katakomba/circuits.json` ; avant 10 mesures, seuls les seuils fixes jouent. À une mesure par démarrage, il faut donc quelques jours, moins avec `circuit_recheck_min`.
+
+Les deux critères partagent `circuit_max_retries`. Rejeter les 30 % les moins bons coûte en moyenne 0,4 nouveau tirage par montée sur un critère, davantage sur deux : gardez un pourcentage modeste.
 
 #### Comment la mesure est prise (v3.6.3)
 
@@ -1480,6 +1489,8 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 | `random_account` | bool | Ordre des comptes tiré au hasard chez chaque fournisseur (l'ordre des fournisseurs reste la priorité de la liste) |
 | `circuit_check` | bool | Mesure du débit à la connexion + re-tirage si circuit lent |
 | `circuit_min_kbs` | int | Seuil en KB/s (250 ≈ 2 Mbps ; 0 = désactivé) |
+| `circuit_max_ms` | int | Latence médiane maximale à l'ouverture d'une connexion, en ms (100 à 10000 ; 0 = pas de critère, le défaut) (v4.8.0) |
+| `circuit_relative_pct` | int | Remplacer les N % des circuits les moins bons mesurés par cette machine (0 à 50 ; 0 = seuils fixes seuls, le défaut) (v4.8.0) |
 | `circuit_max_retries` | int | Re-tirages max avant de conserver le circuit |
 | `circuit_recheck_min` | int | Mesurer de nouveau chaque nouveau circuit, au plus une fois par ce nombre de minutes (5 au minimum) ; `0` = une fois par démarrage, le défaut (v4.6.0) |
 | `providers[].random_account` | bool | Facultatif : ordre des comptes propre au fournisseur, qui remplace `random_account` (v4.6.0) |

@@ -194,6 +194,7 @@ def mode_avance_initial(config: dict) -> bool:
         or config.get("lan_iface")
         or config.get("circuit_min_kbs", DEFAULT_CONFIG["circuit_min_kbs"])
            != DEFAULT_CONFIG["circuit_min_kbs"]
+        or config.get("circuit_max_ms", 0) or config.get("circuit_relative_pct", 0)
         or config.get("circuit_check", True) is False)
 
 
@@ -448,6 +449,19 @@ def erreurs_config(config: dict) -> list:
     except (TypeError, ValueError):
         erreurs.append(_("Retour à la première étape : 0 (jamais), ou de 5 à 1440 "
                          "minutes."))
+    try:
+        lat = int(config.get("circuit_max_ms", 0))
+        if lat != 0 and not 100 <= lat <= 10000:
+            raise ValueError
+    except (TypeError, ValueError):
+        erreurs.append(_("Latence maximale du circuit : 0 (pas de critère), ou de "
+                         "100 à 10000 ms."))
+    try:
+        relatif = int(config.get("circuit_relative_pct", 0))
+        if not 0 <= relatif <= 50:
+            raise ValueError
+    except (TypeError, ValueError):
+        erreurs.append(_("Seuil relatif du circuit : de 0 (désactivé) à 50 %."))
     try:
         remesure = int(config.get("circuit_recheck_min", 0))
         if remesure != 0 and not 5 <= remesure <= 1440:
@@ -1238,7 +1252,9 @@ def regler_lancement_session(actif: bool):
 # journaux) : traduites à l'affichage.
 RAISONS = (N_("démarrage du service"), N_("redémarrage complet de Tor et du VPN"),
            N_("perte de connectivité, relance du VPN"),
-           N_("circuit Tor trop lent, nouveau tirage"), N_("connexion VPN interrompue"),
+           N_("circuit Tor trop lent, nouveau tirage"),
+           N_("circuit Tor trop lent à répondre, nouveau tirage"),
+           N_("connexion VPN interrompue"),
            N_("identifiants refusés, compte suivant"),
            N_("aucune poignée de main, nouvel essai"),
            N_("aucune poignée de main, .conf suivant"),
@@ -1474,7 +1490,15 @@ _EVENEMENTS = (
     (re.compile(r"^\[circuit\] Débit faible : (?P<kbs>\d+) KB/s"), "attente",
      N_("Circuit trop lent ({debit}) : nouveau tirage")),
     (re.compile(r"^\[circuit\] Débit toujours faible \((?P<kbs>\d+) KB/s\)"), "attente",
-     N_("Circuit lent conservé ({debit})")),
+     N_("Circuit lent conservé ({debit})")),          # avant la v4.8.0
+    (re.compile(r"^\[circuit\] Circuit conservé après \d+ essais — Débit faible : "
+                r"(?P<kbs>\d+) KB/s"), "attente", N_("Circuit lent conservé ({debit})")),
+    (re.compile(r"^\[circuit\] Circuit conservé après \d+ essais — Latence élevée : "
+                r"(?P<ms>\d+) ms"), "attente", N_("Circuit lent à répondre conservé ({ms} ms)")),
+    (re.compile(r"^\[circuit\] Latence élevée : (?P<ms>\d+) ms"), "attente",
+     N_("Circuit lent à répondre ({ms} ms) : nouveau tirage")),
+    (re.compile(r"^\[circuit\] Latence OK : (?P<ms>\d+) ms"), "ok",
+     N_("Circuit mesuré : {ms} ms")),
     (re.compile(r"^Watchdog : Tor est sain"), "attente",
      N_("Connexion perdue : relance du VPN")),
     (re.compile(r"^Watchdog : redémarrage complet"), "attente",
@@ -1503,7 +1527,7 @@ _EVENEMENTS = (
 # de Tor, si bien que les N dernières lignes brutes ne contiennent souvent
 # aucun événement utile.
 _FILTRE_EVENEMENTS = (r"démarré \(PID|arrêté proprement|Tunnel VPN actif|"
-                      r"\[circuit\] Débit|Watchdog : (Tor est sain|redémarrage complet)|"
+                      r"\[circuit\] (Débit|Latence|Circuit conservé)|Watchdog : (Tor est sain|redémarrage complet)|"
                       r"refusé|sans poignée de main|Fournisseur suivant|épuisé →|"
                       r"(IVPN|Mullvad) : (session|clé WireGuard renouvelée|tous les comptes)")
 

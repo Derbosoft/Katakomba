@@ -42,6 +42,8 @@ REGLAGES = {
     "local-dns":       ("local_dns", "dns"),
     "circuit-check":   ("circuit_check", "bool"),
     "circuit-min-kbs": ("circuit_min_kbs", "int"),
+    "circuit-max-ms":  ("circuit_max_ms", "int"),
+    "circuit-relative-pct": ("circuit_relative_pct", "int"),
     "circuit-retries": ("circuit_max_retries", "int"),
     "primary-retry-min": ("primary_retry_min", "int"),
     "circuit-recheck-min": ("circuit_recheck_min", "int"),

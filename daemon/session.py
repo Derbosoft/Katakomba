@@ -21,15 +21,18 @@ son issue ; la décision qui suit est prise ici.
 """
 
 import grp
+import json
+import math
 import pwd
 import random
+import socket
 import subprocess
 import threading
 import time
 
 from .core import (
     RECONNECT_DELAY, RECONNECT_MAX, AUTH_COOLDOWN, AUTH_PASS_MAX,
-    AUTH_PASS_DELAY, VPN_USER,
+    AUTH_PASS_DELAY, VPN_USER, CIRCUITS_FILE, _read_regular, _write_private,
 )
 from .gestion_wg import (
     CAUSE_API, CAUSE_COMPTES, CAUSE_CONFIG, CAUSE_COUPURES, CAUSE_MODULE,
@@ -44,6 +47,52 @@ NOMS_TRANSPORT = {"wireguard": "WireGuard", "openvpn": "OpenVPN"}
 # Échecs de connexion WireGuard d'affilée (aucune poignée de main) sur un
 # même .conf avant de passer au suivant.
 ECHECS_PAR_CONF = 2
+
+# ── Seuils du circuit (v4.8.0) ───────────────────────────────────────────────
+#
+# Un seuil fixe vieillit mal : la vitesse de tout Tor varie de 30 % en deux
+# mois (OnionPerf, automne 2026), et un parc réglé à 500 Ko/s épuisait ses
+# trois nouveaux tirages à chaque montée.  Avec circuit_relative_pct, un
+# circuit est rejeté s'il fait partie des N % les moins bons de ceux que CETTE
+# machine a tirés : le taux de nouveaux tirages est alors fixé d'avance, quelle
+# que soit la vitesse du réseau ce mois-ci, et le seuil suit la garde de la
+# machine, qui ne change presque jamais.  Les seuils fixes restent un plancher
+# (débit) et un plafond (latence) : le seuil relatif ne peut que durcir, pour
+# qu'une mauvaise garde ne fasse pas tout accepter.
+#
+# Historique : chaque circuit mesuré, accepté ou non (la distribution des
+# tirages, pas celle des survivants).  Avant HISTO_MIN mesures, seuls les
+# seuils fixes jouent ; à une mesure par démarrage, il faut quelques jours.
+HISTO_MIN   = 10
+HISTO_MAX   = 50
+HISTO_AGE   = 60 * 86400        # s : au-delà, le réseau n'est plus le même
+HISTO_TAILLE = 16384             # octets lus au plus
+
+
+def centile(valeurs, p: float) -> float:
+    """Centile p (0-100) au rang le plus proche : une valeur réellement
+    mesurée, sans interpolation."""
+    v = sorted(valeurs)
+    if not v:
+        raise ValueError("aucune valeur")
+    rang = max(1, math.ceil(p / 100 * len(v)))
+    return v[min(rang, len(v)) - 1]
+
+
+def seuils_circuit(min_kbs, max_ms, pct, historique) -> tuple:
+    """(débit minimum en Ko/s, latence maximale en ms) ; 0 : pas de critère.
+    pct : part des circuits rejetés par le seuil relatif, 0 = désactivé."""
+    seuil_kbs, seuil_ms = float(min_kbs), float(max_ms)
+    if pct <= 0:
+        return seuil_kbs, seuil_ms
+    debits = [e["kbs"] for e in historique if e.get("kbs")]
+    latences = [e["ms"] for e in historique if e.get("ms")]
+    if len(debits) >= HISTO_MIN:
+        seuil_kbs = max(seuil_kbs, centile(debits, pct))
+    if len(latences) >= HISTO_MIN:
+        relatif = centile(latences, 100 - pct)
+        seuil_ms = min(seuil_ms, relatif) if seuil_ms > 0 else relatif
+    return seuil_kbs, seuil_ms
 
 
 def ordre_transports(config, fournisseur=None) -> list:
@@ -312,6 +361,7 @@ class SessionMixin:
             self._circuit_mesure_passee = self._last_circuit_at > 0
         else:
             self._last_circuit_kbs = 0.0
+            self._last_circuit_ms  = 0.0
             self._last_circuit_at  = 0.0
             self._circuit_mesure_passee = False
         self._log("Tunnel VPN actif.", "OK")
@@ -449,15 +499,123 @@ class SessionMixin:
                 time.sleep(self._SPEED_RETRY)
         return -1.0
 
+    # ── Latence (v4.8.0) ─────────────────────────────────────────────────────
+    #
+    # Débit et latence d'un circuit n'ont aucun lien : sur 44 circuits mesurés
+    # par un parc, corrélation ≈ 0 (211 ms d'ouverture pour 257 Ko/s, 673 ms
+    # pour 852 Ko/s).  Le critère de débit laissait donc passer des circuits
+    # lents à répondre — un détour par un relais lointain —, ce que la
+    # navigation fait sentir.
+    #
+    # Mesurée AVANT le débit : elle coûte quelques Ko au lieu de 4,5 Mo, écarte
+    # sans télécharger les circuits qui n'aboutiraient pas (ceux du parc avaient
+    # presque tous plus de 450 ms), et n'est pas gonflée par les files d'attente
+    # qu'un téléchargement laisse pleines.
+    #
+    # Une ouverture de connexion TCP à travers le tunnel = un aller-retour
+    # complet : circuit Tor, serveur VPN, puis la cible.  Rien n'est envoyé ;
+    # la connexion est refermée aussitôt.  Même hôte que le débit : servi au
+    # plus près du serveur VPN.
+    _LAT_HOTE     = "speed.cloudflare.com"
+    _LAT_PORT     = 443
+    _LAT_ESSAIS   = 10
+    _LAT_TIMEOUT  = 3.0       # s ; une ouverture plus lente compte pour 3 s
+    _LAT_VALIDES  = 6         # échantillons requis pour conclure
+    _LAT_BUDGET   = 25        # s, durée totale au plus
+
+    def _ouvrir_connexion(self, iface: str, adresse) -> float:
+        """Durée d'ouverture d'une connexion TCP en ms ; le plafond si elle
+        n'aboutit pas à temps (circuit lent : c'est une mesure) ; -1 si elle
+        est refusée (rien à conclure).  SO_BINDTODEVICE, comme curl
+        --interface : jamais par la route par défaut si le tunnel tombe."""
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            if iface:
+                s.setsockopt(socket.SOL_SOCKET, getattr(socket, "SO_BINDTODEVICE", 25),
+                             iface.encode())
+            s.settimeout(self._LAT_TIMEOUT)
+            debut = time.monotonic()
+            s.connect(adresse)
+            return (time.monotonic() - debut) * 1000
+        except socket.timeout:
+            return self._LAT_TIMEOUT * 1000
+        except OSError:
+            return -1.0
+        finally:
+            s.close()
+
+    def _measure_tunnel_latency(self, iface: str = "", still_valid=None) -> float:
+        """Médiane du temps d'ouverture d'une connexion à travers le tunnel,
+        en ms (-1 si aucune mesure).  La médiane, pas le minimum : la question
+        est « ce circuit répond-il vite d'ordinaire ? »."""
+        fin = time.time() + self._LAT_BUDGET
+        try:
+            adresse = socket.getaddrinfo(self._LAT_HOTE, self._LAT_PORT,
+                                         socket.AF_INET, socket.SOCK_STREAM)[0][4]
+        except (OSError, IndexError):
+            return -1.0
+        mesures = []
+        for _ in range(self._LAT_ESSAIS):
+            if time.time() >= fin or (still_valid is not None and not still_valid()):
+                break
+            ms = self._ouvrir_connexion(iface, adresse)
+            if ms >= 0:
+                mesures.append(ms)
+        # Que des dépassements : le tunnel ne passe rien, ce n'est pas une
+        # latence.  La mesure du débit le dira.
+        if (len(mesures) < self._LAT_VALIDES
+                or all(m >= self._LAT_TIMEOUT * 1000 for m in mesures)):
+            return -1.0
+        return centile(mesures, 50)
+
+    # ── Historique des circuits (seuil relatif) ──────────────────────────────
+
+    def _historique_circuits(self) -> list:
+        """Mesures récentes de cette machine ; liste vide si le fichier manque
+        ou ne ressemble à rien (il est sous STATE_DIR, root seul)."""
+        try:
+            entrees = json.loads(_read_regular(CIRCUITS_FILE, HISTO_TAILLE))
+        except (OSError, ValueError):
+            return []
+        if not isinstance(entrees, list):
+            return []
+        maintenant, propres = time.time(), []
+        for e in entrees:
+            if not isinstance(e, dict):
+                continue
+            try:
+                t, kbs, ms = float(e["t"]), e.get("kbs"), e.get("ms")
+            except (KeyError, TypeError, ValueError):
+                continue
+            ok = [isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+                  for v in (kbs, ms)]
+            if 0 <= maintenant - t <= HISTO_AGE and any(ok):
+                propres.append({"t": t, "kbs": kbs if ok[0] else None,
+                                "ms": ms if ok[1] else None})
+        return propres[-HISTO_MAX:]
+
+    def _noter_circuit(self, kbs: float, ms: float):
+        """Ajoute une mesure (-1 : non mesuré) à l'historique."""
+        entree = {"t": int(time.time()), "kbs": round(kbs, 1) if kbs > 0 else None,
+                  "ms": round(ms) if ms > 0 else None}
+        if entree["kbs"] is None and entree["ms"] is None:
+            return
+        try:
+            _write_private(CIRCUITS_FILE, json.dumps(
+                (self._historique_circuits() + [entree])[-HISTO_MAX:]) + "\n",
+                dir_mode=0o755)
+        except OSError:
+            pass
+
     def _circuit_quality_check(self):
         """Contrôle qualité UNIQUE, juste après l'établissement du tunnel.
 
         Le circuit Tor est tiré au sort à la connexion : on vérifie tout de
-        suite si le tirage est bon.  S'il est mauvais, on force un circuit
-        neuf (NEWNYM) puis on relance OpenVPN ou le pont WireGuard — seule
-        action qui change réellement les relais.  Borné par
-        circuit_max_retries pour ne jamais boucler : au-delà, on garde le
-        circuit tel quel.
+        suite si le tirage est bon — latence d'abord, puis débit (v4.8.0).
+        S'il est mauvais, on force un circuit neuf (NEWNYM) puis on relance
+        OpenVPN ou le pont WireGuard — seule action qui change réellement les
+        relais.  Borné par circuit_max_retries pour ne jamais boucler :
+        au-delà, on garde le circuit tel quel.
 
         Une fois par démarrage du daemon (v4.4.1) : une fois le contrôle
         conclu, les reconnexions suivantes (coupure, relance par la
@@ -470,8 +628,11 @@ class SessionMixin:
         if self._circuit_controle_fait:
             return
         min_kbs = self.config.get("circuit_min_kbs", 250)
+        max_ms = self.config.get("circuit_max_ms", 0)
+        pct = min(max(self.config.get("circuit_relative_pct", 0), 0), 50)
         max_try = self.config.get("circuit_max_retries", 3)
-        if min_kbs <= 0:
+        mesurer_debit = min_kbs > 0 or pct > 0
+        if not mesurer_debit and max_ms <= 0:
             return
 
         time.sleep(self._SPEED_WAIT)
@@ -488,62 +649,91 @@ class SessionMixin:
             return (proc is self._processus_vpn() and self._tunnel_up
                     and not self._stop_vpn and not self._stop_flag)
 
+        historique = self._historique_circuits() if pct > 0 else []
+        seuil_kbs, seuil_ms = seuils_circuit(max(min_kbs, 0), max(max_ms, 0), pct,
+                                             historique)
+        self._seuils_circuit = (seuil_kbs, seuil_ms)
+
         # Contrôle PENDANT la mesure : inutile de continuer à sonder une
         # interface morte pendant plusieurs requêtes.
+        ms, kbs, raison = -1.0, -1.0, ""
         self._mesure_en_cours = True
         try:
-            kbs = self._measure_tunnel_speed(tun, still_valid=tunnel_intact)
+            ms = self._measure_tunnel_latency(tun, still_valid=tunnel_intact)
+            if seuil_ms > 0 and ms > seuil_ms:
+                raison = (f"Latence élevée : {ms:.0f} ms > {seuil_ms:.0f} ms")
+            elif mesurer_debit:
+                kbs = self._measure_tunnel_speed(tun, still_valid=tunnel_intact)
         finally:
             self._mesure_en_cours = False
 
         # Et contrôle APRÈS : le tunnel peut tomber entre la dernière requête
         # et l'exploitation du résultat.  Sans ce second contrôle, un thread
-        # périmé interpréterait le débit d'un tunnel disparu et, pire, tuerait
-        # le processus qui a pris sa place.
+        # périmé interpréterait les mesures d'un tunnel disparu et, pire,
+        # tuerait le processus qui a pris sa place.
         if not tunnel_intact():
             self._log("[circuit] Tunnel renouvelé pendant la mesure — "
                       "résultat ignoré.", "WARN")
             return
 
-        if kbs < 0:
-            self._log("[circuit] Mesure du débit impossible — "
-                      "circuit conservé.", "WARN")
+        self._noter_circuit(kbs, ms)
+        if ms < 0:
+            # Sans critère de latence, la mesure n'était qu'indicative.
+            self._log("[circuit] Mesure de la latence impossible"
+                      + (" — critère ignoré." if seuil_ms > 0 else "."),
+                      "WARN" if seuil_ms > 0 else "INFO")
+        if not raison and (kbs < 0 if mesurer_debit else ms < 0):
+            if mesurer_debit:
+                self._log("[circuit] Mesure du débit impossible — "
+                          "circuit conservé.", "WARN")
+            if ms > 0:
+                self._last_circuit_ms = ms
+                self._last_circuit_at = time.time()
+                self._circuit_mesure_passee = False
             self._conclure_controle()
             return
-        mbps = kbs * 8 / 1000
-        # Mesure conservée pour le socket de statut : elle est prise une seule
-        # fois, autant la rendre consultable au lieu de la laisser filer dans
-        # le journal.  Aucun trafic supplémentaire n'est généré.
-        self._last_circuit_kbs = kbs
+        # Mesures conservées pour le socket de statut : elles sont prises une
+        # seule fois, autant les rendre consultables au lieu de les laisser
+        # filer dans le journal.  Aucun trafic supplémentaire n'est généré.
+        self._last_circuit_kbs = max(kbs, 0.0)
+        self._last_circuit_ms  = max(ms, 0.0)
         self._last_circuit_at  = time.time()
         self._circuit_mesure_passee = False
 
-        if kbs >= min_kbs:
-            self._log(f"[circuit] Débit OK : {kbs:.0f} KB/s "
-                      f"(~{mbps:.1f} Mbps).", "OK")
+        latence = f", latence {ms:.0f} ms" if ms > 0 else ""
+        if not raison and mesurer_debit and kbs < seuil_kbs:
+            raison = (f"Débit faible : {kbs:.0f} KB/s (~{kbs * 8 / 1000:.1f} Mbps) "
+                      f"< {seuil_kbs:.0f} KB/s{latence}")
+        if not raison:
+            if mesurer_debit:
+                self._log(f"[circuit] Débit OK : {kbs:.0f} KB/s "
+                          f"(~{kbs * 8 / 1000:.1f} Mbps){latence}.", "OK")
+            else:
+                self._log(f"[circuit] Latence OK : {ms:.0f} ms.", "OK")
             self._circuit_attempts = 0
             self._conclure_controle()
             return
 
         if self._circuit_attempts >= max_try:
             self._conclure_controle()
+            # « Circuit conservé » en tête : l'interface reconnaît les
+            # événements à leur début (gui/modele.py, _EVENEMENTS).
             self._log(
-                f"[circuit] Débit toujours faible ({kbs:.0f} KB/s) après "
-                f"{max_try} essais — circuit conservé (mieux vaut un tunnel "
-                "lent qu'une boucle de reconnexions).", "WARN")
+                f"[circuit] Circuit conservé après {max_try} essais — {raison} "
+                "(mieux vaut un tunnel lent qu'une boucle de reconnexions).", "WARN")
             return
 
         self._circuit_attempts += 1
-        self._log(
-            f"[circuit] Débit faible : {kbs:.0f} KB/s (~{mbps:.1f} Mbps) "
-            f"< {min_kbs} KB/s — nouveau tirage de circuit "
-            f"({self._circuit_attempts}/{max_try}) …", "WARN")
+        self._log(f"[circuit] {raison} — nouveau tirage de circuit "
+                  f"({self._circuit_attempts}/{max_try}) …", "WARN")
 
         # NEWNYM AVANT la reconnexion : sinon MaxCircuitDirtiness ferait
         # réutiliser le même circuit, donc les mêmes relais lents.
         self._new_tor_circuit()
         self._circuit_retry = True
-        self._reconnect_reason = "circuit Tor trop lent, nouveau tirage"
+        self._reconnect_reason = ("circuit Tor trop lent à répondre, nouveau tirage"
+                                  if raison.startswith("Latence")
+                                  else "circuit Tor trop lent, nouveau tirage")
         if proc and proc.poll() is None:   # proc : celui qu'on vient de mesurer
             proc.terminate()   # sans _stop_vpn : la boucle reconnecte d'elle-même
 
@@ -570,6 +760,7 @@ class SessionMixin:
         self._circuit_controle_fait = False
         self._circuit_attempts = 0
         self._last_circuit_kbs = 0.0
+        self._last_circuit_ms = 0.0
         self._last_circuit_at = 0.0
         self._circuit_mesure_passee = False
         self._log("[circuit] Nouveau circuit sous le tunnel : nouvelle mesure.", "INFO")

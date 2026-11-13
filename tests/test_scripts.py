@@ -966,6 +966,105 @@ class DoctorNetworkdTest(unittest.TestCase):
         self.assertEqual(self._diagnostic(False, ""), [])
 
 
+class DoctorConnexionsTorTest(unittest.TestCase):
+    """Sockets de Tor : aucun ne doit partir du tunnel ni d'une adresse
+    disparue (cas réel : Send-Q bloqué sur une ancienne adresse du tunnel)."""
+
+    BLOC = CLI[CLI.index("# ── Connexions de Tor ──"):CLI.index("# ── Fin des connexions de Tor ──")]
+    ADRESSES = ("1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever\n"
+                "1: lo    inet6 ::1/128 scope host noprefixroute \\       valid_lft forever\n"
+                "2: ens18    inet 10.0.50.55/24 brd 10.0.50.255 scope global ens18\\ x\n"
+                "2: ens18    inet6 fe80::1/64 scope link \\       valid_lft forever\n"
+                "7: tun-katakomba    inet 10.149.122.39/32 scope global tun-katakomba\\ x\n")
+
+    @staticmethod
+    def _socket(locale, distante, uid=112, etat="ESTAB", sendq=0):
+        return (f"{etat}     0      {sendq}     {locale}     {distante}  "
+                f"timer:(on,224ms,0) uid:{uid} ino:9642778 sk:3042 cgroup:/system.slice\n")
+
+    def _diagnostic(self, sockets, st=None, en_cours="", rc_ss=0):
+        from unittest import mock
+        import pwd
+        notes = []
+
+        def sh(*cmd, timeout=15):
+            return (rc_ss, sockets) if cmd[0] == "ss" else (0, self.ADRESSES)
+        ngettext = lambda s, p, n: s if n == 1 else p
+        with mock.patch.object(pwd, "getpwnam", return_value=mock.Mock(pw_uid=112)):
+            exec(self.BLOC, {"sh": sh, "note": lambda *a: notes.append(a),
+                             "_": lambda t: t, "ngettext": ngettext,
+                             "OK": "OK", "KO": "KO", "en_cours": en_cours,
+                             "st": {"tunnel_up": True} if st is None else st,
+                             "tun": "tun-katakomba"})
+        return notes
+
+    def test_tout_par_la_carte(self):
+        sockets = (self._socket("127.0.0.1:9050", "127.0.0.1:41008")
+                   + self._socket("10.0.50.55:32788", "195.201.206.184:9001")
+                   + self._socket("10.0.50.55:33720", "198.51.100.7:443"))
+        (niveau, titre, detail), = self._diagnostic(sockets)
+        self.assertEqual((niveau, titre), ("OK", "Connexions de Tor"))
+        self.assertTrue(detail.startswith("2 connexions"), detail)
+
+    def test_cas_rapporte(self):
+        """Une connexion sur l'adresse du tunnel actuel, une sur celle d'un
+        tunnel précédent, une saine.  Aucun relais dans le message."""
+        sockets = (self._socket("10.0.50.55:33720", "203.0.113.1:9001", sendq=1072)
+                   + self._socket("10.149.7.12:49928", "203.0.113.2:9001", sendq=12328)
+                   + self._socket("10.149.122.39:49156", "203.0.113.3:9001"))
+        (niveau, titre, detail), = self._diagnostic(sockets)
+        self.assertEqual((niveau, titre), ("KO", "Connexions de Tor"))
+        self.assertIn("3 connexions vers des relais", detail)
+        self.assertIn("1 part du tunnel", detail)
+        self.assertIn("1 d'une adresse disparue", detail)
+        self.assertNotIn("203.0.113", detail)
+
+    def test_ouverture_en_cours_comptee(self):
+        """SYN-SENT depuis le tunnel : Tor est en train d'y passer."""
+        sockets = self._socket("10.149.122.39:49156", "203.0.113.3:9001", etat="SYN-SENT")
+        self.assertEqual(self._diagnostic(sockets)[0][0], "KO")
+
+    def test_autres_utilisateurs_ignores(self):
+        """Le reste du trafic passe dans le tunnel, c'est voulu ; uid 1120
+        ne doit pas être pris pour uid 112."""
+        sockets = (self._socket("10.149.122.39:40006", "160.79.104.10:443", uid=1000)
+                   + self._socket("10.149.122.39:40007", "160.79.104.10:443", uid=1120)
+                   + self._socket("10.0.50.55:32788", "195.201.206.184:9001"))
+        (niveau, _t, detail), = self._diagnostic(sockets)
+        self.assertEqual(niveau, "OK")
+        self.assertTrue(detail.startswith("1 connexion"), detail)
+
+    def test_ipv6_et_adresses_mappees(self):
+        sockets = (self._socket("[::1]:9050", "[::1]:41008")
+                   + self._socket("[fe80::1%ens18]:5000", "[fe80::2]:9001")
+                   + self._socket("[::ffff:10.149.122.39]:5001", "[::ffff:203.0.113.4]:9001"))
+        (niveau, _t, detail), = self._diagnostic(sockets)
+        self.assertEqual(niveau, "KO")
+        self.assertIn("2 connexions vers des relais", detail)
+        self.assertIn("1 part du tunnel", detail)
+
+    def test_sonde_du_retour_comptee_comme_tunnel(self):
+        adresses = self.ADRESSES + "8: tun-kksonde    inet 10.66.0.2/32 scope global tun-kksonde\n"
+        self.ADRESSES = adresses
+        sockets = self._socket("10.66.0.2:5000", "203.0.113.5:9001")
+        self.assertEqual(self._diagnostic(sockets)[0][0], "KO")
+
+    def test_rien_a_dire(self):
+        """Tunnel absent, reconnexion en cours, ss en échec, Tor sans
+        connexion vers un relais : aucune ligne plutôt qu'une fausse alerte."""
+        perdu = self._socket("10.149.7.12:49928", "203.0.113.2:9001")
+        self.assertEqual(self._diagnostic(perdu, st={}), [])
+        self.assertEqual(self._diagnostic(perdu, en_cours="nouveau circuit"), [])
+        self.assertEqual(self._diagnostic(perdu, rc_ss=1), [])
+        self.assertEqual(self._diagnostic(self._socket("127.0.0.1:9050", "127.0.0.1:1")), [])
+
+    def test_meme_utilisateur_que_le_daemon(self):
+        import daemon.core as core
+        self.assertEqual(core.TOR_USER, "debian-tor")
+        self.assertIn('pwd.getpwnam("debian-tor")', self.BLOC)
+        self.assertIn('"ss", "-Htne", "state", "connected"', self.BLOC)
+
+
 class RetourEntrantScriptsTest(unittest.TestCase):
     """Le nettoyage (arrêt, réparation) retire aussi le retour des connexions
     entrantes : marquage, règles et table de routage."""

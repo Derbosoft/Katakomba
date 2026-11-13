@@ -61,6 +61,7 @@ _REDIRECTIONS = {
     "LAN_DNSMASQ_PID":    _RUN / "dnsmasq.pid",
     "TOR_ROUTES_FILE":    _STATE / "tor-routes.txt",
     "REPRISES_FILE":      _STATE / "reprises.json",
+    "CIRCUITS_FILE":      _STATE / "circuits.json",
     # WireGuard géré : identité de la machine (ses fichiers vont sous STATE_DIR).
     "MACHINE_ID":         _BAC_A_SABLE / "machine-id",
     "TOR_DATA_DIR":       _STATE / "tor_data",
@@ -190,7 +191,8 @@ def no_sleep(*modules):
     for m in modules:
         saved.append((m, m.time))
         m.time = types.SimpleNamespace(sleep=lambda s: None,
-                                       time=saved[-1][1].time)
+                                       time=saved[-1][1].time,
+                                       monotonic=saved[-1][1].monotonic)
     try:
         yield
     finally:
@@ -240,6 +242,12 @@ class FakeDaemon(Daemon):
 
     def _log(self, msg, level="INFO"):
         self.logs.append((level.strip(), str(msg)))
+
+    def _measure_tunnel_latency(self, iface="", still_valid=None):
+        """Jamais de vraie connexion depuis la suite : « non mesurée ».  Un
+        test de la latence remplace cette méthode, ou appelle celle du mixin
+        (SessionMixin._measure_tunnel_latency) avec un socket simulé."""
+        return -1.0
 
     # ── Assertions de lecture ────────────────────────────────────────────────
 

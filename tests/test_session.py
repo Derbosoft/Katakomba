@@ -288,3 +288,251 @@ class HasardParFournisseurTest(unittest.TestCase):
 
     def test_valeur_illisible_ignoree(self):
         self.assertTrue(self.ordre(True, "non"))
+
+
+class SeuilsCircuitTest(unittest.TestCase):
+    """Seuils du circuit (v4.8.0) : fixes, puis relatifs à l'historique de
+    la machine, sans jamais assouplir un seuil fixe."""
+
+    @staticmethod
+    def histo(debits=(), latences=()):
+        return ([{"t": 1, "kbs": k, "ms": None} for k in debits]
+                + [{"t": 1, "kbs": None, "ms": m} for m in latences])
+
+    def test_centile_au_rang_le_plus_proche(self):
+        v = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+        self.assertEqual(m_session.centile(v, 30), 300)
+        self.assertEqual(m_session.centile(v, 70), 700)
+        self.assertEqual(m_session.centile(v, 50), 500)
+        self.assertEqual(m_session.centile([5, 1, 3], 50), 3)
+        self.assertEqual(m_session.centile([7], 1), 7)
+        with self.assertRaises(ValueError):
+            m_session.centile([], 50)
+
+    def test_seuils_fixes_sans_relatif(self):
+        h = self.histo(range(1000, 2000, 50), range(100, 1100, 50))
+        self.assertEqual(m_session.seuils_circuit(250, 600, 0, h), (250, 600))
+
+    def test_historique_trop_court(self):
+        h = self.histo([900] * 9, [300] * 9)
+        self.assertEqual(m_session.seuils_circuit(250, 600, 30, h), (250, 600))
+
+    def test_relatif_durcit(self):
+        h = self.histo(range(100, 1100, 100), range(100, 1100, 100))
+        self.assertEqual(m_session.seuils_circuit(250, 900, 30, h), (300, 700))
+
+    def test_relatif_n_assouplit_jamais(self):
+        """Mauvaise garde : tout l'historique est lent.  Le plancher de débit
+        et le plafond de latence tiennent."""
+        h = self.histo([60] * 20, [1500] * 20)
+        self.assertEqual(m_session.seuils_circuit(150, 800, 30, h), (150, 800))
+
+    def test_relatif_seul(self):
+        """Pas de seuil fixe : le relatif s'applique tel quel."""
+        h = self.histo(range(100, 1100, 100), range(100, 1100, 100))
+        self.assertEqual(m_session.seuils_circuit(0, 0, 20, h), (200, 800))
+
+
+class LatenceCircuitTest(unittest.TestCase):
+    """Mesure de la latence : médiane des ouvertures de connexion à travers
+    le tunnel, sans vraie connexion ici."""
+
+    def mesurer(self, durees, budget=None):
+        d = FakeDaemon()
+        suite = iter(durees)
+        d._ouvrir_connexion = lambda iface, adresse: next(suite)
+        if budget is not None:
+            d._LAT_BUDGET = budget
+        adresse = [(2, 1, 6, "", ("104.16.0.1", 443))]
+        with unittest.mock.patch.object(m_session.socket, "getaddrinfo",
+                                        return_value=adresse):
+            return m_session.SessionMixin._measure_tunnel_latency(d, "tun0")
+
+    def test_mediane(self):
+        self.assertEqual(self.mesurer([400, 410, 380, 900, 420, 395, 405, 390, 415, 2000]),
+                         405)
+
+    def test_refus_ecartes(self):
+        self.assertEqual(self.mesurer([-1, -1, 300, 310, 320, 330, 340, 350, 360, 370]),
+                         330)
+
+    def test_trop_peu_d_echantillons(self):
+        self.assertEqual(self.mesurer([-1] * 5 + [300] * 5), -1.0)
+
+    def test_que_des_depassements(self):
+        """Le tunnel ne passe rien : pas une latence."""
+        self.assertEqual(self.mesurer([3000.0] * 10), -1.0)
+
+    def test_depassements_comptes_comme_lents(self):
+        self.assertEqual(self.mesurer([3000.0] * 6 + [400] * 4), 3000.0)
+
+    def test_nom_introuvable(self):
+        d = FakeDaemon()
+        with unittest.mock.patch.object(m_session.socket, "getaddrinfo",
+                                        side_effect=OSError("dns")):
+            self.assertEqual(m_session.SessionMixin._measure_tunnel_latency(d, "tun0"), -1.0)
+
+    def test_arret_si_le_tunnel_tombe(self):
+        d = FakeDaemon()
+        appels = []
+        d._ouvrir_connexion = lambda iface, adresse: appels.append(1) or 400.0
+        with unittest.mock.patch.object(m_session.socket, "getaddrinfo",
+                                        return_value=[(2, 1, 6, "", ("104.16.0.1", 443))]):
+            r = m_session.SessionMixin._measure_tunnel_latency(
+                d, "tun0", still_valid=lambda: len(appels) < 3)
+        self.assertEqual((r, len(appels)), (-1.0, 3))
+
+    def test_ouverture_liee_au_tunnel(self):
+        """SO_BINDTODEVICE avant connect : jamais par la route par défaut."""
+        faux = unittest.mock.MagicMock()
+        with unittest.mock.patch.object(m_session.socket, "socket", return_value=faux):
+            ms = m_session.SessionMixin._ouvrir_connexion(FakeDaemon(), "tun0",
+                                                          ("104.16.0.1", 443))
+        self.assertGreaterEqual(ms, 0)
+        appels = [c[0] for c in faux.method_calls]
+        self.assertLess(appels.index("setsockopt"), appels.index("connect"))
+        self.assertEqual(faux.setsockopt.call_args[0][2], b"tun0")
+        faux.close.assert_called_once()
+
+    def test_ouverture_lente_ou_refusee(self):
+        for erreur, attendu in ((m_session.socket.timeout(), 3000.0),
+                                (ConnectionRefusedError(), -1.0)):
+            faux = unittest.mock.MagicMock()
+            faux.connect.side_effect = erreur
+            with unittest.mock.patch.object(m_session.socket, "socket", return_value=faux):
+                self.assertEqual(m_session.SessionMixin._ouvrir_connexion(
+                    FakeDaemon(), "tun0", ("104.16.0.1", 443)), attendu)
+            faux.close.assert_called_once()
+
+
+def ecrire_historique(contenu):
+    """Comme le daemon : dossier d'état en 0755, que le groupe ne modifie pas."""
+    m_session._write_private(m_session.CIRCUITS_FILE, contenu, dir_mode=0o755)
+
+
+class ControleCircuitLatenceTest(unittest.TestCase):
+    """Contrôle du circuit avec latence et seuil relatif (v4.8.0)."""
+
+    def setUp(self):
+        m_session.CIRCUITS_FILE.unlink(missing_ok=True)
+
+    tearDown = setUp
+
+    def _daemon(self, ms, kbs, **cfg):
+        d = FakeDaemon(config={"circuit_check": True, "circuit_min_kbs": 250,
+                               "circuit_max_retries": 3, **cfg})
+        d._tunnel_up, d._tun_iface = True, "tun0"
+        d.openvpn_process = FakeProc(returncode=None)
+        d.ordre = []
+        d._measure_tunnel_latency = (
+            lambda iface="", still_valid=None: d.ordre.append("latence") or ms)
+        d._measure_tunnel_speed = (
+            lambda iface="", still_valid=None: d.ordre.append("debit") or kbs)
+        d.newnym = []
+        d._new_tor_circuit = lambda: d.newnym.append(1)
+        return d
+
+    def _run(self, d):
+        with no_sleep(m_session):
+            d._circuit_quality_check()
+        return d
+
+    def test_latence_mesuree_avant_le_debit(self):
+        d = self._run(self._daemon(400.0, 800.0))
+        self.assertEqual(d.ordre, ["latence", "debit"])
+        self.assertTrue(d.has_log("Débit OK : 800 KB/s (~6.4 Mbps), latence 400 ms", "OK"))
+        self.assertEqual((d._last_circuit_kbs, d._last_circuit_ms), (800.0, 400.0))
+        snap = d._status_snapshot()
+        self.assertEqual((snap["last_circuit_ms"], snap["circuit_threshold_kbs"],
+                          snap["circuit_threshold_ms"]), (400, 250, 0))
+
+    def test_latence_elevee_sans_telecharger(self):
+        """Rejeté sur la latence : les 4,5 Mo du débit ne sont pas téléchargés."""
+        d = self._run(self._daemon(640.0, 900.0, circuit_max_ms=512))
+        self.assertEqual(d.ordre, ["latence"])
+        self.assertEqual(d.newnym, [1])
+        self.assertTrue(d.openvpn_process.terminated)
+        self.assertTrue(d.has_log("Latence élevée : 640 ms > 512 ms — nouveau tirage", "WARN"))
+        self.assertEqual(d._reconnect_reason,
+                         "circuit Tor trop lent à répondre, nouveau tirage")
+
+    def test_latence_seule(self):
+        d = self._run(self._daemon(300.0, 10.0, circuit_min_kbs=0, circuit_max_ms=500))
+        self.assertEqual(d.ordre, ["latence"])
+        self.assertTrue(d.has_log("Latence OK : 300 ms", "OK"))
+        self.assertTrue(d._circuit_controle_fait)
+
+    def test_latence_seule_impossible(self):
+        d = self._run(self._daemon(-1.0, 10.0, circuit_min_kbs=0, circuit_max_ms=500))
+        self.assertEqual(d.newnym, [])
+        self.assertTrue(d.has_log("Mesure de la latence impossible — critère ignoré", "WARN"))
+        self.assertTrue(d._circuit_controle_fait)
+
+    def test_debit_impossible_latence_gardee(self):
+        d = self._run(self._daemon(380.0, -1.0))
+        self.assertTrue(d.has_log("Mesure du débit impossible", "WARN"))
+        self.assertEqual((d._last_circuit_kbs, d._last_circuit_ms), (0.0, 380.0))
+        self.assertGreater(d._last_circuit_at, 0, "âge de la mesure inconnu")
+
+    def test_latence_impossible_debit_decide(self):
+        d = self._run(self._daemon(-1.0, 100.0, circuit_max_ms=500))
+        self.assertEqual(d.ordre, ["latence", "debit"])
+        self.assertTrue(d.has_log("Débit faible", "WARN"))
+
+    def test_sans_critere_de_latence_rien_d_alarmant(self):
+        d = self._run(self._daemon(-1.0, 400.0))
+        self.assertFalse(d.has_log("latence", "WARN"))
+        self.assertTrue(d.has_log("Débit OK", "OK"))
+
+    def test_plafond_d_essais_sur_la_latence(self):
+        d = self._daemon(900.0, 900.0, circuit_max_ms=500)
+        d._circuit_attempts = 3
+        self._run(d)
+        self.assertEqual(d.newnym, [])
+        self.assertTrue(d.has_log("[circuit] Circuit conservé après 3 essais — Latence "
+                                  "élevée : 900 ms > 500 ms", "WARN"))
+
+    def test_tout_desactive(self):
+        d = self._run(self._daemon(900.0, 10.0, circuit_min_kbs=0))
+        self.assertEqual(d.ordre, [])
+
+    def test_historique_note_chaque_tirage(self):
+        for ms, kbs in ((400.0, 800.0), (700.0, 900.0), (-1.0, 300.0)):
+            self._run(self._daemon(ms, kbs, circuit_max_ms=600))
+        h = FakeDaemon()._historique_circuits()
+        self.assertEqual([(e["ms"], e["kbs"]) for e in h],
+                         [(400, 800.0), (700, None), (None, 300.0)])
+
+    def test_tunnel_tombe_rien_n_est_note(self):
+        d = self._daemon(400.0, 800.0)
+        d._measure_tunnel_speed = lambda iface="", still_valid=None: (
+            setattr(d, "_tunnel_up", False) or 800.0)
+        self._run(d)
+        self.assertEqual(FakeDaemon()._historique_circuits(), [])
+
+    def test_seuil_relatif_applique(self):
+        maintenant = time.time()
+        ecrire_historique(json.dumps(
+            [{"t": maintenant, "kbs": k, "ms": m}
+             for k, m in zip(range(100, 1100, 100), range(100, 1100, 100))]))
+        d = self._run(self._daemon(400.0, 290.0, circuit_relative_pct=30))
+        self.assertEqual(d._seuils_circuit, (300.0, 700.0))
+        self.assertTrue(d.has_log("Débit faible : 290 KB/s (~2.3 Mbps) < 300 KB/s", "WARN"))
+        d = self._run(self._daemon(750.0, 900.0, circuit_relative_pct=30))
+        self.assertTrue(d.has_log("Latence élevée : 750 ms > 700 ms", "WARN"))
+
+    def test_historique_borne_et_nettoye(self):
+        maintenant = time.time()
+        entrees = ([{"t": maintenant - 90 * 86400, "kbs": 1.0, "ms": 1.0}]
+                   + ["n'importe quoi", {"t": "x"}, {"t": maintenant, "kbs": True, "ms": None}]
+                   + [{"t": maintenant, "kbs": float(i), "ms": None} for i in range(1, 80)])
+        ecrire_historique(json.dumps(entrees))
+        h = FakeDaemon()._historique_circuits()
+        self.assertEqual(len(h), m_session.HISTO_MAX)
+        self.assertEqual(h[-1]["kbs"], 79.0)
+        self.assertTrue(all(e["kbs"] >= 30 for e in h))
+
+    def test_historique_illisible(self):
+        for contenu in ("{", '{"a": 1}', "[1, 2]"):
+            ecrire_historique(contenu)
+            self.assertEqual(FakeDaemon()._historique_circuits(), [])

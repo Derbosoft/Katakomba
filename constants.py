@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION       = "4.7.0"
+VERSION       = "4.8.0"
 SCRIPT_DIR    = Path(__file__).resolve().parent
 PROVIDERS_DIR = SCRIPT_DIR / "providers"
 CONFIG_DIR    = Path("/etc/katakomba")
@@ -66,6 +66,13 @@ DEFAULT_CONFIG = {
     # neuf (NEWNYM) et on retente, dans la limite de circuit_max_retries.
     "circuit_check":      True,
     "circuit_min_kbs":    250,   # 250 KB/s ≈ 2 Mbps
+    # Latence médiane maximale (ms) à l'ouverture d'une connexion à travers le
+    # tunnel, mesurée avant le débit ; 0 : pas de critère (v4.8.0).
+    "circuit_max_ms":     0,
+    # Rejeter les N % des circuits les moins bons de ceux que cette machine a
+    # tirés (débit et latence) ; les seuils fixes restent plancher et plafond.
+    # 0 : seuils fixes seuls (v4.8.0).
+    "circuit_relative_pct": 0,
     "primary_retry_min":  30,    # sonde de la première étape, en secours ; 0 : jamais
     "circuit_max_retries": 3,
     # Nouvelle mesure à chaque nouveau circuit sous le tunnel (relance,

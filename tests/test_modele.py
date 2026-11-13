@@ -671,6 +671,28 @@ class EvenementsTest(unittest.TestCase):
     def test_maximum(self):
         self.assertEqual(len(modele.evenements(self.LIGNES, 2)), 2)
 
+    def test_latence_et_circuit_conserve(self):
+        """v4.8.0 : un circuit gardé au bout des essais n'est pas annoncé
+        comme un nouveau tirage."""
+        lignes = [f"2026-11-13T10:0{i}:00+01:00 h katakomba[1]: [2026-11-13 10:0{i}:00] " + l
+                  for i, l in enumerate((
+            "[WARN ] [circuit] Circuit conservé après 3 essais — Débit faible : 120 KB/s "
+            "(~1.0 Mbps) < 250 KB/s (mieux vaut un tunnel lent qu'une boucle de reconnexions).",
+            "[WARN ] [circuit] Circuit conservé après 3 essais — Latence élevée : 900 ms > "
+            "500 ms (mieux vaut un tunnel lent qu'une boucle de reconnexions).",
+            "[WARN ] [circuit] Latence élevée : 640 ms > 512 ms — nouveau tirage de circuit "
+            "(1/3) …",
+            "[OK   ] [circuit] Latence OK : 300 ms.",
+            "[OK   ] [circuit] Débit OK : 800 KB/s (~6.4 Mbps), latence 400 ms."))]
+        # Du plus récent au plus ancien : retourné pour suivre l'ordre des lignes.
+        self.assertEqual([e[3] for e in reversed(modele.evenements(lignes))], [
+            "Circuit lent conservé (1,0\u00a0Mb/s)",
+            "Circuit lent à répondre conservé (900 ms)",
+            "Circuit lent à répondre (640 ms) : nouveau tirage",
+            "Circuit mesuré : 300 ms", "Circuit mesuré : 6,4\u00a0Mb/s"])
+        for l in lignes:
+            self.assertRegex(l, modele._FILTRE_EVENEMENTS)
+
 
 class DiagnosticTest(unittest.TestCase):
 
@@ -811,6 +833,7 @@ class ReglagesRelusTest(unittest.TestCase):
     OPTIONS = {"auto_reconnect": "page_reglages.py", "random_account": "page_reglages.py",
                "block_ipv6": "page_reglages.py", "circuit_check": "page_reglages.py",
                "circuit_min_kbs": "page_reglages.py", "circuit_max_retries": "page_reglages.py",
+               "circuit_max_ms": "page_reglages.py", "circuit_relative_pct": "page_reglages.py",
                "autostart": "page_reglages.py", "lan_auto": "page_lan.py",
                "lan_dhcp": "page_lan.py", "lan_iface": "page_lan.py",
                "lan_gateway": "page_lan.py", "lan_subnet": "page_lan.py",

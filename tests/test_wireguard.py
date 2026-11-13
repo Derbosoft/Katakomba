@@ -807,7 +807,7 @@ class CircuitQualityTest(unittest.TestCase):
         self._run(d)
         self.assertEqual(d.newnym, [], "re-tirage au-delà du plafond")
         self.assertFalse(d.pont_process.terminated)
-        self.assertTrue(d.has_log("circuit conservé", "WARN"))
+        self.assertTrue(d.has_log("Circuit conservé après 3 essais", "WARN"))
 
     def test_mesure_impossible_conserve(self):
         d = self._run(self._daemon(-1.0))

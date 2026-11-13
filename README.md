@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.7.0
+# Katakomba — v4.8.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.7.0-blue)
+![Version](https://img.shields.io/badge/Version-4.8.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -933,7 +933,7 @@ Without it, the reply to an incoming connection (SSH, web server…) would follo
 
 Connections the machine opens itself are never marked: they stay in the tunnel. Everything is removed when the tunnel goes down, and by the cleanup script and `repair_network.sh`. Without an original gateway, or if the kernel refuses a rule, the tunnel still comes up and the journal and `doctor` report the problem. Checked on a real kernel with a real OpenVPN, in an isolated network namespace, with strict reverse-path filtering: a session opened before the tunnel survives it, new incoming connections are accepted, the machine's own traffic to the same peer never leaves outside the tunnel.
 
-**Tor outside the tunnel (v4.4.2):** `/32` routes can only come afterwards, because the daemon reads Tor's connections every 30 s. A connection to a new relay therefore went into the tunnel, which depends on Tor, and the `/32` route then cut it: it left through the network card while keeping the tunnel address as its source. Tor reported this as "Our IP address has changed". Two routing rules on Tor's user (`debian-tor`, priorities `30302` and `30303`) now choose the network card as soon as the connection opens, and so the right source too. Its connections get the return mark, so strict reverse path filtering, which does not know the user, accepts their replies. The machine's other users stay in the tunnel. The `/32` routes remain for connections already open, and as a fallback if these rules cannot be set. `katakomba doctor` shows the state of this protection.
+**Tor outside the tunnel (v4.4.2):** `/32` routes can only come afterwards, because the daemon reads Tor's connections every 30 s. A connection to a new relay therefore went into the tunnel, which depends on Tor, and the `/32` route then cut it: it left through the network card while keeping the tunnel address as its source. Tor reported this as "Our IP address has changed". Two routing rules on Tor's user (`debian-tor`, priorities `30302` and `30303`) now choose the network card as soon as the connection opens, and so the right source too. Its connections get the return mark, so strict reverse path filtering, which does not know the user, accepts their replies. The machine's other users stay in the tunnel. The `/32` routes remain for connections already open, and as a fallback if these rules cannot be set. `katakomba doctor` shows the state of this protection and, since v4.8.0, also checks its effect: no Tor connection to a relay may leave from the tunnel address, or from an address that disappeared with a previous tunnel. Such a connection stays stuck on its source and stalls the circuits that use it. Relays are not shown.
 
 Relay IPs come from the ControlPort (`GETINFO orconn-status`), with `ss` as fallback. **v3.7.0:** two reading bugs fixed. With a single connection, Tor answers on one line (`250-orconn-status=$FP~name CONNECTED`), a form that was not parsed. And a `552` error on the first line (relay missing from the consensus) was not recognized as the end of the reply: the read waited for the timeout (8 s, while OpenVPN installs its routes), then lost the whole list.
 
@@ -1107,7 +1107,7 @@ If **3 consecutive full restarts** all fail (`_full_restart_count`), the watchdo
 The Tor circuit is **drawn at random on every connection**, and its quality varies wildly (from ~100 KB/s to several MB/s). Right after the tunnel comes up, the daemon measures real throughput *through* the tunnel:
 
 ```
-Tunnel up → 5 s to settle → measure throughput
+Tunnel up → 5 s to settle → latency (v4.8.0) → measure throughput
    ├─ ≥ threshold  → circuit kept, no further measurement
    └─ < threshold  → SIGNAL NEWNYM  (forces a fresh circuit)
                      → OpenVPN reconnect (same provider/account)
@@ -1123,6 +1123,15 @@ Two design points worth stating:
 **No continuous monitoring**: this test does not run in the background and costs nothing after connection.
 
 *(v4.4.1)* **Once per daemon start**: once the check has concluded (enough throughput, measurement impossible or maximum attempts reached), later reconnections (drop, restart by the watchdog) no longer measure. Each measurement downloads 4.5 MB from a third party; with WireGuard, which changes server at every reconnection, it would otherwise repeat every time. **The watchdog does not conclude to an outage while measuring**: the measurement saturates the circuit, which can go silent for a few seconds without being dead. If the tunnel really dies, the measurement fails and stops after 75 s at most. *(v4.6.0)* `katakomba set circuit-recheck-min <minutes>` (or the Settings page) measures **every new circuit** again: after a reconnection or a watchdog restart, and when the WireGuard bridge reopens its connection through Tor under a tunnel that stays up. At most one measurement per interval (5 minutes minimum); `0`, the default, keeps a single measurement per start. Through Tor, a VPN travels inside a TCP stream: 2 MB samples spend most of their time ramping up and underestimate what a long transfer gets; a threshold above 250 KB/s rejects most circuits.
+
+#### Latency and relative threshold (v4.8.0)
+
+Throughput says nothing about response time: on 44 circuits measured by a fleet, throughput and latency had **no relationship** (correlation ≈ 0). A circuit taking 211 ms to open a connection delivered 257 KB/s, another at 673 ms delivered 852. The throughput criterion therefore let through circuits that are slow to respond, the ones that detour through a distant relay. That is what browsing feels.
+
+- **Latency** (`circuit_max_ms`, `katakomba set circuit-max-ms <ms>`, 0 by default = no criterion): median of ten TCP connection openings through the tunnel, to the same host as the throughput test. Nothing is sent, and each connection is closed at once. It is measured **before** throughput: it costs a few KB, rejects a circuit without downloading the 4.5 MB, and is not inflated by the queues a download leaves full. It is measured and shown (`katakomba status`, `doctor`) even without a criterion. Fleet reference points, over 32 circuits: median 406 ms, 75% under 512 ms, 90% under 586 ms, worst 1,083 ms; circuits whose test download did not complete almost all had more than 450 ms.
+- **Relative threshold** (`circuit_relative_pct`, `katakomba set circuit-relative-pct <N>`, 0 to 50, 0 by default): a circuit is replaced if it is among the worst N%, in throughput or latency, of those **this machine** has measured. A fixed threshold ages badly when the whole of Tor's speed shifts by 30% in two months; a relative threshold sets the redraw rate in advance and follows the machine's guard, which almost never changes. `circuit_min_kbs` and `circuit_max_ms` remain a floor and a ceiling: the relative threshold can only be stricter, so that a bad guard does not make everything acceptable. With this mode, set `circuit_min_kbs` as a safety floor (150 for example). The history (50 measurements at most, 60 days) is in `/var/lib/katakomba/circuits.json`; before 10 measurements, only the fixed thresholds apply. At one measurement per start this takes a few days, less with `circuit_recheck_min`.
+
+Both criteria share `circuit_max_retries`. Rejecting the worst 30% costs on average 0.4 extra draws per connection on one criterion, more on two: keep the percentage modest.
 
 #### How the measurement is taken (v3.6.3)
 
@@ -1429,6 +1438,8 @@ The **Reset** button deletes the torrc file. On the next service start, Tor runs
 | `random_account` | bool | Account order drawn at random within each provider (provider order stays the list's priority) |
 | `circuit_check` | bool | Measure throughput on connect + re-draw if the circuit is slow |
 | `circuit_min_kbs` | int | Threshold in KB/s (250 ≈ 2 Mbps; 0 = disabled) |
+| `circuit_max_ms` | int | Maximum median latency to open a connection, in ms (100 to 10000; 0 = no criterion, the default) (v4.8.0) |
+| `circuit_relative_pct` | int | Replace the worst N% of the circuits measured by this machine (0 to 50; 0 = fixed thresholds only, the default) (v4.8.0) |
 | `circuit_max_retries` | int | Max re-draws before keeping the circuit |
 | `circuit_recheck_min` | int | Measure every new circuit again, at most once per this many minutes (5 minimum); `0` = once per start, the default (v4.6.0) |
 | `providers[].random_account` | bool | Optional: this provider's own account order, overriding `random_account` (v4.6.0) |
