@@ -95,6 +95,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.9.1" date="2026-11-14">
+      <description>
+        <p>The watchdog's dead-channel signal means what it says again.</p>
+        <ul>
+          <li>Unanswered packets separated by silences no longer add up to a "dead channel": an idle machine logged hundreds of false alerts a day, each followed by a probe</li>
+          <li>A probe that takes more than 2 seconds to open its connection is logged, to diagnose slow circuits</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.9.1</url>
+    </release>
     <release version="4.9.0" date="2026-11-13">
       <description>
         <p>A quieter Katakomba: fewer connections of its own, and none outside Tor.</p>

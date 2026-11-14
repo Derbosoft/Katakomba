@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.9.0
+# Katakomba — v4.9.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.9.0-blue)
+![Version](https://img.shields.io/badge/Version-4.9.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1063,6 +1063,8 @@ The watchdog takes stock every **9 seconds** (after a **30-second grace period**
 - idle tunnel: one routine probe at most every **5 minutes**. A failure that happens while idle shows up anyway as soon as traffic resumes.
 
 Before, the probe went out every 9 s, about 800 connections an hour to two public resolvers, at a fixed rate. It was Katakomba's most recognisable signature, for the VPN provider as for Cloudflare and Quad9. A tunnel in use is no longer probed at all; an idle one gets 24 connections an hour at most.
+
+*(v4.9.1)* **Dead channel: 9 s for real.** The counter did not restart from zero during silences: three unanswered packets, a minute apart, made a "dead channel". An idle machine logged 635 of them in one day, each followed by a probe. Before v4.9.0, the replies to the 9-second probes hid this. Now 6 s without any traffic reset it; a single empty tick is still tolerated, since a resent SYN doubles its delay at each attempt. A probe that takes more than 2 s to open its connection is logged ("sonde lente"): a slow-to-respond circuit passes it silently.
 
 The probe itself:
 

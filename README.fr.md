@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.9.0
+# Katakomba — v4.9.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.9.0-blue)
+![Version](https://img.shields.io/badge/Version-4.9.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1111,6 +1111,8 @@ Le watchdog fait le point toutes les **9 secondes** (après un délai de grâce 
 - tunnel au repos : une sonde de routine au plus toutes les **5 minutes**. Une panne survenue au repos se voit de toute façon dès la reprise du trafic.
 
 Avant, la sonde partait toutes les 9 s, soit environ 800 connexions par heure vers deux résolveurs publics, à cadence fixe. C'était la signature la plus reconnaissable de Katakomba, pour le fournisseur VPN comme pour Cloudflare et Quad9. Un tunnel qui sert n'est plus sondé du tout ; au repos, il reste au plus 24 connexions par heure.
+
+*(v4.9.1)* **Canal muet : 9 s pour de bon.** Le compteur ne repartait pas de zéro pendant les silences : trois paquets sans réponse, espacés d'une minute, faisaient un « canal muet ». Un poste au repos en a noté 635 en une journée, chacun suivi d'une sonde. Avant la v4.9.0, les réponses aux sondes toutes les 9 s le masquaient. Désormais, 6 s sans aucun trafic le remettent à zéro ; un seul tick vide reste toléré, car un SYN renvoyé double son délai à chaque essai. Une sonde qui met plus de 2 s à ouvrir sa connexion est notée au journal (« sonde lente ») : un circuit lent à répondre la passe sans rien dire.
 
 La sonde elle-même :
 

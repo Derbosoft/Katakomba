@@ -26,6 +26,8 @@ class WatchdogMixin:
 
     _CONN_GRACE = 30  # secondes de grâce après tunnel up avant de vérifier la connectivité
     _CANAL_MORT_TICKS = 3   # ~9 s d'émission sans réception → canal mort
+    _SILENCE_TICKS    = 2   # ~6 s sans aucun trafic : on repart de zéro
+    _SONDE_LENTE      = 2.0 # s ; au-delà, la durée de la sonde est notée
 
     # Deux endpoints indépendants (Cloudflare, Quad9) : une panne ponctuelle
     # de l'un ne doit pas déclencher un redémarrage complet pour rien.
@@ -83,7 +85,8 @@ class WatchdogMixin:
                     return True
                 if err in (errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY):
                     en_cours.append(s)
-            fin = time.time() + self._CONN_TIMEOUT
+            debut = time.time()
+            fin = debut + self._CONN_TIMEOUT
             while en_cours:
                 reste = fin - time.time()
                 if reste <= 0:
@@ -93,6 +96,12 @@ class WatchdogMixin:
                     return False
                 for s in prets:
                     if s.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR) == 0:
+                        duree = time.time() - debut
+                        if duree >= self._SONDE_LENTE:
+                            # Trace pour le diagnostic (v4.9.1) : un circuit
+                            # lent à répondre passe la sonde sans rien dire.
+                            self._log(f"Watchdog : sonde lente ({duree:.1f} s "
+                                      "pour ouvrir une connexion).", "WARN")
                         return True
                     en_cours.remove(s)
             return False
@@ -336,12 +345,25 @@ class WatchdogMixin:
             # s'arrête au plus tard après son budget (75 s).
             if not self._tunnel_up or d_rx or self._mesure_en_cours:
                 self._tx_sans_rx = 0
+                self._ticks_silence = 0
             elif d_tx:
+                self._ticks_silence = 0
                 self._tx_sans_rx += 1
                 if self._tx_sans_rx == self._CANAL_MORT_TICKS:
                     self._log(f"Watchdog : {self._tun_iface} émet sans rien "
                               f"recevoir depuis {self._CANAL_MORT_TICKS * 3} s — "
                               "canal de données muet.", "WARN")
+            else:
+                # Ni émission ni réception (v4.9.1).  Sans cette remise à zéro,
+                # trois paquets sans réponse espacés d'une minute faisaient un
+                # « canal muet » : 635 alertes en une journée sur un poste au
+                # repos, une sonde à chaque fois.  Avant la v4.9.0, les
+                # réponses aux sondes (toutes les 9 s) le masquaient.  Un
+                # silence d'un tick reste toléré : le renvoi d'un SYN double
+                # son délai (1, 2, 4 s…) et laisse des trous.
+                self._ticks_silence += 1
+                if self._ticks_silence >= self._SILENCE_TICKS:
+                    self._tx_sans_rx = 0
 
             # ── Filet anti-inertie ────────────────────────────────────────
             # Les boucles Tor/VPN abandonnent après un nombre borné de

@@ -94,11 +94,13 @@ class ConnectivityTest(unittest.TestCase):
     """Deux endpoints, testés EN PARALLÈLE : une panne ponctuelle de l'un ne
     déclenche rien, et un tunnel mort ne coûte qu'un seul délai d'attente."""
 
-    def _check(self, link_rc=0, echecs=(), grace=False, muets=()):
+    def _check(self, link_rc=0, echecs=(), grace=False, muets=(), attente=0.0, d=None):
         """`echecs` : endpoints qui refusent ; `muets` : qui ne répondent
         jamais (délai d'attente)."""
         import errno
-        d = FakeDaemon(_tun_iface="tun0")
+        import types
+        d = d or FakeDaemon(_tun_iface="tun0")
+        horloge = [1_000_000.0]
         d._tunnel_up_time = time.time() if grace else time.time() - 3600
         tentes, selects = [], []
 
@@ -126,17 +128,30 @@ class ConnectivityTest(unittest.TestCase):
 
         def fake_select(r, w, x, t):
             selects.append(t)
+            horloge[0] += attente            # durée d'ouverture simulée
             prets = [s for s in w if s.idx not in muets]
             return [], prets, []
 
         saved = (m_watchdog.socket.socket, m_watchdog.select.select)
         m_watchdog.socket.socket = FakeSock
         m_watchdog.select.select = fake_select
+        m_watchdog.time = types.SimpleNamespace(time=lambda: horloge[0])
         try:
             with patched_run(Recorder({"ip link show": (link_rc, "")})):
                 return d._check_connectivity(), tentes, selects
         finally:
             m_watchdog.socket.socket, m_watchdog.select.select = saved
+            m_watchdog.time = time
+
+    def test_sonde_lente_notee(self):
+        """v4.9.1 : un circuit lent à répondre passait la sonde sans trace."""
+        d = FakeDaemon(_tun_iface="tun0")
+        ok, _, _ = self._check(attente=2.5, d=d)
+        self.assertTrue(ok)
+        self.assertTrue(d.has_log("sonde lente (2.5 s", "WARN"))
+        d = FakeDaemon(_tun_iface="tun0")
+        self._check(attente=0.4, d=d)
+        self.assertFalse(d.has_log("sonde lente"))
 
     def test_interface_absente(self):
         ok, tentes, _ = self._check(link_rc=1)
@@ -478,6 +493,38 @@ class PreuveParLeTraficTest(unittest.TestCase):
         self._boucle(d, ticks=4, verifs=[True])
         self.assertEqual(len(d.verifs), 1)
         self.assertEqual(d._conn_fail_count, 0)
+
+    def _paquets(self, d, motif):
+        """motif : par tick, 't' (émis seul), 'r' (reçu), '.' (silence)."""
+        d.compteurs = True
+        etat = {"i": 0, "rx": 0, "tx": 0}
+
+        def compteurs():
+            c = motif[etat["i"] % len(motif)]
+            etat["i"] += 1
+            etat["tx"] += 100 if c in "tr" else 0
+            etat["rx"] += 100 if c == "r" else 0
+            return etat["rx"], etat["tx"]
+        d._compteurs_tun = compteurs
+
+    def test_paquets_isoles_pas_de_canal_muet(self):
+        """v4.9.1 : un paquet sans réponse toutes les minutes, tunnel au repos.
+        Les silences entre eux remettent le compteur à zéro (635 fausses
+        alertes en une journée en 4.9.0)."""
+        d = self._daemon()
+        d._derniere_preuve = 1_000_000.0
+        self._paquets(d, "t" + "." * 19)
+        self._boucle(d, ticks=200)
+        self.assertFalse(d.has_log("émet sans rien recevoir"))
+
+    def test_canal_muet_tolere_un_silence(self):
+        """Renvois de SYN (1, 2, 4 s) : un tick vide entre deux envois ne
+        masque pas un tunnel mort."""
+        d = self._daemon()
+        d._derniere_preuve = 1_000_000.0
+        self._paquets(d, "rt.tt" + "." * 40)   # « r » : premier relevé, sans écart
+        self._boucle(d, ticks=6)
+        self.assertTrue(d.has_log("émet sans rien recevoir", "WARN"))
 
     def test_keepalive_wireguard_ne_prouve_rien(self):
         """32 octets toutes les 10 s : pas une preuve."""
