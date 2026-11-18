@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.11.0
+# Katakomba — v4.11.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.11.0-blue)
+![Version](https://img.shields.io/badge/Version-4.11.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1047,7 +1047,7 @@ DROP    → UDP to 51873, 51874 (interfaces tun-katakomba and tun-kksonde)
 
 The kernel cannot bind a WireGuard interface to a single address: it listens on all of them. And WireGuard takes the source of any authenticated packet as its server's new address. Before v4.11.0, whoever holds the server key — the VPN provider — could write to the machine's real address (public address, server): during a reconnection the client answered it directly, and the kill switch let that answer to an "incoming" connection out; the tunnel then left the bridge, and so Tor. With the tunnel up, the same packet was enough to cut it: a way to search for the real address by trial and error. Behind a home router (NAT), the port was reachable from the local network only.
 
-Everything else is dropped in the `raw` table, before connection tracking. Set up before Tor, whether the kill switch is on or off, removed at stop; `katakomba doctor` reports a KO if they are missing. Checked on a real kernel (`tests_noyau`): without them, the client answers from its real address; with them, the endpoint stays `127.0.0.1:51871`.
+Everything else is dropped in the `raw` table, before connection tracking. Set up before Tor, whether the kill switch is on or off, removed at stop; `katakomba doctor` reports a KO if they are missing. **Re-checked every 30 s** *(v4.11.1)*, along with the kill switch: a firewall that reloads the `raw` table no longer removes them until the service restarts. Checked on a real kernel (`tests_noyau`): without them, the client answers from its real address; with them, the endpoint stays `127.0.0.1:51871`.
 
 ---
 

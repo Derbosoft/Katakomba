@@ -95,6 +95,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.11.1" date="2026-11-18">
+      <description>
+        <p>The WireGuard port closure is re-checked every 30 seconds.</p>
+        <ul>
+          <li>A firewall reloading the raw table reopened the WireGuard ports until the service restarted, while katakomba doctor still reported them closed: they are now set up again, and moved back to the top when another tool inserts rules above them</li>
+          <li>A failed setup is retried every 30 seconds and logged once</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.11.1</url>
+    </release>
     <release version="4.11.0" date="2026-11-18">
       <description>
         <p>Audit fixes: the VPN provider can no longer divert a WireGuard tunnel away from Tor.</p>

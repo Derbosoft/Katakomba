@@ -247,10 +247,10 @@ class FirewallMixin:
         self._kill_active = False
         self._kill_attendu = {}
 
-    def _chaines_intactes(self, chaines, attendu: dict) -> bool:
+    def _chaines_intactes(self, chaines, attendu: dict, table: str = "filter") -> bool:
         """Chaque chaîne (outil, parente, nom) porte le nombre de règles posé."""
         for tool, _parent, chain in chaines:
-            regles = self._regles_de(tool, chain)
+            regles = self._regles_de(tool, chain, table)
             if regles is None or len(regles) != attendu.get(chain):
                 return False
         return True
@@ -295,6 +295,8 @@ class FirewallMixin:
                 for tool, parent, chain in chaines:
                     if self._brancher(tool, parent, chain):
                         repose = True
+        if self._ports_wg_voulus:
+            repose = self._verifier_ports_wg() or repose
         return repose
 
     # ── Garde du compte katakomba-vpn ─────────────────────────────────────────
@@ -360,18 +362,54 @@ class FirewallMixin:
 
     @_exclusif
     def _ports_wg_on(self) -> bool:
-        """Vrai si les deux familles d'adresses sont fermées."""
-        complet = True
+        """Vrai si les deux familles d'adresses sont fermées.  Un échec est
+        retenté toutes les 30 s (_verifier_ports_wg), signalé une fois."""
+        self._ports_wg_voulus = True
+        echecs = []
         for tool, chain in WG_CHAINS:
             erreur = self._poser_chaines(tool, {chain: self._regles_ports_wg()}, "raw")
             if erreur or self._brancher(tool, "PREROUTING", chain, "raw") is None:
-                self._log(f"Ports WireGuard OUVERTS au réseau ({tool}) : pose "
-                          f"impossible{' : ' + erreur if erreur else ''}.  Le "
-                          f"fournisseur VPN pourrait détourner le tunnel hors "
-                          f"de Tor.", "ERROR")
-                complet = False
-        self._ports_wg_fermes = complet
-        return complet
+                echecs.append(f"Ports WireGuard OUVERTS au réseau ({tool}) : pose "
+                              f"impossible{' : ' + erreur if erreur else ''}.  Le "
+                              f"fournisseur VPN pourrait détourner le tunnel hors "
+                              f"de Tor.")
+        message = "\n".join(echecs)
+        if message and message != self._ports_wg_echec:
+            for ligne in echecs:
+                self._log(ligne, "ERROR")
+        elif not message and self._ports_wg_echec:
+            self._log("Ports WireGuard fermés au réseau.", "OK")
+        self._ports_wg_echec = message
+        self._ports_wg_fermes = not echecs
+        return not echecs
+
+    def _verifier_ports_wg(self) -> bool:
+        """Toutes les 30 s, avec le blocage hors tunnel (v4.11.1) : un outil
+        qui vide ou recharge la table raw rouvrait les ports sans bruit, et
+        doctor les disait toujours fermés.  Vrai si quelque chose a été
+        reposé."""
+        if not self._ports_wg_fermes:
+            self._ports_wg_on()                       # pose impossible plus tôt
+            return self._ports_wg_fermes
+        chaines = [(tool, "PREROUTING", chain) for tool, chain in WG_CHAINS]
+        attendu = {chain: len(self._regles_ports_wg()) for _t, chain in WG_CHAINS}
+        if not self._chaines_intactes(chaines, attendu, "raw"):
+            self._log("Ports WireGuard : chaînes raw modifiées ou retirées par un "
+                      "autre outil (pare-feu rechargé ?) — reposées.", "WARN")
+            self._ports_wg_on()
+            return True
+        repose = False
+        for tool, parent, chain in chaines:
+            etat = self._brancher(tool, parent, chain, "raw")
+            if etat:
+                repose = True
+                self._log(f"Ports WireGuard : {chain} n'était plus branchée sur "
+                          f"{parent} (raw) — remise.", "WARN")
+            elif etat is None:
+                self._ports_wg_fermes = False
+                self._log(f"Ports WireGuard OUVERTS au réseau : {chain} impossible "
+                          f"à rebrancher sur {parent} (raw).", "ERROR")
+        return repose
 
     @_exclusif
     def _ports_wg_off(self):
@@ -382,6 +420,8 @@ class FirewallMixin:
             _run(tool, "-t", "raw", "-F", chain)
             _run(tool, "-t", "raw", "-X", chain)
         self._ports_wg_fermes = False
+        self._ports_wg_voulus = False
+        self._ports_wg_echec = ""
 
     # ── Blocage IPv6 ──────────────────────────────────────────────────────────
     #

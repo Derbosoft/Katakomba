@@ -295,6 +295,8 @@ class DaemonCore:
         self._ks6_attendu        = {}     # idem, blocage IPv6
         self._garde_vpn          = False  # garde du compte katakomba-vpn posée
         self._ports_wg_fermes    = False  # ports WireGuard fermés au réseau
+        self._ports_wg_voulus    = False  # fermeture demandée : revérifiée
+        self._ports_wg_echec     = ""     # dernier échec signalé (pas de redite)
         self._ip_forward_avant   = None   # valeur d'origine, rendue à l'arrêt
         self._lan_active         = False
         self._lan_tun            = ""    # interface tunnel figée dans les règles LAN

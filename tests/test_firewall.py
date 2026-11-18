@@ -419,6 +419,94 @@ class PortsWireGuardTest(unittest.TestCase):
         self.assertFalse(d.has_log("(iptables)", "ERROR"))
 
 
+class VerifierPortsWireGuardTest(unittest.TestCase):
+    """v4.11.1 : revérifiés toutes les 30 s avec le blocage hors tunnel.  Un
+    outil qui vidait la table raw rouvrait les ports sans bruit, et doctor
+    les disait toujours fermés."""
+
+    def setUp(self):
+        self.d = FakeDaemon(config={"kill_switch": False})   # même sans blocage
+        with patched_run(Recorder()):
+            self.assertTrue(self.d._ports_wg_on())
+        self.d.logs.clear()
+
+    @staticmethod
+    def _etat(**defauts):
+        """Réponses d'iptables pour des chaînes raw intactes, sauf `defauts`."""
+        rep = {}
+        for outil, chaine in m_firewall.WG_CHAINS:
+            rep[f"{outil} -t raw -S {chaine}"] = (
+                0, f"-N {chaine}\n-A {chaine} -i lo -j RETURN\n-A {chaine} -j DROP\n")
+            rep[f"{outil} -t raw -S PREROUTING"] = (
+                0, f"-P PREROUTING ACCEPT\n-A PREROUTING -j {chaine}\n")
+        rep.update(defauts)
+
+        class Exact(Recorder):
+            def __call__(self, *cmd, **kwargs):
+                ligne = " ".join(cmd)
+                if ligne in rep:
+                    self.calls.append(ligne)
+                    from tests.helpers import Result
+                    return Result(*rep[ligne])
+                return super().__call__(*cmd, **kwargs)
+        return Exact()
+
+    def test_intactes_rien_n_est_touche(self):
+        r = self._etat()
+        with patched_run(r):
+            self.assertFalse(self.d._verifier_blocage())
+        self.assertTrue(all(" -S " in c for c in r.calls), r.dump())
+        self.assertEqual(self.d.logs, [])
+
+    def test_table_raw_videe_reposee(self):
+        r = self._etat(**{"iptables -t raw -S KATAKOMBA_WG": (1, ""),
+                          "iptables -t raw -S PREROUTING": (0, "-P PREROUTING ACCEPT\n")})
+        with patched_run(r):
+            self.assertTrue(self.d._verifier_blocage())
+        self.assertTrue(r.ran("iptables-restore"))
+        self.assertTrue(r.ran("iptables -t raw -I PREROUTING 1 -j KATAKOMBA_WG"))
+        self.assertTrue(self.d._ports_wg_fermes)
+        self.assertTrue(self.d.has_log("chaînes raw modifiées ou retirées", "WARN"))
+
+    def test_branchement_retire_remis(self):
+        r = self._etat(**{"ip6tables -t raw -S PREROUTING": (0, "-P PREROUTING ACCEPT\n")})
+        with patched_run(r):
+            self.assertTrue(self.d._verifier_blocage())
+        self.assertTrue(r.ran("ip6tables -t raw -I PREROUTING 1 -j KATAKOMBA_WG6"))
+        self.assertFalse(r.ran("-restore"), "chaînes intactes : rien à reconstruire")
+        self.assertTrue(self.d.has_log("KATAKOMBA_WG6 n'était plus branchée", "WARN"))
+
+    def test_regle_d_un_autre_outil_au_dessus(self):
+        """Un ACCEPT au-dessus, dans raw, ferait sauter notre DROP."""
+        r = self._etat(**{"iptables -t raw -S PREROUTING": (
+            0, "-P PREROUTING ACCEPT\n-A PREROUTING -j ACCEPT\n"
+               "-A PREROUTING -j KATAKOMBA_WG\n")})
+        with patched_run(r):
+            self.assertTrue(self.d._verifier_blocage())
+        self.assertTrue(r.ran("iptables -t raw -I PREROUTING 1 -j KATAKOMBA_WG"))
+        self.assertTrue(r.ran("iptables -t raw -D PREROUTING 3"))
+
+    def test_pose_impossible_retentee_signalee_une_fois(self):
+        d = FakeDaemon()
+        with patched_run(Recorder({"ip6tables-restore": (1, "")})):
+            self.assertFalse(d._ports_wg_on())
+            d._verifier_blocage()
+            d._verifier_blocage()
+        self.assertEqual(len(d.logged("OUVERTS au réseau (ip6tables)", "ERROR")), 1)
+        with patched_run(Recorder()):
+            self.assertTrue(d._verifier_blocage())
+        self.assertTrue(d._ports_wg_fermes)
+        self.assertTrue(d.has_log("Ports WireGuard fermés au réseau.", "OK"))
+
+    def test_jamais_reposees_apres_le_retrait(self):
+        with patched_run(Recorder()):
+            self.d._ports_wg_off()
+        r = Recorder()
+        with patched_run(r):
+            self.d._verifier_blocage()
+        self.assertFalse(r.ran("raw"), r.dump())
+
+
 class Ipv6BlockTest(unittest.TestCase):
 
     def setUp(self):

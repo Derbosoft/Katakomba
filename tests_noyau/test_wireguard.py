@@ -416,6 +416,24 @@ class WireGuardBoutEnBoutTest(CasNoyau):
         self.assertIn("127.0.0.1:51871", endpoint, "tunnel monté : endpoint déplacé")
         self.assertEqual(joindre(INTERNET, 8080, delai=5), "ok", self._etat())
 
+    def test_ports_refermes_apres_un_rechargement_du_pare_feu(self):
+        """v4.11.1 : un pare-feu qui recharge toute la table raw (sans
+        --noflush) rouvrait les ports jusqu'au redémarrage du service.  La
+        vérification des 30 s les referme."""
+        self.pair.internet(ATTAQUANT)
+        self.assertTrue(self.d._ports_wg_on(), self.d.log_dump())
+        self.addCleanup(self.d._ports_wg_off)
+        for outil in ("iptables", "ip6tables"):
+            sh(f"{outil}-restore", entree="*raw\nCOMMIT\n")
+        self.assertNotIn("KATAKOMBA", sh("iptables -t raw -S") + sh("ip6tables -t raw -S"))
+        self.assertTrue(self.d._verifier_blocage(), self.d.log_dump())
+        self.assertIn("-A PREROUTING -j KATAKOMBA_WG", sh("iptables -t raw -S"))
+        self.assertIn("-A PREROUTING -j KATAKOMBA_WG6", sh("ip6tables -t raw -S"))
+        self.assertEqual(self.d._configurer_wg(self.conf), "", self.d.log_dump())
+        endpoint, repondu = self._ecrire_a_l_adresse_reelle()
+        self.assertFalse(repondu, "le client a répondu depuis son adresse réelle")
+        self.assertIn("127.0.0.1:51871", endpoint)
+
     def test_temoin_port_ouvert(self):
         """Témoin : sans la fermeture des ports, la même attaque réussit —
         sinon le test précédent ne prouverait rien."""

@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.11.0
+# Katakomba — v4.11.1
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.11.0-blue)
+![Version](https://img.shields.io/badge/Version-4.11.1-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1095,7 +1095,7 @@ DROP    → UDP vers 51873, 51874 (interfaces tun-katakomba et tun-kksonde)
 
 Le noyau ne sait pas lier une interface WireGuard à une seule adresse : elle écoute sur toutes. Et WireGuard adopte comme adresse de son serveur la source de tout paquet authentifié. Avant la v4.11.0, qui détient la clé du serveur — le fournisseur VPN — pouvait écrire à l'adresse réelle de la machine (adresse publique, serveur) : pendant une reconnexion, le client lui répondait directement, et le blocage hors tunnel laissait passer cette réponse à une connexion « entrante » ; le tunnel quittait alors le pont, donc Tor. Tunnel monté, le même paquet suffisait à le couper : de quoi chercher l'adresse réelle par essais successifs. Derrière une box (NAT), le port n'était joignable que depuis le réseau local.
 
-Le reste est jeté dans la table `raw`, avant tout suivi de connexion. Posées avant Tor, que le blocage hors tunnel soit activé ou non, retirées à l'arrêt ; `katakomba doctor` signale un KO si elles manquent. Vérifié sur un vrai noyau (`tests_noyau`) : sans elles, le client répond depuis son adresse réelle ; avec, l'endpoint reste `127.0.0.1:51871`.
+Le reste est jeté dans la table `raw`, avant tout suivi de connexion. Posées avant Tor, que le blocage hors tunnel soit activé ou non, retirées à l'arrêt ; `katakomba doctor` signale un KO si elles manquent. **Revérifiées toutes les 30 s** *(v4.11.1)*, avec le blocage hors tunnel : un pare-feu qui recharge la table `raw` ne les retire plus jusqu'au redémarrage du service. Vérifié sur un vrai noyau (`tests_noyau`) : sans elles, le client répond depuis son adresse réelle ; avec, l'endpoint reste `127.0.0.1:51871`.
 
 ---
 
