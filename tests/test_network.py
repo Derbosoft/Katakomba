@@ -546,6 +546,31 @@ class RetourEntrantTest(unittest.TestCase):
             self.assertIn("-m connmark --mark 0x1000000/0x1000000 -j MARK", chaine[-1])
         self.assertTrue(r.ran("iptables -t mangle -I PREROUTING -j KATAKOMBA_RETOUR"))
 
+    def _dns_lan(self, **config):
+        d = FakeDaemon(config=config, _tun_iface="tun-katakomba", _orig_iface="eth0")
+        return d._retour_regles("10.8.0.2")["KATAKOMBA_RETOUR"]
+
+    def test_dns_du_partage_lan_jamais_marque(self):
+        """v4.10.0 : la requête DNS d'un client du partage vise la passerelle
+        (locale) et n'est redirigée vers le DNS du VPN qu'APRÈS ce marquage.
+        Marquée, elle partait vers la passerelle d'origine au lieu du tunnel
+        (vérifié sur un noyau : tests_noyau/test_partage_lan.py)."""
+        regles = [" ".join(r) for r in self._dns_lan(
+            lan_auto=True, lan_iface="ens19", lan_gateway="10.0.0.1")]
+        self.assertEqual(regles[2:4], [
+            "-i ens19 -d 10.0.0.1 -p udp --dport 53 -j RETURN",
+            "-i ens19 -d 10.0.0.1 -p tcp --dport 53 -j RETURN"])
+        self.assertIn("CONNMARK", regles[4])
+
+    def test_dns_du_partage_lan_exception_bornee(self):
+        cas = {"partage non monté avec le tunnel": {"lan_auto": False, "lan_iface": "ens19"},
+               "carte de la passerelle d'origine": {"lan_auto": True, "lan_iface": "eth0"},
+               "boucle locale": {"lan_auto": True, "lan_iface": "lo"},
+               "passerelle illisible": {"lan_auto": True, "lan_iface": "ens19",
+                                        "lan_gateway": "x -j ACCEPT"}}
+        for nom, config in cas.items():
+            self.assertFalse([r for r in self._dns_lan(**config) if "--dport" in r], nom)
+
     def test_routage_des_paquets_marques(self):
         _, r, _ = self._monter()
         # Table principale sans ses routes /0 et /1 (défaut, moitiés du

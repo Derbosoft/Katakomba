@@ -56,6 +56,7 @@ class RepairCompletenessTest(unittest.TestCase):
 
     def test_chaine_lan_et_nat(self):
         self.assertIn("KATAKOMBA_LAN_FWD", REPAIR)
+        self.assertIn("iptables -t nat -X KATAKOMBA_LAN_DNS", REPAIR)
         self.assertIn("MASQUERADE", REPAIR,
                       "la règle NAT du partage LAN n'est pas nettoyée")
 
@@ -128,6 +129,7 @@ class InstallServiceUnitTest(unittest.TestCase):
         cleanup = INSTALL[INSTALL.index("CLEANUP_EOF"):]
         self.assertIn("-o tun0 -j MASQUERADE", cleanup)
         self.assertIn("-o tun1 -j MASQUERADE", cleanup)
+        self.assertIn("iptables -t nat -X KATAKOMBA_LAN_DNS", cleanup)
 
     def test_cleanup_leve_le_blocage_hors_tunnel(self):
         """Lancé après chaque arrêt du service : la connexion normale revient."""

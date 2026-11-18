@@ -14,7 +14,7 @@ from validation import interface_lan_admissible, verifier_dns, verifier_exclusio
 
 from .core import (
     _run,
-    KILL_CHAINS, KS6_CHAIN, KS6_FWD_CHAIN, KS_LAN_CHAIN,
+    KILL_CHAINS, KS6_CHAIN, KS6_FWD_CHAIN, KS_LAN_CHAIN, KS_LAN_DNS_CHAIN,
     LAN_DNSMASQ_PID, TOR_USER, VPN_CHAINS, VPN_USER,
 )
 
@@ -114,20 +114,20 @@ class FirewallMixin:
         return regles
 
     @staticmethod
-    def _table(chaines: dict) -> str:
+    def _table(chaines: dict, table: str = "filter") -> str:
         """Texte pour « iptables-restore --noflush » : chaque chaîne déclarée
         est vidée puis remplie d'un seul tenant, sans jamais exister à moitié
         ni vide.  Reconstruire règle par règle laissait la chaîne ouverte le
         temps de la remplir."""
-        lignes = ["*filter"] + [f":{c} - [0:0]" for c in chaines]
+        lignes = [f"*{table}"] + [f":{c} - [0:0]" for c in chaines]
         for c, regles in chaines.items():
             lignes += [" ".join(["-A", c, *r]) for r in regles]
         return "\n".join(lignes + ["COMMIT", ""])
 
-    def _poser_chaines(self, tool: str, chaines: dict) -> str:
+    def _poser_chaines(self, tool: str, chaines: dict, table: str = "filter") -> str:
         """Pose ou remplace ces chaînes ; message d'erreur, vide si posées."""
         r = _run(f"{tool}-restore", "--noflush", "-w", "5",
-                 entree=self._table(chaines).encode())
+                 entree=self._table(chaines, table).encode())
         if r.returncode == 0:
             return ""
         return r.stderr.decode(errors="ignore").strip()[:200] or f"code {r.returncode}"
@@ -385,6 +385,15 @@ class FirewallMixin:
         # clients perdent tout accès, en silence.  On reconstruit donc.
         if self._lan_active:
             if self._lan_tun == self._tun_iface:
+                # Même interface (son nom est fixe), mais le DNS du VPN a pu
+                # changer : chez IVPN, c'est la passerelle du sous-réseau du
+                # serveur, différente à chaque serveur.
+                if self._lan_dns_cible() != self._lan_dns:
+                    ancien = self._lan_dns
+                    if self._poser_dns_lan(self._lan_iface, self._lan_gw):
+                        self._log(f"Partage LAN : DNS du VPN changé ({ancien or '?'} "
+                                  f"→ {self._lan_dns}) — redirection des clients "
+                                  "mise à jour.")
                 return True
             self._log(
                 f"Partage LAN : interface tunnel changée "
@@ -447,6 +456,8 @@ class FirewallMixin:
             self._lan_tun     = tun   # mémorisé pour le démontage et la détection
             self._lan_iface   = iface
             self._lan_adresse = f"{gw}/{net.prefixlen}"
+            self._lan_gw      = gw
+            self._poser_dns_lan(iface, gw)
             self._log(f"Partage LAN actif : {iface} ({gw}/{net.prefixlen}) → {tun}.", "OK")
             if self.config.get("lan_dhcp", True):
                 self._start_lan_dnsmasq(iface, gw, net)
@@ -454,6 +465,55 @@ class FirewallMixin:
         except Exception as e:
             self._log(f"Partage LAN : {e}", "ERROR")
             return False
+
+    def _lan_dns_cible(self) -> str:
+        """DNS qui répond aux clients du partage : celui que le VPN a donné,
+        le même que pour cette machine.  1.1.1.1 seulement s'il n'en a donné
+        aucun : c'était la valeur fixe d'avant la v4.7.0, qui confiait à un
+        tiers les requêtes de tout le réseau partagé."""
+        return next((ip for ip in self._vpn_dns_ips if verifier_dns(ip)[0]), "1.1.1.1")
+
+    def _poser_dns_lan(self, iface: str, gw: str) -> bool:
+        """Redirige vers le DNS du VPN les requêtes que les clients adressent
+        à la passerelle, le DNS que leur donne le DHCP.
+
+        Les clients gardent ce DNS toute la durée de leur bail (24 h).  Leur
+        donner directement celui du VPN, comme la v4.7.0, les laissait sans
+        résolution dès qu'une reconnexion en apportait un autre — en silence,
+        jusqu'au renouvellement du bail.  La passerelle, elle, ne change
+        pas : une reconnexion n'a plus qu'à réécrire cette chaîne.
+
+        Rien n'écoute sur la passerelle : la requête redirigée suit le même
+        chemin qu'avant (FORWARD, KATAKOMBA_LAN_FWD, MASQUERADE vers le
+        tunnel) et, tunnel tombé, le blocage hors tunnel la refuse comme
+        tout DNS qui n'y passe pas.  Vrai si la chaîne est posée."""
+        dns = self._lan_dns_cible()
+        regles = [["-i", iface, "-d", gw, "-p", proto, "--dport", "53",
+                   "-j", "DNAT", "--to-destination", dns] for proto in ("udp", "tcp")]
+        # D'un seul tenant : remplie règle par règle, la chaîne resterait un
+        # instant vide et les requêtes de cet instant sans réponse.
+        erreur = self._poser_chaines("iptables", {KS_LAN_DNS_CHAIN: regles}, "nat")
+        if erreur:
+            self._log(f"Partage LAN : redirection du DNS des clients impossible "
+                      f"({erreur}) — ils restent sans résolution.", "ERROR")
+            return False
+        if _run("iptables", "-t", "nat", "-C", "PREROUTING",
+                "-j", KS_LAN_DNS_CHAIN).returncode != 0:
+            _run("iptables", "-t", "nat", "-I", "PREROUTING", "-j", KS_LAN_DNS_CHAIN)
+        ancien, self._lan_dns = self._lan_dns, dns
+        # Un client qui réutilise son port source garderait l'ancienne
+        # traduction tant qu'il relance avant l'expiration du suivi (30 s).
+        # conntrack n'est pas une dépendance : sans lui, l'entrée expire
+        # d'elle-même dès que le client marque une pause.
+        if ancien and ancien != dns and shutil.which("conntrack"):
+            _run("conntrack", "-D", "-p", "udp", "--orig-dst", gw, "--orig-port-dst", "53")
+        return True
+
+    def _retirer_dns_lan(self):
+        _run("iptables", "-t", "nat", "-D", "PREROUTING", "-j", KS_LAN_DNS_CHAIN)
+        _run("iptables", "-t", "nat", "-F", KS_LAN_DNS_CHAIN)
+        _run("iptables", "-t", "nat", "-X", KS_LAN_DNS_CHAIN)
+        self._lan_dns = ""
 
     def _verifier_lan(self) -> bool:
         """Repose l'adresse de la carte de partage LAN si un tiers l'a retirée
@@ -497,6 +557,7 @@ class FirewallMixin:
             _run("iptables", "-D", "FORWARD", "-j", KS_LAN_CHAIN)
             _run("iptables", "-F", KS_LAN_CHAIN)
             _run("iptables", "-X", KS_LAN_CHAIN)
+            self._retirer_dns_lan()
             if net:
                 # Supprimer avec l'interface RÉELLEMENT utilisée à la création,
                 # pas avec _tun_iface : s'il a changé depuis, on effacerait une
@@ -510,6 +571,7 @@ class FirewallMixin:
             self._lan_tun     = ""
             self._lan_iface   = ""
             self._lan_adresse = ""
+            self._lan_gw      = ""
             self._log("Partage LAN désactivé.", "OK")
         except Exception as e:
             self._log(f"Partage LAN (désactivation) : {e}", "ERROR")
@@ -534,11 +596,6 @@ class FirewallMixin:
         else:
             dhcp_start = str(ipaddress.ip_address(base + 1))
             dhcp_end   = str(ipaddress.ip_address(base + n))
-        # DNS remis aux clients : celui que le VPN a donné, le même que pour
-        # cette machine.  1.1.1.1 seulement s'il n'en a donné aucun : c'était
-        # la valeur fixe d'avant la v4.7.0, qui confiait à un tiers les
-        # requêtes de tout le réseau partagé.
-        dns = next((ip for ip in self._vpn_dns_ips if verifier_dns(ip)[0]), "1.1.1.1")
         cmd = [
             "dnsmasq",
             f"--interface={iface}",
@@ -546,12 +603,15 @@ class FirewallMixin:
             "--no-daemon",
             f"--dhcp-range={dhcp_start},{dhcp_end},24h",
             f"--dhcp-option=3,{gw}",
-            f"--dhcp-option=6,{dns}",
+            # DNS : la passerelle, redirigée vers celui du VPN
+            # (_poser_dns_lan).  Elle ne change pas d'une reconnexion à
+            # l'autre, contrairement au DNS du VPN.
+            f"--dhcp-option=6,{gw}",
             "--no-resolv",
-            # Pas de serveur DNS ici : les clients reçoivent celui du VPN
-            # (option 6), joint par le tunnel.  Sans --port=0, dnsmasq
-            # écoutait quand même sur le port 53 de l'interface, sans serveur
-            # amont à interroger.
+            # Pas de serveur DNS ici : la redirection l'envoie, sans passer
+            # par dnsmasq, au DNS du VPN, joint par le tunnel.  Sans
+            # --port=0, dnsmasq écoutait quand même sur le port 53 de
+            # l'interface, sans serveur amont à interroger.
             "--port=0",
             f"--pid-file={LAN_DNSMASQ_PID}",
         ]

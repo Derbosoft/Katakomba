@@ -10,7 +10,7 @@ import ipaddress
 import pwd
 import socket
 
-from validation import verifier_exclusion
+from validation import interface_lan_admissible, verifier_exclusion
 
 from .core import (
     _run, _write_private, TOR_ROUTES_FILE,
@@ -213,6 +213,30 @@ class NetworkMixin:
     # tunnel.  Rien ne fuit : ces réponses vont à qui a contacté la machine
     # par son adresse réelle, et la connaît donc déjà.
 
+    def _retour_dns_lan(self) -> list:
+        """Requêtes DNS des clients du partage LAN : adressées à la passerelle,
+        donc à la machine, mais redirigées ensuite vers le DNS du VPN
+        (_poser_dns_lan).  Ce marquage passe AVANT la redirection (mangle
+        précède nat) : marquées comme une connexion entrante, elles
+        partaient vers la passerelle d'origine au lieu du tunnel, et le
+        partage les jetait.  Leur réponse n'a pas besoin de la marque : elle
+        rejoint le client par la route de la carte de partage.
+
+        Jamais sur la carte qui mène à la passerelle d'origine : le partage
+        la refuse, et le retour des connexions entrantes y est vital."""
+        if not self.config.get("lan_auto"):
+            return []
+        iface = self.config.get("lan_iface", "").strip()
+        gw = self.config.get("lan_gateway", "10.0.0.1").strip()
+        try:
+            ipaddress.IPv4Address(gw)
+        except ValueError:
+            return []
+        if not interface_lan_admissible(iface) or iface == self._orig_iface:
+            return []
+        return [["-i", iface, "-d", gw, "-p", proto, "--dport", "53", "-j", "RETURN"]
+                for proto in ("udp", "tcp")]
+
     def _retour_regles(self, local: str) -> dict:
         """Règles de la table mangle, par chaîne : arguments après « -A »."""
         tun, marque = self._tun_iface, RETOUR_MARQUE
@@ -229,6 +253,7 @@ class NetworkMixin:
             "KATAKOMBA_RETOUR": [
                 ["-i", "lo", "-j", "RETURN"],
                 ["-i", tun, "-j", "RETURN"],
+                *self._retour_dns_lan(),
                 ["-m", "conntrack", "--ctdir", "ORIGINAL",
                  "-m", "addrtype", "--dst-type", "LOCAL", *poser],
                 restaurer,

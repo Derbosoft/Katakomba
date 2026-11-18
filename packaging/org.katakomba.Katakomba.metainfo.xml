@@ -95,6 +95,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.10.0" date="2026-11-18">
+      <description>
+        <p>LAN sharing: client name resolution survives VPN reconnections.</p>
+        <ul>
+          <li>Clients now receive the sharing gateway as their DNS server, redirected to the VPN's current one: a reconnection to another server (a new DNS at IVPN) no longer leaves them without resolution until their lease renews</li>
+          <li>Inbound-connection return no longer diverts these queries to the original gateway</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.10.0</url>
+    </release>
     <release version="4.9.1" date="2026-11-14">
       <description>
         <p>The watchdog's dead-channel signal means what it says again.</p>

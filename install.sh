@@ -632,6 +632,10 @@ ip6tables -X KATAKOMBA_KS6_FWD            2>/dev/null
 while iptables  -D FORWARD -j KATAKOMBA_LAN_FWD 2>/dev/null; do :; done
 iptables  -F KATAKOMBA_LAN_FWD            2>/dev/null
 iptables  -X KATAKOMBA_LAN_FWD            2>/dev/null
+# DNS des clients du partage LAN, redirigé vers celui du VPN (table nat)
+while iptables -t nat -D PREROUTING -j KATAKOMBA_LAN_DNS 2>/dev/null; do :; done
+iptables -t nat -F KATAKOMBA_LAN_DNS      2>/dev/null
+iptables -t nat -X KATAKOMBA_LAN_DNS      2>/dev/null
 # dnsmasq du partage LAN uniquement, ciblé via son --pid-file unique
 # (jamais « pkill dnsmasq » : cela tuerait aussi ceux de libvirt/virbr0).
 # Second motif : emplacement d'avant la v3.7.0.

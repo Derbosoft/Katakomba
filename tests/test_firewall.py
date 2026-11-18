@@ -544,6 +544,106 @@ class LanSharingTest(unittest.TestCase):
                          "RETURN encore posé sur l'ancienne interface")
         self.assertTrue(d.has_log("interface tunnel changée", "WARN"))
 
+    # ── DNS des clients : la passerelle, redirigée vers celui du VPN ────────
+
+    def _dnat(self, r, proto, dns):
+        return r.ran(f"-A KATAKOMBA_LAN_DNS -i ens19 -d 10.0.0.1 -p {proto} "
+                     f"--dport 53 -j DNAT --to-destination {dns}")
+
+    def test_dns_redirige_vers_celui_du_vpn(self):
+        d = self._daemon()
+        d._vpn_dns_ips = ["pas-une-ip", "10.111.20.1", "10.111.20.2"]
+        r = lan_rec()
+        with patched_run(r):
+            self.assertTrue(d._setup_lan_sharing())
+        self.assertTrue(r.ran("iptables-restore --noflush"))
+        self.assertIn("iptables *nat", r.calls)
+        self.assertTrue(self._dnat(r, "udp", "10.111.20.1"), r.dump())
+        self.assertTrue(self._dnat(r, "tcp", "10.111.20.1"), r.dump())
+        self.assertTrue(r.ran("-t nat -I PREROUTING -j KATAKOMBA_LAN_DNS"))
+        self.assertEqual(d._lan_dns, "10.111.20.1")
+
+    def test_sans_dns_du_vpn_repli(self):
+        d = self._daemon()
+        r = lan_rec()
+        with patched_run(r):
+            d._setup_lan_sharing()
+        self.assertTrue(self._dnat(r, "udp", "1.1.1.1"), r.dump())
+
+    def test_saut_prerouting_pas_empile(self):
+        d = self._daemon()
+        r = Recorder()          # « -C » réussit : le saut est déjà là
+        with patched_run(r):
+            d._setup_lan_sharing()
+        self.assertFalse(r.ran("-I PREROUTING"), r.dump())
+
+    def test_dns_du_vpn_change_meme_tunnel(self):
+        """Le défaut de la v4.7.0 : tun-katakomba reste tun-katakomba, le
+        DNS passe de 10.111.20.1 à 10.25.20.1 (autre serveur IVPN).  La
+        redirection suit, sans rien démonter ni relancer le DHCP."""
+        d = self._daemon(lan_dhcp=True)
+        d._tun_iface, d._vpn_dns_ips = "tun-katakomba", ["10.111.20.1"]
+        d._start_lan_dnsmasq = lambda *a: None
+        with patched_run(lan_rec()):
+            d._setup_lan_sharing()
+        d._vpn_dns_ips = ["10.25.20.1"]
+        relances = []
+        d._start_lan_dnsmasq = lambda *a: relances.append(a)
+        d._stop_lan_dnsmasq = lambda: relances.append("stop")
+        r = lan_rec()
+        with patched_run(r):
+            self.assertTrue(d._setup_lan_sharing())
+        self.assertTrue(self._dnat(r, "udp", "10.25.20.1"), r.dump())
+        self.assertTrue(self._dnat(r, "tcp", "10.25.20.1"), r.dump())
+        self.assertFalse(r.ran("10.111.20.1"))
+        self.assertFalse(r.ran("ip addr flush"), "carte de partage vidée")
+        self.assertFalse(r.ran("KATAKOMBA_LAN_FWD"), "FORWARD reconstruit")
+        self.assertEqual(relances, [], "dnsmasq relancé")
+        self.assertEqual(d._lan_dns, "10.25.20.1")
+        self.assertTrue(d.has_log("DNS du VPN changé (10.111.20.1 → 10.25.20.1)"))
+
+    def test_changement_de_dns_purge_le_suivi_si_conntrack(self):
+        d = self._daemon()
+        d._vpn_dns_ips = ["10.111.20.1"]
+        with patched_run(lan_rec()):
+            d._setup_lan_sharing()
+        d._vpn_dns_ips = ["10.25.20.1"]
+        saved = m_firewall.shutil.which
+        m_firewall.shutil.which = lambda n: "/usr/sbin/conntrack" if n == "conntrack" else None
+        r = lan_rec()
+        try:
+            with patched_run(r):
+                d._setup_lan_sharing()
+        finally:
+            m_firewall.shutil.which = saved
+        self.assertTrue(r.ran("conntrack -D -p udp --orig-dst 10.0.0.1 --orig-port-dst 53"))
+
+    def test_echec_de_la_redirection_retente_au_suivant(self):
+        d = self._daemon()
+        d._vpn_dns_ips = ["10.111.20.1"]
+        with patched_run(lan_rec()):
+            d._setup_lan_sharing()
+        d._vpn_dns_ips = ["10.25.20.1"]
+        with patched_run(lan_rec(**{"iptables-restore": (1, "")})):
+            self.assertTrue(d._setup_lan_sharing())
+        self.assertEqual(d._lan_dns, "10.111.20.1")
+        self.assertTrue(d.has_log("redirection du DNS des clients impossible", "ERROR"))
+        r = lan_rec()
+        with patched_run(r):
+            d._setup_lan_sharing()
+        self.assertTrue(self._dnat(r, "udp", "10.25.20.1"), r.dump())
+
+    def test_teardown_retire_la_redirection(self):
+        d = self._daemon()
+        with patched_run(lan_rec()):
+            d._setup_lan_sharing()
+        r = lan_rec()
+        with patched_run(r):
+            d._teardown_lan_sharing()
+        self.assertTrue(r.ran("-t nat -D PREROUTING -j KATAKOMBA_LAN_DNS"))
+        self.assertTrue(r.ran("-t nat -X KATAKOMBA_LAN_DNS"))
+        self.assertEqual((d._lan_dns, d._lan_gw), ("", ""))
+
     def test_teardown_cible_l_interface_creee(self):
         """La règle NAT doit être retirée avec _lan_tun, pas avec _tun_iface."""
         d = self._daemon()
@@ -680,19 +780,17 @@ class DnsmasqRangeTest(unittest.TestCase):
         return None
 
     def test_pas_de_serveur_dns(self):
-        """Les clients reçoivent le DNS du VPN ; dnsmasq n'a aucun amont à servir."""
+        """La redirection (nat) répond pour lui ; dnsmasq n'a aucun amont à servir."""
         _, cmd = self._dnsmasq_cmd("10.0.0.0/24")
         self.assertIn("--port=0", cmd)
 
-    def test_dns_du_vpn_remis_aux_clients(self):
-        """v4.7.0 : 1.1.1.1 était remis en dur — les requêtes de tout le
-        réseau partagé allaient à un tiers, même quand le VPN a son DNS."""
-        _, cmd = self._dnsmasq_cmd("10.0.0.0/24", dns=["pas-une-ip", "10.8.0.1", "10.8.0.2"])
-        self.assertIn("--dhcp-option=6,10.8.0.1", cmd)
-
-    def test_sans_dns_du_vpn_repli(self):
-        _, cmd = self._dnsmasq_cmd("10.0.0.0/24")
-        self.assertIn("--dhcp-option=6,1.1.1.1", cmd)
+    def test_dns_remis_aux_clients_la_passerelle(self):
+        """v4.10.0 : la passerelle, et non le DNS du VPN, qui change à chaque
+        reconnexion chez IVPN alors que les clients le gardent tout leur bail."""
+        _, cmd = self._dnsmasq_cmd("10.0.0.0/24", gw="10.0.0.1",
+                                   dns=["10.8.0.1", "10.8.0.2"])
+        self.assertIn("--dhcp-option=6,10.0.0.1", cmd)
+        self.assertFalse([a for a in cmd if "10.8.0." in a], cmd)
 
     def test_slash_24_plage_centrale(self):
         self.assertEqual(self._plage("10.0.0.0/24"), ("10.0.0.100", "10.0.0.200"))

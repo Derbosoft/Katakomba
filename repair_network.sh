@@ -71,10 +71,14 @@ while ip6tables -D FORWARD -j "${KS6_FWD_CHAIN}" 2>/dev/null; do :; done
 ip6tables -F "${KS6_FWD_CHAIN}" 2>/dev/null || true
 ip6tables -X "${KS6_FWD_CHAIN}" 2>/dev/null || true
 
-echo "[4/8] Nettoyage règles iptables LAN (KATAKOMBA_LAN_FWD + NAT)..."
+echo "[4/8] Nettoyage règles iptables LAN (KATAKOMBA_LAN_FWD, KATAKOMBA_LAN_DNS + NAT)..."
 while iptables -D FORWARD -j KATAKOMBA_LAN_FWD 2>/dev/null; do :; done
 iptables -F KATAKOMBA_LAN_FWD 2>/dev/null || true
 iptables -X KATAKOMBA_LAN_FWD 2>/dev/null || true
+# DNS des clients du partage LAN, redirigé vers celui du VPN (table nat)
+while iptables -t nat -D PREROUTING -j KATAKOMBA_LAN_DNS 2>/dev/null; do :; done
+iptables -t nat -F KATAKOMBA_LAN_DNS 2>/dev/null || true
+iptables -t nat -X KATAKOMBA_LAN_DNS 2>/dev/null || true
 # dnsmasq du partage LAN uniquement (jamais « pkill dnsmasq » : libvirt en dépend)
 pkill -f /run/katakomba/dnsmasq.pid 2>/dev/null || true
 pkill -f /etc/katakomba/tor-vpn-dnsmasq.pid 2>/dev/null || true

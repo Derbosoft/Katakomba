@@ -208,6 +208,12 @@ class CleanupStaleRulesTest(unittest.TestCase):
             self.assertTrue(r.ran("-F", chaine), f"{chaine} non vidée")
             self.assertTrue(r.ran("-X", chaine), f"{chaine} non supprimée")
 
+    def test_supprime_la_redirection_dns_du_partage(self):
+        _, r = self._run()
+        self.assertTrue(r.ran("-t nat -D PREROUTING -j KATAKOMBA_LAN_DNS"))
+        self.assertTrue(r.ran("-t nat -F KATAKOMBA_LAN_DNS"))
+        self.assertTrue(r.ran("-t nat -X KATAKOMBA_LAN_DNS"))
+
     def test_blocage_hors_tunnel_garde(self):
         """v4.7.0 : les chaînes d'un lancement précédent (sortie en échec,
         redémarrage) protègent jusqu'à leur remplacement par _kill_switch_on.

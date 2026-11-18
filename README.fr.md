@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.9.1
+# Katakomba — v4.10.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.9.1-blue)
+![Version](https://img.shields.io/badge/Version-4.10.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1076,6 +1076,14 @@ DROP    → <iface_lan> → tout le reste
 NAT POSTROUTING : MASQUERADE source=<subnet_lan> out=tunX
 ```
 
+### DNS du partage LAN — `KATAKOMBA_LAN_DNS` (nat, PREROUTING, v4.10.0)
+
+```
+DNAT    → <iface_lan>, vers <passerelle_lan>:53 (UDP et TCP) → DNS du VPN
+```
+
+Réécrite d'un seul tenant (`iptables-restore`) quand une reconnexion apporte un autre DNS. `KATAKOMBA_RETOUR` laisse passer ces requêtes sans les marquer : voir [Partage LAN](#partage-lan).
+
 ---
 
 ## Failover et watchdog
@@ -1334,9 +1342,12 @@ Quand le partage LAN est activé :
 2. Routage IP activé (`sysctl net.ipv4.ip_forward=1`)
 3. NAT MASQUERADE pour que le trafic LAN sorte par le tunnel
 4. Chaîne `KATAKOMBA_LAN_FWD` : bloque tout trafic LAN n'allant pas vers le tunnel
-5. dnsmasq en mode `--no-daemon` : DHCP dans le sous-réseau ; les clients reçoivent le DNS du VPN *(v4.7.0)*, ou `1.1.1.1` s'il n'en donne aucun, joint par le tunnel
+5. dnsmasq en mode `--no-daemon` : DHCP dans le sous-réseau ; les clients reçoivent la **passerelle** comme DNS *(v4.10.0)*
+6. Chaîne `KATAKOMBA_LAN_DNS` (nat) : les requêtes adressées à la passerelle sont redirigées vers le DNS du VPN *(v4.7.0)*, ou `1.1.1.1` s'il n'en donne aucun, joint par le tunnel. Rien n'écoute sur la passerelle : dnsmasq ne sert pas de DNS (`--port=0`)
 
 Si le tunnel tombe, le trafic LAN est bloqué — aucune fuite par la connexion directe.
+
+*(v4.10.0)* **Le DNS des clients suit les reconnexions.** La v4.7.0 donnait aux clients le DNS du VPN lui-même. Or chez IVPN, c'est la passerelle du sous-réseau du serveur (`10.x.20.1`) : il change à chaque serveur. Après une reconnexion, les clients gardaient l'ancien jusqu'au renouvellement de leur bail (jusqu'à 12 h) et ne résolvaient plus rien, sans une erreur au journal, la règle « interface inchangée » sautant toute mise à jour. Ils reçoivent désormais la passerelle, qui ne change pas ; seule la redirection suit le DNS du VPN (« DNS du VPN changé (a → b) » au journal). Si `conntrack` est installé, les traductions en cours vers l'ancien DNS sont effacées. Le retour des connexions entrantes (`KATAKOMBA_RETOUR`) exempte ces requêtes : il passe avant la redirection, et les aurait renvoyées vers la passerelle d'origine. Les clients branchés avant la mise à jour gardent l'ancien DNS jusqu'au renouvellement de leur bail : rebranchez-les.
 
 Les règles des étapes 3 et 4 figent le **nom de l'interface tunnel**. Comme les `.ovpn` utilisent `dev tun` (premier device libre), ce nom peut changer au remontage du tunnel. Depuis la v3.6.1, le daemon compare l'interface mémorisée à l'interface courante et **reconstruit les règles** si elles diffèrent (avec une trace en `WARN`) : sans cela, elles pointaient dans le vide et le trafic LAN tombait sur la règle `DROP` finale — coupure totale et silencieuse jusqu'au redémarrage du service.
 
@@ -1440,7 +1451,7 @@ Le bouton **Réinitialiser** supprime le fichier torrc. Au prochain démarrage d
 
 1. Processus OpenVPN et Tor résiduels **de ce programme**, reconnus à leur ligne de commande (jamais `pkill -x`, qui couperait un autre VPN ou Tor Browser)
 2. Chaînes ip6tables `KATAKOMBA_KS6` / `KATAKOMBA_KS6_FWD` (blocage IPv6)
-3. Chaîne iptables `KATAKOMBA_LAN_FWD`, dnsmasq du partage, et la règle NAT `MASQUERADE` associée
+3. Chaînes iptables `KATAKOMBA_LAN_FWD` et `KATAKOMBA_LAN_DNS` (nat), dnsmasq du partage, et la règle NAT `MASQUERADE` associée
 4. DNS systemd-resolved — `resolvectl revert` sur `tun0` et `tun1`, suppression du drop-in, redémarrage de `systemd-resolved`
 5. Routes `/32` des relais Tor, lues dans `tor-routes.txt` — sans quoi le trafic vers ces IPs continuerait de contourner le tunnel après la réparation
 6. Routes OpenVPN def1 bloquées (`0.0.0.0/1`, `128.0.0.0/1`, `default`) sur `tun0` et `tun1`
