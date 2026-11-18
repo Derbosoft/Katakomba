@@ -58,10 +58,14 @@ class Tunnel:
         os.write(self.fd, bytes(ip) + udp)
 
     def fermer(self):
-        os.close(self.fd)
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
 
 
-class PartageLanDnsTest(CasNoyau):
+class _BancLan(CasNoyau):
+    """Un client du partage, le pair (routeur et Internet), le tunnel lu sur
+    son périphérique.  Blocage hors tunnel non posé."""
 
     def setUp(self):
         super().setUp()
@@ -110,6 +114,9 @@ class PartageLanDnsTest(CasNoyau):
         # La réponse revient au client comme venue de la passerelle.
         self.assertEqual(sortie, "10.0.0.1 reponse")
 
+
+class PartageLanDnsTest(_BancLan):
+
     def test_dns_redirige_et_suit_la_reconnexion(self):
         self.d._vpn_dns_ips = ["10.111.20.1"]
         self.assertTrue(self.d._setup_lan_sharing())
@@ -155,3 +162,66 @@ class PartageLanDnsTest(CasNoyau):
         self.d._setup_lan_sharing()
         self.d._teardown_lan_sharing()
         self.assertNotIn("KATAKOMBA_LAN_DNS", sh("iptables -t nat -S"))
+
+
+class PartageLanEtancheTest(_BancLan):
+    """Le trafic des clients du partage ne prend que le tunnel, et le tunnel
+    n'ouvre rien vers eux — blocage hors tunnel DÉSACTIVÉ : la chaîne
+    KATAKOMBA_LAN_FWD est alors seule à les protéger (v4.11.2)."""
+
+    INTERNET = "203.0.113.80"
+
+    def setUp(self):
+        super().setUp()
+        self.pair.internet(self.INTERNET)
+        self.pair.serveur_udp(9999)
+        self.d._vpn_dns_ips = ["10.111.20.1"]
+        self.assertTrue(self.d._setup_lan_sharing(), self.d.log_dump())
+        self.addCleanup(self.d._teardown_lan_sharing)
+
+    def _udp_du_client(self, port_source=40000, delai=1.5) -> bool:
+        """Datagramme du client vers « Internet » ; vrai si l'écho revient,
+        donc si le paquet est sorti par la carte réseau, hors du tunnel."""
+        code = ("import socket,sys\n"
+                "s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\n"
+                f"s.bind(('0.0.0.0', {port_source})); s.settimeout({delai})\n"
+                f"s.sendto(b'kk', ('{self.INTERNET}', 9999))\n"
+                "try: s.recvfrom(64); sys.exit(0)\n"
+                "except OSError: sys.exit(1)\n")
+        r = subprocess.run(["nsenter", "-t", str(self.client.pid), "-n", "python3", "-c", code],
+                           capture_output=True)
+        return r.returncode == 0
+
+    def test_tunnel_tombe_rien_ne_sort_par_la_carte(self):
+        self.assertFalse(self._udp_du_client(), "sortie par la carte, tunnel monté")
+        self.tun.fermer()
+        self.d._demonter_tunnel()
+        self.assertNotIn("0.0.0.0/1", sh("ip route show"))
+        self.assertFalse(self._udp_du_client(), "tunnel tombé : le client sort par la carte réseau")
+
+    def test_connexion_ouverte_ne_continue_pas_par_la_carte(self):
+        """Ouverte par le tunnel, elle ne doit pas continuer à découvert une
+        fois le tunnel tombé (même raison que --ctdir REPLY dans le blocage)."""
+        self.assertFalse(self._udp_du_client(port_source=40001))   # entrée conntrack
+        self.tun.fermer()
+        self.d._demonter_tunnel()
+        self.assertFalse(self._udp_du_client(port_source=40001),
+                         "la connexion ouverte continue par la carte réseau")
+
+    def test_le_tunnel_n_ouvre_rien_vers_les_clients(self):
+        """Le fournisseur VPN écrit dans le tunnel un datagramme pour un
+        client du partage : il ne doit pas lui parvenir."""
+        code = ("import socket,sys\n"
+                "s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\n"
+                "s.bind(('0.0.0.0', 5555)); s.settimeout(2)\n"
+                "try: s.recvfrom(64); sys.exit(0)\n"
+                "except OSError: sys.exit(1)\n")
+        ecoute = subprocess.Popen(["nsenter", "-t", str(self.client.pid), "-n", "python3", "-c", code],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.4)
+        udp = struct.pack("!HHHH", 53, 5555, 8 + 2, 0) + b"kk"
+        ip = bytearray(struct.pack("!BBHHHBBH4s4s", 0x45, 0, 20 + len(udp), 0, 0, 64, 17, 0,
+                                   bytes([10, 111, 20, 1]), bytes([10, 0, 0, 50])))
+        ip[10:12] = struct.pack("!H", _somme(bytes(ip)))
+        os.write(self.tun.fd, bytes(ip) + udp)
+        self.assertNotEqual(ecoute.wait(5), 0, "le fournisseur a joint un client du partage")

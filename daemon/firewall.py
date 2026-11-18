@@ -15,7 +15,7 @@ from validation import interface_lan_admissible, verifier_dns, verifier_exclusio
 from .core import (
     _run,
     KILL_CHAINS, KS6_CHAIN, KS6_FWD_CHAIN, KS_LAN_CHAIN, KS_LAN_DNS_CHAIN,
-    LAN_DNSMASQ_PID, TOR_USER, TUN_IFACE, VPN_CHAINS, VPN_USER, WG_CHAINS,
+    LAN_DNSMASQ_PID, TOR_USER, TUN_CHAINS, TUN_IFACE, VPN_CHAINS, VPN_USER, WG_CHAINS,
     WG_PORT, WG_PORT_SONDE,
 )
 
@@ -295,8 +295,11 @@ class FirewallMixin:
                 for tool, parent, chain in chaines:
                     if self._brancher(tool, parent, chain):
                         repose = True
-        if self._ports_wg_voulus:
-            repose = self._verifier_ports_wg() or repose
+        for nom, etat in self._gardes_etat.items():
+            if etat["voulue"]:
+                repose = self._verifier_garde(nom) or repose
+        if self._lan_active:
+            repose = self._verifier_lan_fwd() or repose
         return repose
 
     # ── Garde du compte katakomba-vpn ─────────────────────────────────────────
@@ -337,91 +340,140 @@ class FirewallMixin:
             _run(tool, "-X", chain)
         self._garde_vpn = False
 
-    # ── Ports d'écoute WireGuard fermés au réseau (v4.11.0) ───────────────────
+    # ── Gardes posées avant Tor ───────────────────────────────────────────────
     #
-    # Les interfaces WireGuard écoutent sur toutes les adresses (le noyau ne
-    # sait pas lier une interface à une seule), aux ports WG_PORT et
-    # WG_PORT_SONDE.  Or WireGuard adopte comme adresse de son pair la source
-    # de tout paquet authentifié : qui détient la clé du serveur — le
-    # fournisseur VPN — pouvait en envoyer un à l'adresse réelle de la
-    # machine.  Le tunnel quittait alors le pont (127.0.0.1:51871), donc Tor ;
-    # pendant une reconnexion, le client répondait même depuis son adresse
-    # réelle, que le blocage hors tunnel laissait sortir (réponse à une
-    # connexion entrante).  Tunnel monté, le paquet suffisait à le couper : un
-    # signal visible du fournisseur, qui permettait de chercher l'adresse.
+    # Ce qui ARRIVE à la machine, et que le blocage hors tunnel (qui ne filtre
+    # que les sorties) ne voit pas.  Posées avant Tor, que le blocage hors
+    # tunnel soit activé ou non, revérifiées toutes les 30 s avec lui
+    # (_verifier_blocage), retirées à l'arrêt.
     #
-    # Seul le pont, sur la boucle locale, parle à ces ports.  Le reste est
-    # jeté dans la table raw, avant tout suivi de connexion : rien n'atteint
-    # WireGuard, rien n'entre dans la table conntrack.  Posé avant Tor, que le
-    # blocage hors tunnel soit activé ou non.
+    # Ports d'écoute WireGuard (v4.11.0).  Les interfaces WireGuard écoutent
+    # sur toutes les adresses (le noyau ne sait pas lier une interface à une
+    # seule), aux ports WG_PORT et WG_PORT_SONDE.  Or WireGuard adopte comme
+    # adresse de son pair la source de tout paquet authentifié : qui détient
+    # la clé du serveur — le fournisseur VPN — pouvait en envoyer un à
+    # l'adresse réelle de la machine.  Le tunnel quittait alors le pont
+    # (127.0.0.1:51871), donc Tor ; pendant une reconnexion, le client
+    # répondait même depuis son adresse réelle, que le blocage hors tunnel
+    # laissait sortir (réponse à une connexion entrante).  Seul le pont, sur
+    # la boucle locale, parle à ces ports ; le reste est jeté dans la table
+    # raw, avant tout suivi de connexion.
+    #
+    # Entrées par le tunnel (v4.12.0).  Le fournisseur VPN — ou un autre de
+    # ses clients, s'il ne les isole pas — écrit ce qu'il veut dans le
+    # tunnel.  Rien ne le filtrait : les services de la machine lui
+    # répondaient à l'adresse du tunnel, et les clients du partage LAN
+    # étaient joignables.  Un service suffit à reconnaître la machine :
+    # l'empreinte d'une clé SSH, comparée aux scans publics d'Internet, donne
+    # son adresse réelle.  Seules passent les réponses à ce que la machine,
+    # ou un client du partage, a ouvert.
 
     def _regles_ports_wg(self) -> list:
         return [["-i", "lo", "-j", "RETURN"],
                 ["-p", "udp", "-m", "multiport", "--dports",
                  f"{WG_PORT},{WG_PORT_SONDE}", "-j", "DROP"]]
 
+    def _regles_entree_tunnel(self) -> list:
+        return [["-i", TUN_IFACE, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED",
+                 "-j", "RETURN"],
+                ["-i", TUN_IFACE, "-j", "DROP"]]
+
+    def _gardes(self) -> dict:
+        """nom → (chaînes (outil, table, parente, chaîne), règles, sujet,
+        état refusé, état posé, risque)."""
+        return {
+            "ports_wg": (WG_CHAINS, self._regles_ports_wg(), "Ports WireGuard",
+                         "OUVERTS au réseau", "fermés au réseau",
+                         "Le fournisseur VPN pourrait détourner le tunnel hors de Tor."),
+            "entree_tunnel": (TUN_CHAINS, self._regles_entree_tunnel(),
+                              "Entrées par le tunnel", "NON FILTRÉES", "refusées",
+                              "Le fournisseur VPN pourrait joindre les services de "
+                              "la machine et les clients du partage LAN."),
+        }
+
     @_exclusif
-    def _ports_wg_on(self) -> bool:
-        """Vrai si les deux familles d'adresses sont fermées.  Un échec est
-        retenté toutes les 30 s (_verifier_ports_wg), signalé une fois."""
-        self._ports_wg_voulus = True
+    def _garde_on(self, nom: str) -> bool:
+        """Vrai si toutes les chaînes de la garde sont posées.  Un échec est
+        retenté toutes les 30 s (_verifier_garde), signalé une fois."""
+        chaines, regles, sujet, refuse, _pose, risque = self._gardes()[nom]
+        etat = self._gardes_etat[nom]
+        etat["voulue"] = True
         echecs = []
-        for tool, chain in WG_CHAINS:
-            erreur = self._poser_chaines(tool, {chain: self._regles_ports_wg()}, "raw")
-            if erreur or self._brancher(tool, "PREROUTING", chain, "raw") is None:
-                echecs.append(f"Ports WireGuard OUVERTS au réseau ({tool}) : pose "
-                              f"impossible{' : ' + erreur if erreur else ''}.  Le "
-                              f"fournisseur VPN pourrait détourner le tunnel hors "
-                              f"de Tor.")
+        for tool, table, parent, chain in chaines:
+            erreur = self._poser_chaines(tool, {chain: regles}, table)
+            if erreur or self._brancher(tool, parent, chain, table) is None:
+                echecs.append(f"{sujet} {refuse} ({tool}) : pose impossible"
+                              f"{' : ' + erreur if erreur else ''}.  {risque}")
         message = "\n".join(echecs)
-        if message and message != self._ports_wg_echec:
+        if message and message != etat["echec"]:
             for ligne in echecs:
                 self._log(ligne, "ERROR")
-        elif not message and self._ports_wg_echec:
-            self._log("Ports WireGuard fermés au réseau.", "OK")
-        self._ports_wg_echec = message
-        self._ports_wg_fermes = not echecs
+        elif not message and etat["echec"]:
+            self._log(f"{sujet} {_pose}.", "OK")
+        etat["echec"] = message
+        etat["posee"] = not echecs
         return not echecs
 
-    def _verifier_ports_wg(self) -> bool:
-        """Toutes les 30 s, avec le blocage hors tunnel (v4.11.1) : un outil
-        qui vide ou recharge la table raw rouvrait les ports sans bruit, et
-        doctor les disait toujours fermés.  Vrai si quelque chose a été
-        reposé."""
-        if not self._ports_wg_fermes:
-            self._ports_wg_on()                       # pose impossible plus tôt
-            return self._ports_wg_fermes
-        chaines = [(tool, "PREROUTING", chain) for tool, chain in WG_CHAINS]
-        attendu = {chain: len(self._regles_ports_wg()) for _t, chain in WG_CHAINS}
-        if not self._chaines_intactes(chaines, attendu, "raw"):
-            self._log("Ports WireGuard : chaînes raw modifiées ou retirées par un "
-                      "autre outil (pare-feu rechargé ?) — reposées.", "WARN")
-            self._ports_wg_on()
-            return True
+    def _verifier_garde(self, nom: str) -> bool:
+        """Toutes les 30 s (v4.11.1) : un outil qui vide ou recharge les
+        règles retirait la garde sans bruit, et doctor la disait toujours
+        posée.  Vrai si quelque chose a été reposé."""
+        chaines, regles, sujet, refuse, _pose, _risque = self._gardes()[nom]
+        etat = self._gardes_etat[nom]
+        if not etat["posee"]:
+            self._garde_on(nom)                       # pose impossible plus tôt
+            return etat["posee"]
+        for tool, table, parent, chain in chaines:
+            if not self._chaines_intactes([(tool, parent, chain)],
+                                          {chain: len(regles)}, table):
+                self._log(f"{sujet} : chaînes {table} modifiées ou retirées par un "
+                          "autre outil (pare-feu rechargé ?) — reposées.", "WARN")
+                self._garde_on(nom)
+                return True
         repose = False
-        for tool, parent, chain in chaines:
-            etat = self._brancher(tool, parent, chain, "raw")
-            if etat:
+        for tool, table, parent, chain in chaines:
+            branche = self._brancher(tool, parent, chain, table)
+            if branche:
                 repose = True
-                self._log(f"Ports WireGuard : {chain} n'était plus branchée sur "
-                          f"{parent} (raw) — remise.", "WARN")
-            elif etat is None:
-                self._ports_wg_fermes = False
-                self._log(f"Ports WireGuard OUVERTS au réseau : {chain} impossible "
-                          f"à rebrancher sur {parent} (raw).", "ERROR")
+                self._log(f"{sujet} : {chain} n'était plus branchée sur {parent} "
+                          f"({table}) — remise.", "WARN")
+            elif branche is None:
+                etat["posee"] = False
+                self._log(f"{sujet} {refuse} : {chain} impossible à rebrancher sur "
+                          f"{parent} ({table}).", "ERROR")
         return repose
 
     @_exclusif
-    def _ports_wg_off(self):
-        for tool, chain in WG_CHAINS:
+    def _garde_off(self, nom: str):
+        chaines = self._gardes()[nom][0]
+        for tool, table, parent, chain in chaines:
+            t = self._table_de(table)
             for _ in range(25):
-                if _run(tool, "-t", "raw", "-D", "PREROUTING", "-j", chain).returncode != 0:
+                if _run(tool, *t, "-D", parent, "-j", chain).returncode != 0:
                     break
-            _run(tool, "-t", "raw", "-F", chain)
-            _run(tool, "-t", "raw", "-X", chain)
-        self._ports_wg_fermes = False
-        self._ports_wg_voulus = False
-        self._ports_wg_echec = ""
+            _run(tool, *t, "-F", chain)
+            _run(tool, *t, "-X", chain)
+        self._gardes_etat[nom] = {"voulue": False, "posee": False, "echec": ""}
+
+    def _ports_wg_on(self) -> bool:
+        return self._garde_on("ports_wg")
+
+    def _ports_wg_off(self):
+        self._garde_off("ports_wg")
+
+    @property
+    def _ports_wg_fermes(self) -> bool:
+        return self._gardes_etat["ports_wg"]["posee"]
+
+    def _entree_tunnel_on(self) -> bool:
+        return self._garde_on("entree_tunnel")
+
+    def _entree_tunnel_off(self):
+        self._garde_off("entree_tunnel")
+
+    @property
+    def _entree_tunnel_fermee(self) -> bool:
+        return self._gardes_etat["entree_tunnel"]["posee"]
 
     # ── Blocage IPv6 ──────────────────────────────────────────────────────────
     #
@@ -532,6 +584,12 @@ class FirewallMixin:
                 return False
             _run("ip", "link", "set", iface, "up")
             tun = self._tun_iface
+            # Filtrage d'abord, d'un seul tenant (v4.12.0), et routage
+            # ensuite : construite règle par règle après ip_forward, la
+            # chaîne laissait passer le trafic des clients le temps d'être
+            # remplie.
+            if not self._poser_lan_fwd(iface, tun):
+                return False
             # Jamais remis à 0 à l'arrêt, exprès : Docker, libvirt ou un
             # autre VPN démarrés entre-temps comptent dessus sans l'avoir
             # réécrit, et le leur retirer couperait leur réseau en silence.
@@ -543,13 +601,6 @@ class FirewallMixin:
             if r.returncode != 0:
                 _run("iptables", "-t", "nat", "-A", "POSTROUTING",
                      "-s", str(net), "-o", tun, "-j", "MASQUERADE")
-            _run("iptables", "-N", KS_LAN_CHAIN)
-            _run("iptables", "-F", KS_LAN_CHAIN)
-            _run("iptables", "-A", KS_LAN_CHAIN,
-                 "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "RETURN")
-            _run("iptables", "-A", KS_LAN_CHAIN, "-i", iface, "-o", tun, "-j", "RETURN")
-            _run("iptables", "-A", KS_LAN_CHAIN, "-i", iface, "-j", "DROP")
-            _run("iptables", "-I", "FORWARD", "-j", KS_LAN_CHAIN)
             self._lan_active  = True
             self._lan_tun     = tun   # mémorisé pour le démontage et la détection
             self._lan_iface   = iface
@@ -563,6 +614,45 @@ class FirewallMixin:
         except Exception as e:
             self._log(f"Partage LAN : {e}", "ERROR")
             return False
+
+    @staticmethod
+    def _regles_lan_fwd(iface: str, tun: str) -> list:
+        """Les clients du partage ne sortent que par le tunnel, et le tunnel
+        n'ouvre rien vers eux.  Plus de « ESTABLISHED » sans condition en
+        tête (avant la v4.12.0) : une connexion ouverte par le tunnel aurait
+        pu continuer par la carte réseau.  Le tunnel vers les clients est
+        aussi refusé par la garde KATAKOMBA_TUN_FWD ; répété ici, il tient
+        même si elle n'a pas pu être posée."""
+        return [["-i", iface, "-o", tun, "-j", "RETURN"],
+                ["-i", iface, "-j", "DROP"],
+                ["-i", tun, "-o", iface, "-m", "conntrack", "!", "--ctstate",
+                 "ESTABLISHED,RELATED", "-j", "DROP"]]
+
+    def _poser_lan_fwd(self, iface: str, tun: str) -> bool:
+        erreur = self._poser_chaines("iptables", {KS_LAN_CHAIN: self._regles_lan_fwd(iface, tun)})
+        if erreur or self._brancher("iptables", "FORWARD", KS_LAN_CHAIN) is None:
+            self._log(f"Partage LAN impossible : filtrage des clients non posé"
+                      f"{' (' + erreur + ')' if erreur else ''}.", "ERROR")
+            return False
+        return True
+
+    def _verifier_lan_fwd(self) -> bool:
+        """Toutes les 30 s, avec le blocage hors tunnel (v4.12.0) : un
+        pare-feu rechargé retirait la chaîne, et le trafic des clients
+        sortait par la carte réseau dès que le tunnel tombait.  Vrai si
+        elle a été reposée."""
+        attendu = len(self._regles_lan_fwd(self._lan_iface, self._lan_tun))
+        if not self._chaines_intactes([("iptables", "FORWARD", KS_LAN_CHAIN)],
+                                      {KS_LAN_CHAIN: attendu}):
+            self._log("Partage LAN : filtrage des clients modifié ou retiré par un "
+                      "autre outil (pare-feu rechargé ?) — reposé.", "WARN")
+            self._poser_lan_fwd(self._lan_iface, self._lan_tun)
+            return True
+        if self._brancher("iptables", "FORWARD", KS_LAN_CHAIN):
+            self._log(f"Partage LAN : {KS_LAN_CHAIN} n'était plus en tête de "
+                      "FORWARD — remise.", "WARN")
+            return True
+        return False
 
     def _lan_dns_cible(self) -> str:
         """DNS qui répond aux clients du partage : celui que le VPN a donné,
@@ -652,7 +742,9 @@ class FirewallMixin:
         except ValueError:
             net = None
         try:
-            _run("iptables", "-D", "FORWARD", "-j", KS_LAN_CHAIN)
+            for _ in range(25):
+                if _run("iptables", "-D", "FORWARD", "-j", KS_LAN_CHAIN).returncode != 0:
+                    break
             _run("iptables", "-F", KS_LAN_CHAIN)
             _run("iptables", "-X", KS_LAN_CHAIN)
             self._retirer_dns_lan()

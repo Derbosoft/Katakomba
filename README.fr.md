@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.11.1
+# Katakomba — v4.12.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.11.1-blue)
+![Version](https://img.shields.io/badge/Version-4.12.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1071,12 +1071,25 @@ Protège contre les fuites IPv6 quand le fournisseur VPN ne le supporte pas.
 ### Partage LAN — `KATAKOMBA_LAN_FWD` (FORWARD)
 
 ```
-RETURN  → ESTABLISHED,RELATED
-RETURN  → <iface_lan> → tunX
+RETURN  → <iface_lan> → tun-katakomba
 DROP    → <iface_lan> → tout le reste
+DROP    → tun-katakomba → <iface_lan>, sauf les réponses (ESTABLISHED,RELATED)
 
-NAT POSTROUTING : MASQUERADE source=<subnet_lan> out=tunX
+NAT POSTROUTING : MASQUERADE source=<subnet_lan> out=tun-katakomba
 ```
+
+*(v4.12.0)* Posée d'un seul tenant (`iptables-restore`) **avant** l'activation du routage, et revérifiée toutes les 30 s avec le blocage hors tunnel : un pare-feu rechargé ne la retire plus en silence. Si elle ne peut pas être posée, le partage n'est pas activé. La règle `ESTABLISHED,RELATED` sans condition qui l'ouvrait a disparu : une connexion ouverte par le tunnel aurait pu continuer par la carte réseau. Et le tunnel n'ouvre plus rien vers les clients : le fournisseur VPN pouvait les joindre. Vérifié sur un vrai noyau, blocage hors tunnel désactivé : tunnel tombé, un client ne sort pas par la carte réseau ; un datagramme écrit dans le tunnel pour un client ne lui parvient pas.
+
+### Entrées par le tunnel — `KATAKOMBA_TUN_IN` / `KATAKOMBA_TUN_FWD` (INPUT, FORWARD, v4.12.0)
+
+```
+RETURN  → arrivé par tun-katakomba, réponse à ce qui a été ouvert (ESTABLISHED,RELATED)
+DROP    → arrivé par tun-katakomba, tout le reste
+```
+
+Le blocage hors tunnel ne filtre que ce qui **sort**. Ce qui arrivait par le tunnel n'était pas filtré du tout : le fournisseur VPN — ou un autre de ses clients, s'il ne les isole pas — joignait les services de la machine à l'adresse du tunnel (SSH, partage de fichiers, serveur web…), et les machines routées par elle (partage LAN, machines virtuelles). Un seul service suffit à reconnaître la machine : l'empreinte d'une clé SSH, comparée aux scans publics d'Internet, donne son adresse réelle.
+
+Mêmes chaînes en IPv6 (`KATAKOMBA_TUN6_IN`, `KATAKOMBA_TUN6_FWD`). Posées avant Tor, que le blocage hors tunnel soit activé ou non, revérifiées toutes les 30 s, retirées à l'arrêt ; `katakomba doctor` signale un KO si elles manquent. Vérifié sur un vrai noyau, avec un témoin : sans elles, un service de la machine répond par le tunnel ; avec, il reste muet, et les réponses à ce que la machine ouvre reviennent.
 
 ### DNS du partage LAN — `KATAKOMBA_LAN_DNS` (nat, PREROUTING, v4.10.0)
 
@@ -1352,9 +1365,9 @@ katakomba doctor
 Quand le partage LAN est activé :
 
 1. IP passerelle assignée à l'interface LAN (`ip addr add`)
-2. Routage IP activé (`sysctl net.ipv4.ip_forward=1`)
-3. NAT MASQUERADE pour que le trafic LAN sorte par le tunnel
-4. Chaîne `KATAKOMBA_LAN_FWD` : bloque tout trafic LAN n'allant pas vers le tunnel
+2. Chaîne `KATAKOMBA_LAN_FWD`, d'un seul tenant : bloque tout trafic LAN n'allant pas vers le tunnel, et tout ce que le tunnel ouvrirait vers les clients *(v4.12.0 : posée avant le routage ; sans elle, pas de partage)*
+3. Routage IP activé (`sysctl net.ipv4.ip_forward=1`)
+4. NAT MASQUERADE pour que le trafic LAN sorte par le tunnel
 5. dnsmasq en mode `--no-daemon` : DHCP dans le sous-réseau ; les clients reçoivent la **passerelle** comme DNS *(v4.10.0)*
 6. Chaîne `KATAKOMBA_LAN_DNS` (nat) : les requêtes adressées à la passerelle sont redirigées vers le DNS du VPN *(v4.7.0)*, ou `1.1.1.1` s'il n'en donne aucun, joint par le tunnel. Rien n'écoute sur la passerelle : dnsmasq ne sert pas de DNS (`--port=0`)
 
@@ -1625,6 +1638,8 @@ python3 outils/traductions.py verifier        # manques, {champs} incohérents (
 **Credentials VPN :** stockés en base64 dans `config.json`. C'est de l'obfuscation, **pas du chiffrement**. Le fichier est en mode `660 root:katakomba`, dans un répertoire `2770 root:katakomba`.
 
 **Blocage hors tunnel :** tant que le service n'est pas arrêté, rien ne sort hors du tunnel, sauf Tor et le réseau local — reconnexions, redémarrages et sorties en échec compris *(v4.7.0)* (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)).
+
+**Entrées par le tunnel *(v4.12.0)* :** rien de neuf n'entre par le tunnel, que le blocage soit activé ou non. Seules passent les réponses à ce que la machine, ou un client du partage LAN, a ouvert : le fournisseur VPN ne joint ni les services de la machine ni ceux qu'elle route.
 
 **Flux sortants (v4.9.0) :** ce que Katakomba envoie lui-même sur le réseau, et qui le voit. Pas de télémétrie, pas de vérification de mise à jour, et l'interface ne parle qu'au daemon, par un socket local.
 

@@ -634,6 +634,11 @@ retirer ip6tables OUTPUT KATAKOMBA_VPN6
 # juste après, le daemon les referme à chaque lancement.
 retirer "iptables -t raw" PREROUTING KATAKOMBA_WG
 retirer "ip6tables -t raw" PREROUTING KATAKOMBA_WG6
+# Rien de neuf n'entre par le tunnel : reposé par le daemon à chaque lancement.
+retirer iptables INPUT KATAKOMBA_TUN_IN
+retirer iptables FORWARD KATAKOMBA_TUN_FWD
+retirer ip6tables INPUT KATAKOMBA_TUN6_IN
+retirer ip6tables FORWARD KATAKOMBA_TUN6_FWD
 # Interface tunnel créée par le daemon : son adresse et ses routes partent avec.
 ip link del dev tun-katakomba 2>/dev/null
 # Retour des connexions entrantes : marquage (mangle) et règles de routage.

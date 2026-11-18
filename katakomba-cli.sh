@@ -711,6 +711,15 @@ if "wg_ports_closed" in st:
         note(KO, _("Ports WireGuard"),
              _("ouverts au réseau — le fournisseur VPN pourrait détourner le "
                "tunnel hors de Tor (cause dans le journal)"))
+# Rien de neuf n'entre par le tunnel.  Absent d'un daemon plus ancien.
+if "tunnel_inbound_closed" in st:
+    if st["tunnel_inbound_closed"]:
+        note(OK, _("Entrées par le tunnel"),
+             _("refusées — seules les réponses à ce que la machine a ouvert passent"))
+    else:
+        note(KO, _("Entrées par le tunnel"),
+             _("non filtrées — le fournisseur VPN pourrait joindre les services de "
+               "la machine (cause dans le journal)"))
 # Réponses aux connexions entrantes (SSH, services) : par la carte réseau.
 # Absent d'un daemon plus ancien : rien à vérifier.
 if st.get("tunnel_up") and "incoming_return" in st:

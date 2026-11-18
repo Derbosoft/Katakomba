@@ -191,6 +191,17 @@ class InstallServiceUnitTest(unittest.TestCase):
                        '$1 -t raw -D PREROUTING -j "$2"', '$1 -t raw -X "$2"'):
             self.assertIn(chaine, REPAIR)
 
+    def test_entrees_par_le_tunnel_rouvertes_partout(self):
+        """Chaînes de la v4.12.0 : retirées par le script d'arrêt et par
+        repair_network.sh."""
+        cleanup = INSTALL[INSTALL.index("CLEANUP_EOF"):INSTALL.rindex("CLEANUP_EOF")]
+        for parent, chaine in (("iptables INPUT", "KATAKOMBA_TUN_IN"),
+                               ("iptables FORWARD", "KATAKOMBA_TUN_FWD"),
+                               ("ip6tables INPUT", "KATAKOMBA_TUN6_IN"),
+                               ("ip6tables FORWARD", "KATAKOMBA_TUN6_FWD")):
+            self.assertIn(f"retirer {parent} {chaine}\n", cleanup)
+            self.assertIn(f'"{parent} {chaine}"', REPAIR)
+
     def test_migration_ancienne_config_sans_suivre_de_lien(self):
         """v4.11.0 : le config.json du dossier personnel est lu sous le compte
         de l'utilisateur, jamais copié par root (« cp » suivait un lien vers
@@ -544,6 +555,7 @@ class DoctorCommandTest(unittest.TestCase):
             ("--interface", "sortie liée au tunnel"),
             ("incoming_return", "retour des connexions entrantes (SSH)"),
             ("wg_ports_closed", "ports WireGuard fermés au réseau"),
+            ("tunnel_inbound_closed", "entrées par le tunnel refusées"),
             ('"rule", "show"', "règles de routage réellement posées"),
         ]:
             self.assertIn(sonde, bloc, f"doctor ne vérifie pas : {quoi}")
@@ -1027,6 +1039,31 @@ class DoctorPortsWireGuardTest(unittest.TestCase):
         (niveau, _t, detail), = self._diagnostic({"wg_ports_closed": False})
         self.assertEqual(niveau, "KO")
         self.assertIn("hors de Tor", detail)
+
+    def test_daemon_ancien_rien_a_dire(self):
+        self.assertEqual(self._diagnostic({"kill_switch": True}), [])
+
+
+class DoctorEntreesTunnelTest(unittest.TestCase):
+    """v4.12.0 : entrées par le tunnel non filtrées = KO."""
+
+    BLOC = CLI[CLI.index("# Rien de neuf n'entre par le tunnel.  Absent"):]
+    BLOC = BLOC[:BLOC.index("# Réponses aux connexions entrantes")]
+
+    def _diagnostic(self, st):
+        notes = []
+        exec(self.BLOC, {"st": st, "note": lambda *a: notes.append(a),
+                         "_": lambda t: t, "OK": "OK", "KO": "KO"})
+        return notes
+
+    def test_refusees(self):
+        (niveau, titre, _d), = self._diagnostic({"tunnel_inbound_closed": True})
+        self.assertEqual((niveau, titre), ("OK", "Entrées par le tunnel"))
+
+    def test_non_filtrees(self):
+        (niveau, _t, detail), = self._diagnostic({"tunnel_inbound_closed": False})
+        self.assertEqual(niveau, "KO")
+        self.assertIn("services de la machine", detail)
 
     def test_daemon_ancien_rien_a_dire(self):
         self.assertEqual(self._diagnostic({"kill_switch": True}), [])

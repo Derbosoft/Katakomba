@@ -99,11 +99,19 @@ VPN_CHAINS = (
     ("ip6tables", "OUTPUT", "KATAKOMBA_VPN6"),
 )
 
-# Ports d'écoute WireGuard fermés au réseau (v4.11.0) : (outil, chaîne), dans
-# la table raw, depuis PREROUTING.  Voir FirewallMixin._ports_wg_on.
+# Gardes posées avant Tor, blocage hors tunnel activé ou non : (outil, table,
+# chaîne parente, chaîne).  Voir FirewallMixin._gardes.
+# Ports d'écoute WireGuard fermés au réseau (v4.11.0).
 WG_CHAINS = (
-    ("iptables",  "KATAKOMBA_WG"),
-    ("ip6tables", "KATAKOMBA_WG6"),
+    ("iptables",  "raw", "PREROUTING", "KATAKOMBA_WG"),
+    ("ip6tables", "raw", "PREROUTING", "KATAKOMBA_WG6"),
+)
+# Rien de neuf n'entre par le tunnel (v4.12.0).
+TUN_CHAINS = (
+    ("iptables",  "filter", "INPUT",   "KATAKOMBA_TUN_IN"),
+    ("iptables",  "filter", "FORWARD", "KATAKOMBA_TUN_FWD"),
+    ("ip6tables", "filter", "INPUT",   "KATAKOMBA_TUN6_IN"),
+    ("ip6tables", "filter", "FORWARD", "KATAKOMBA_TUN6_FWD"),
 )
 
 # Retour des connexions entrantes (v3.10.0) : une connexion arrivée par la
@@ -294,9 +302,10 @@ class DaemonCore:
         self._kill_renonce       = False  # levé exprès : Tor resté en root
         self._ks6_attendu        = {}     # idem, blocage IPv6
         self._garde_vpn          = False  # garde du compte katakomba-vpn posée
-        self._ports_wg_fermes    = False  # ports WireGuard fermés au réseau
-        self._ports_wg_voulus    = False  # fermeture demandée : revérifiée
-        self._ports_wg_echec     = ""     # dernier échec signalé (pas de redite)
+        # Gardes posées avant Tor (ports WireGuard, entrées par le tunnel) :
+        # voulue (revérifiée), posée, dernier échec signalé (pas de redite).
+        self._gardes_etat        = {nom: {"voulue": False, "posee": False, "echec": ""}
+                                    for nom in ("ports_wg", "entree_tunnel")}
         self._ip_forward_avant   = None   # valeur d'origine, rendue à l'arrêt
         self._lan_active         = False
         self._lan_tun            = ""    # interface tunnel figée dans les règles LAN
@@ -524,6 +533,7 @@ class DaemonCore:
         self._remove_dns_split()
         self._garde_vpn_off()
         self._ports_wg_off()
+        self._entree_tunnel_off()
         # Le blocage hors tunnel en dernier — et, sous systemd, pas ici : le
         # script d'ExecStopPost le lève si le service s'ARRÊTE et le garde
         # s'il REDÉMARRE (réveil de veille, mise à jour).  Lui seul le sait ;
@@ -678,6 +688,7 @@ class DaemonCore:
         # bootstrap ou la première connexion.
         self._garde_vpn_on()
         self._ports_wg_on()
+        self._entree_tunnel_on()
         if not self._kill_switch_on():
             # Rien ne reste d'un lancement précédent (réglage désactivé
             # entre-temps, ou pose impossible : jamais de blocage à moitié).

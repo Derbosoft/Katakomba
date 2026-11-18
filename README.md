@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.11.1
+# Katakomba — v4.12.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.11.1-blue)
+![Version](https://img.shields.io/badge/Version-4.12.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1023,12 +1023,25 @@ Protects against IPv6 leaks when the VPN provider does not support it.
 ### LAN sharing — `KATAKOMBA_LAN_FWD` (FORWARD)
 
 ```
-RETURN  → ESTABLISHED,RELATED
-RETURN  → <lan_iface> → tunX
+RETURN  → <lan_iface> → tun-katakomba
 DROP    → <lan_iface> → everything else
+DROP    → tun-katakomba → <lan_iface>, except replies (ESTABLISHED,RELATED)
 
-NAT POSTROUTING: MASQUERADE source=<lan_subnet> out=tunX
+NAT POSTROUTING: MASQUERADE source=<lan_subnet> out=tun-katakomba
 ```
+
+*(v4.12.0)* Set up in one piece (`iptables-restore`) **before** routing is enabled, and re-checked every 30 s along with the kill switch: a reloaded firewall no longer removes it silently. If it cannot be set up, sharing is not enabled. The unconditional `ESTABLISHED,RELATED` rule that opened it is gone: a connection opened through the tunnel could have carried on through the network card. And the tunnel no longer opens anything towards the clients: the VPN provider could reach them. Checked on a real kernel, kill switch off: with the tunnel down, a client does not get out through the network card; a datagram written into the tunnel for a client does not reach it.
+
+### Inbound through the tunnel — `KATAKOMBA_TUN_IN` / `KATAKOMBA_TUN_FWD` (INPUT, FORWARD, v4.12.0)
+
+```
+RETURN  → arrived on tun-katakomba, reply to something opened (ESTABLISHED,RELATED)
+DROP    → arrived on tun-katakomba, everything else
+```
+
+The kill switch only filters what goes **out**. What came in through the tunnel was not filtered at all: the VPN provider — or another of its customers, if it does not isolate them — could reach the machine's services at the tunnel address (SSH, file sharing, web server…), and the machines it routes (LAN sharing, virtual machines). One service is enough to recognise the machine: an SSH key fingerprint, looked up in public Internet scans, gives its real address.
+
+Same chains for IPv6 (`KATAKOMBA_TUN6_IN`, `KATAKOMBA_TUN6_FWD`). Set up before Tor, whether the kill switch is on or off, re-checked every 30 s, removed at stop; `katakomba doctor` reports a KO if they are missing. Checked on a real kernel, with a control: without them, a service of the machine answers through the tunnel; with them, it stays silent, and replies to what the machine opens come back.
 
 ### LAN sharing DNS — `KATAKOMBA_LAN_DNS` (nat, PREROUTING, v4.10.0)
 
@@ -1301,9 +1314,9 @@ katakomba doctor
 When LAN sharing is enabled:
 
 1. Gateway IP assigned to the LAN interface (`ip addr add`)
-2. IP routing enabled (`sysctl net.ipv4.ip_forward=1`)
-3. NAT MASQUERADE so LAN traffic exits through the tunnel
-4. `KATAKOMBA_LAN_FWD` chain: blocks all LAN traffic not heading to the tunnel
+2. `KATAKOMBA_LAN_FWD` chain, in one piece: blocks all LAN traffic not heading to the tunnel, and anything the tunnel would open towards the clients *(v4.12.0: set up before routing; without it, no sharing)*
+3. IP routing enabled (`sysctl net.ipv4.ip_forward=1`)
+4. NAT MASQUERADE so LAN traffic exits through the tunnel
 5. dnsmasq in `--no-daemon` mode: DHCP in the subnet; clients receive the **gateway** as their DNS server *(v4.10.0)*
 6. `KATAKOMBA_LAN_DNS` chain (nat): queries sent to the gateway are redirected to the VPN's DNS server *(v4.7.0)*, or `1.1.1.1` if it gives none, reached through the tunnel. Nothing listens on the gateway: dnsmasq does not serve DNS (`--port=0`)
 
@@ -1574,6 +1587,8 @@ python3 outils/traductions.py verifier        # missing entries, mismatched {fie
 **VPN credentials:** stored as base64 in `config.json`. This is obfuscation, **not encryption**. The file is mode `660 root:katakomba`, inside a `2770 root:katakomba` directory.
 
 **Kill switch:** as long as the service is not stopped, nothing leaves outside the tunnel except Tor and the local network — reconnections, restarts and failure exits included *(v4.7.0)* (see [Kill switch](#kill-switch--katakomba_kill-v380)).
+
+**Inbound through the tunnel *(v4.12.0)*:** nothing new comes in through the tunnel, kill switch on or off. Only replies to what the machine, or a LAN sharing client, opened get through: the VPN provider reaches neither the machine's services nor those it routes.
 
 **Outgoing traffic (v4.9.0):** what Katakomba itself sends on the network, and who sees it. No telemetry, no update check, and the interface only talks to the daemon, over a local socket.
 

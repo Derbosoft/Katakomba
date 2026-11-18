@@ -434,7 +434,7 @@ class VerifierPortsWireGuardTest(unittest.TestCase):
     def _etat(**defauts):
         """Réponses d'iptables pour des chaînes raw intactes, sauf `defauts`."""
         rep = {}
-        for outil, chaine in m_firewall.WG_CHAINS:
+        for outil, _table, _parent, chaine in m_firewall.WG_CHAINS:
             rep[f"{outil} -t raw -S {chaine}"] = (
                 0, f"-N {chaine}\n-A {chaine} -i lo -j RETURN\n-A {chaine} -j DROP\n")
             rep[f"{outil} -t raw -S PREROUTING"] = (
@@ -505,6 +505,126 @@ class VerifierPortsWireGuardTest(unittest.TestCase):
         with patched_run(r):
             self.d._verifier_blocage()
         self.assertFalse(r.ran("raw"), r.dump())
+
+
+class EntreeTunnelTest(unittest.TestCase):
+    """v4.12.0 : rien de neuf n'entre par le tunnel.  Le fournisseur VPN
+    joignait les services de la machine (une clé SSH suffit à la
+    reconnaître) et les clients du partage LAN."""
+
+    CHAINES = (("iptables", "INPUT", "KATAKOMBA_TUN_IN"),
+               ("iptables", "FORWARD", "KATAKOMBA_TUN_FWD"),
+               ("ip6tables", "INPUT", "KATAKOMBA_TUN6_IN"),
+               ("ip6tables", "FORWARD", "KATAKOMBA_TUN6_FWD"))
+
+    def test_seules_les_reponses_passent(self):
+        d = FakeDaemon(config={"kill_switch": False})     # même sans blocage
+        r = Recorder()
+        with patched_run(r):
+            self.assertTrue(d._entree_tunnel_on())
+        for outil, parent, chaine in self.CHAINES:
+            regles = [c.split(f" -A {chaine} ", 1)[1] for c in r.calls
+                      if c.startswith(f"{outil} -A {chaine} ")]
+            self.assertEqual(regles, [
+                "-i tun-katakomba -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN",
+                "-i tun-katakomba -j DROP"], chaine)
+            self.assertTrue(r.ran(f"{outil} -I {parent} 1 -j {chaine}"), chaine)
+        self.assertTrue(d._entree_tunnel_fermee)
+        self.assertTrue(d._status_snapshot()["tunnel_inbound_closed"])
+
+    def test_echec_signale_une_fois_puis_retente(self):
+        d = FakeDaemon()
+        with patched_run(Recorder({"ip6tables-restore": (1, "")})):
+            self.assertFalse(d._entree_tunnel_on())
+            d._verifier_blocage()
+        self.assertEqual(len(d.logged("Entrées par le tunnel NON FILTRÉES (ip6tables)",
+                                      "ERROR")), 2)       # INPUT et FORWARD, une fois
+        self.assertFalse(d._status_snapshot()["tunnel_inbound_closed"])
+        with patched_run(Recorder()):
+            d._verifier_blocage()
+        self.assertTrue(d._entree_tunnel_fermee)
+        self.assertTrue(d.has_log("Entrées par le tunnel refusées.", "OK"))
+
+    def test_videe_reposee(self):
+        d = FakeDaemon()
+        with patched_run(Recorder()):
+            d._entree_tunnel_on()
+        d.logs.clear()
+        r = Recorder({"iptables -S KATAKOMBA_TUN_IN": (1, "")})
+        with patched_run(r):
+            self.assertTrue(d._verifier_blocage())
+        self.assertTrue(r.ran("iptables-restore"))
+        self.assertTrue(d.has_log("Entrées par le tunnel : chaînes filter modifiées", "WARN"))
+
+    def test_retrait(self):
+        d = FakeDaemon()
+        with patched_run(Recorder()):
+            d._entree_tunnel_on()
+        r = Recorder({" -D ": (1, "")})
+        with patched_run(r):
+            d._entree_tunnel_off()
+        for outil, _parent, chaine in self.CHAINES:
+            self.assertTrue(r.ran(f"{outil} -X {chaine}"))
+        self.assertFalse(d._entree_tunnel_fermee)
+        r = Recorder()
+        with patched_run(r):
+            d._verifier_blocage()
+        self.assertFalse(r.ran("TUN"), "reposée après le retrait")
+
+
+class VerifierPartageLanTest(unittest.TestCase):
+    """v4.12.0 : la chaîne des clients du partage est revérifiée toutes les
+    30 s.  Retirée par un pare-feu rechargé, elle laissait les clients
+    sortir par la carte réseau dès que le tunnel tombait."""
+
+    def setUp(self):
+        self.d = FakeDaemon(config={"kill_switch": False}, _lan_active=True,
+                            _lan_iface="ens19", _lan_tun="tun-katakomba")
+        regles = "".join(f"-A KATAKOMBA_LAN_FWD {' '.join(x)}\n"
+                         for x in self.d._regles_lan_fwd("ens19", "tun-katakomba"))
+        self.intacte = {"iptables -S KATAKOMBA_LAN_FWD": (0, "-N KATAKOMBA_LAN_FWD\n" + regles),
+                        "iptables -S FORWARD": (0, "-P FORWARD ACCEPT\n"
+                                                   "-A FORWARD -j KATAKOMBA_LAN_FWD\n")}
+
+    def _rec(self, **defauts):
+        rep = {**self.intacte, **defauts}
+
+        class Exact(Recorder):
+            def __call__(self, *cmd, **kwargs):
+                ligne = " ".join(cmd)
+                if ligne in rep:
+                    self.calls.append(ligne)
+                    from tests.helpers import Result
+                    return Result(*rep[ligne])
+                return super().__call__(*cmd, **kwargs)
+        return Exact()
+
+    def test_intacte_rien(self):
+        r = self._rec()
+        with patched_run(r):
+            self.assertFalse(self.d._verifier_blocage())
+        self.assertEqual(self.d.logs, [])
+
+    def test_videe_reposee(self):
+        r = self._rec(**{"iptables -S KATAKOMBA_LAN_FWD": (0, "-N KATAKOMBA_LAN_FWD\n")})
+        with patched_run(r):
+            self.assertTrue(self.d._verifier_blocage())
+        self.assertTrue(r.ran("iptables -A KATAKOMBA_LAN_FWD -i ens19 -j DROP"))
+        self.assertTrue(self.d.has_log("filtrage des clients modifié ou retiré", "WARN"))
+
+    def test_branchement_retire_remis(self):
+        r = self._rec(**{"iptables -S FORWARD": (0, "-P FORWARD ACCEPT\n")})
+        with patched_run(r):
+            self.assertTrue(self.d._verifier_blocage())
+        self.assertTrue(r.ran("iptables -I FORWARD 1 -j KATAKOMBA_LAN_FWD"))
+        self.assertFalse(r.ran("-restore"))
+
+    def test_partage_inactif_rien(self):
+        d = FakeDaemon(config={"kill_switch": False})
+        r = Recorder()
+        with patched_run(r):
+            d._verifier_blocage()
+        self.assertFalse(r.ran("LAN_FWD"))
 
 
 class Ipv6BlockTest(unittest.TestCase):
@@ -616,14 +736,39 @@ class LanSharingTest(unittest.TestCase):
         self.assertTrue(r.ran("-A KATAKOMBA_LAN_FWD -i ens19 -o tun0 -j RETURN"))
         self.assertTrue(r.ran("-A KATAKOMBA_LAN_FWD -i ens19 -j DROP"))
 
-    def test_drop_en_dernier(self):
+    def test_regles_exactes_posees_d_un_tenant_avant_le_routage(self):
+        """v4.12.0 : plus de « ESTABLISHED » sans condition en tête (une
+        connexion ouverte par le tunnel aurait continué par la carte), rien
+        de neuf du tunnel vers les clients, et la chaîne complète AVANT
+        ip_forward : construite règle par règle après lui, elle laissait
+        passer les clients le temps d'être remplie."""
         d = self._daemon()
         r = lan_rec()
         with patched_run(r):
-            d._setup_lan_sharing()
-        chain = [c for c in r.calls if "-A KATAKOMBA_LAN_FWD" in c]
-        self.assertTrue(chain[-1].endswith("-i ens19 -j DROP"),
-                        f"le DROP n'est pas en dernier : {chain}")
+            self.assertTrue(d._setup_lan_sharing())
+        regles = [c.split("-A KATAKOMBA_LAN_FWD ", 1)[1] for c in r.calls
+                  if c.startswith("iptables -A KATAKOMBA_LAN_FWD ")]
+        self.assertEqual(regles, [
+            "-i ens19 -o tun0 -j RETURN",
+            "-i ens19 -j DROP",
+            "-i tun0 -o ens19 -m conntrack ! --ctstate ESTABLISHED,RELATED -j DROP"])
+        pose = r.calls.index("iptables -A KATAKOMBA_LAN_FWD -i ens19 -o tun0 -j RETURN")
+        branche = r.calls.index("iptables -I FORWARD 1 -j KATAKOMBA_LAN_FWD")
+        routage = next(i for i, c in enumerate(r.calls) if "ip_forward=1" in c)
+        self.assertLess(pose, branche)
+        self.assertLess(branche, routage)
+        self.assertFalse(r.ran("iptables -N KATAKOMBA_LAN_FWD"), "construite règle par règle")
+
+    def test_filtrage_impossible_pas_de_partage(self):
+        d = self._daemon()
+        r = lan_rec()
+        r.responses.insert(0, ("iptables-restore", (1, b"")))
+        with patched_run(r):
+            self.assertFalse(d._setup_lan_sharing())
+        self.assertFalse(d._lan_active)
+        self.assertFalse(r.ran("ip_forward=1"), "routage activé sans filtrage")
+        self.assertFalse(r.ran("MASQUERADE"))
+        self.assertTrue(d.has_log("filtrage des clients non posé", "ERROR"))
 
     def test_refuse_l_interface_uplink(self):
         """Flusher l'uplink couperait tout le réseau : refus catégorique."""

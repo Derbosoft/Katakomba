@@ -95,6 +95,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.12.0" date="2026-11-18">
+      <description>
+        <p>Nothing new comes in through the tunnel, and LAN sharing clients only go out through it.</p>
+        <ul>
+          <li>The VPN provider could reach the machine's services at the tunnel address, and the LAN sharing clients: only replies to what was opened now get through, kill switch on or off</li>
+          <li>The LAN sharing filter is set up in one piece before routing is enabled, and re-checked every 30 seconds: a reloaded firewall no longer removes it silently</li>
+          <li>A connection opened through the tunnel can no longer carry on through the network card</li>
+          <li>katakomba doctor checks inbound filtering</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.12.0</url>
+    </release>
     <release version="4.11.1" date="2026-11-18">
       <description>
         <p>The WireGuard port closure is re-checked every 30 seconds.</p>

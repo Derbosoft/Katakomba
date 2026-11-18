@@ -54,7 +54,9 @@ echo "[3/8] Nettoyage du blocage hors tunnel et des règles IPv6..."
 if [[ $INTERNAL -eq 0 ]]; then
   for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
            "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD" \
-           "iptables OUTPUT KATAKOMBA_VPN" "ip6tables OUTPUT KATAKOMBA_VPN6"; do
+           "iptables OUTPUT KATAKOMBA_VPN" "ip6tables OUTPUT KATAKOMBA_VPN6" \
+           "iptables INPUT KATAKOMBA_TUN_IN" "iptables FORWARD KATAKOMBA_TUN_FWD" \
+           "ip6tables INPUT KATAKOMBA_TUN6_IN" "ip6tables FORWARD KATAKOMBA_TUN6_FWD"; do
     # shellcheck disable=SC2086  # découpage voulu : « outil parent chaîne »
     set -- $c
     while $1 -D "$2" -j "$3" 2>/dev/null; do :; done

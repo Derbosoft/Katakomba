@@ -127,6 +127,9 @@ class StatusMixin:
             # Ports d'écoute WireGuard fermés au réseau (v4.11.0) : sinon le
             # fournisseur VPN pourrait détourner le tunnel hors de Tor.
             "wg_ports_closed": self._ports_wg_fermes,
+            # Rien de neuf n'entre par le tunnel (v4.12.0) : sinon le
+            # fournisseur joint les services de la machine et du partage LAN.
+            "tunnel_inbound_closed": self._entree_tunnel_fermee,
             # Réponses aux connexions entrantes (SSH…) hors tunnel, par la
             # carte d'origine : sans elles, une session distante tombe.
             "incoming_return": self._retour_actif,

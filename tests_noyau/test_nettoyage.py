@@ -64,6 +64,8 @@ class NettoyageTest(CasNoyau):
         sh("iptables -N KATAKOMBA_VPN && iptables -I OUTPUT -j KATAKOMBA_VPN")
         # Ports WireGuard fermés au réseau (table raw, v4.11.0).
         self.assertTrue(d._ports_wg_on(), d.log_dump())
+        # Rien de neuf n'entre par le tunnel (v4.12.0).
+        self.assertTrue(d._entree_tunnel_on(), d.log_dump())
 
     @staticmethod
     def _raw() -> str:
@@ -138,6 +140,8 @@ class NettoyageTest(CasNoyau):
         self.assertNotIn("sleep", journal)
         self.assertNotIn("KATAKOMBA_VPN", sh("iptables -S"), "garde du compte VPN restée")
         self.assertNotIn("KATAKOMBA_WG", self._raw(), "ports WireGuard : chaînes raw restées")
+        self.assertNotIn("KATAKOMBA_TUN", sh("iptables -S") + sh("ip6tables -S"),
+                         "entrées par le tunnel : chaînes restées")
 
     def test_avant_le_demarrage_pause_apres_un_echec(self):
         self.echec.write_text("")
@@ -152,6 +156,7 @@ class NettoyageTest(CasNoyau):
             self.assertTrue(self._blocage(), actif)
             self.assertIn("KATAKOMBA_VPN", sh("iptables -S"), "le filet a nettoyé sous un service en marche")
             self.assertIn("-A PREROUTING -j KATAKOMBA_WG6", self._raw())
+            self.assertIn("-A INPUT -j KATAKOMBA_TUN_IN", sh("iptables -S"))
 
     def test_filet_service_reste_arrete_blocage_leve(self):
         """Arrêt demandé pendant l'attente de redémarrage : systemd n'exécute
