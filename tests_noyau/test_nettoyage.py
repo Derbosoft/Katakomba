@@ -62,6 +62,12 @@ class NettoyageTest(CasNoyau):
         sans_passe_droit_hors_root(d)
         self.assertTrue(d._kill_switch_on())
         sh("iptables -N KATAKOMBA_VPN && iptables -I OUTPUT -j KATAKOMBA_VPN")
+        # Ports WireGuard fermés au réseau (table raw, v4.11.0).
+        self.assertTrue(d._ports_wg_on(), d.log_dump())
+
+    @staticmethod
+    def _raw() -> str:
+        return sh("iptables -t raw -S") + sh("ip6tables -t raw -S")
 
     def _lancer(self, mode="", tache="", resultat="success", statut="0", actif="inactive"):
         self.journal.write_text("")
@@ -86,6 +92,7 @@ class NettoyageTest(CasNoyau):
         self._lancer("apres", tache="stop")
         self.assertFalse(self._blocage())
         self.assertNotIn("KATAKOMBA", sh("iptables -S") + sh("ip6tables -S"))
+        self.assertNotIn("KATAKOMBA", self._raw(), "ports WireGuard : chaînes raw restées")
 
     def test_arret_demande_pendant_la_pause_d_un_echec(self):
         """SERVICE_RESULT vaut alors « signal » (ExecStartPre tué) : c'est la
@@ -130,6 +137,7 @@ class NettoyageTest(CasNoyau):
         self.assertTrue(self._blocage())
         self.assertNotIn("sleep", journal)
         self.assertNotIn("KATAKOMBA_VPN", sh("iptables -S"), "garde du compte VPN restée")
+        self.assertNotIn("KATAKOMBA_WG", self._raw(), "ports WireGuard : chaînes raw restées")
 
     def test_avant_le_demarrage_pause_apres_un_echec(self):
         self.echec.write_text("")
@@ -143,6 +151,7 @@ class NettoyageTest(CasNoyau):
             self._lancer("filet", actif=actif)
             self.assertTrue(self._blocage(), actif)
             self.assertIn("KATAKOMBA_VPN", sh("iptables -S"), "le filet a nettoyé sous un service en marche")
+            self.assertIn("-A PREROUTING -j KATAKOMBA_WG6", self._raw())
 
     def test_filet_service_reste_arrete_blocage_leve(self):
         """Arrêt demandé pendant l'attente de redémarrage : systemd n'exécute

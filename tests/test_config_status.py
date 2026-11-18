@@ -128,7 +128,7 @@ class StatusSnapshotTest(unittest.TestCase):
                     "tunnel_up", "tunnel_iface", "tunnel_uptime", "provider",
                     "account_index", "rx_kbs", "conn_failures", "vpn_reconnects",
                     "full_restarts", "lan_sharing", "ipv6_blocked", "kill_switch",
-                    "kill_switch_config"):
+                    "kill_switch_config", "wg_ports_closed"):
             self.assertIn(cle, snap, f"champ {cle} absent du statut")
 
     def test_exclusions_publiques_signalees(self):

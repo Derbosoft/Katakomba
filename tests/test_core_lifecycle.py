@@ -268,7 +268,7 @@ class RunOrderTest(unittest.TestCase):
         d = FakeDaemon(config={"providers": [provider("vpn-a")]})
         ordre = []
         for nom in ("_check_dns_stack", "cleanup_stale_rules", "_kill_switch_on",
-                    "_start_status_server", "_garde_vpn_on"):
+                    "_start_status_server", "_garde_vpn_on", "_ports_wg_on"):
             setattr(d, nom, (lambda n: lambda: ordre.append(n) or True)(nom))
         d._start_services = lambda: ordre.append("_start_services") or False
         saved = m_core._ensure_private_dir
@@ -281,13 +281,15 @@ class RunOrderTest(unittest.TestCase):
         self.assertLess(ordre.index("cleanup_stale_rules"), ordre.index("_kill_switch_on"))
         self.assertLess(ordre.index("_kill_switch_on"), ordre.index("_start_services"))
         self.assertLess(ordre.index("_garde_vpn_on"), ordre.index("_start_services"))
+        # Ports WireGuard fermés avant la première interface (v4.11.0).
+        self.assertLess(ordre.index("_ports_wg_on"), ordre.index("_start_services"))
 
     def _lancer(self, pose: bool, **cfg):
         from tests.helpers import provider
         d = FakeDaemon(config={"providers": [provider("vpn-a")], **cfg})
         d.leves = []
         for nom in ("_check_dns_stack", "cleanup_stale_rules", "_start_status_server",
-                    "_garde_vpn_on"):
+                    "_garde_vpn_on", "_ports_wg_on"):
             setattr(d, nom, lambda: None)
         d._kill_switch_on = lambda: pose
         d._kill_switch_off = lambda force=False: d.leves.append(force)
@@ -328,7 +330,8 @@ class HandleSignalTest(unittest.TestCase):
         for nom in ("_stop_openvpn", "_stop_tor", "_revert_vpn_dns",
                     "_cleanup_tor_routes", "_teardown_lan_sharing",
                     "_ipv6_block_off", "_remove_dns_split", "_stop_status_server",
-                    "_kill_switch_off", "_demonter_tunnel", "_garde_vpn_off"):
+                    "_kill_switch_off", "_demonter_tunnel", "_garde_vpn_off",
+                    "_ports_wg_off"):
             setattr(d, nom, (lambda n: lambda: d.appels.append(n))(nom))
         return d
 
@@ -356,6 +359,7 @@ class HandleSignalTest(unittest.TestCase):
                 os.environ["NOTIFY_SOCKET"] = saved
         self.assertNotIn("_kill_switch_off", d.appels)
         self.assertIn("_garde_vpn_off", d.appels)
+        self.assertIn("_ports_wg_off", d.appels)
 
     def test_tout_est_defait(self):
         d = self._daemon()

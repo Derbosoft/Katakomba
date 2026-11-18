@@ -99,6 +99,13 @@ VPN_CHAINS = (
     ("ip6tables", "OUTPUT", "KATAKOMBA_VPN6"),
 )
 
+# Ports d'écoute WireGuard fermés au réseau (v4.11.0) : (outil, chaîne), dans
+# la table raw, depuis PREROUTING.  Voir FirewallMixin._ports_wg_on.
+WG_CHAINS = (
+    ("iptables",  "KATAKOMBA_WG"),
+    ("ip6tables", "KATAKOMBA_WG6"),
+)
+
 # Retour des connexions entrantes (v3.10.0) : une connexion arrivée par la
 # carte réseau (SSH, serveur web…) repart par elle, jamais par le tunnel.
 # Voir NetworkMixin._retour_entrant_on.  Un seul bit de marque, laissé libre
@@ -287,6 +294,7 @@ class DaemonCore:
         self._kill_renonce       = False  # levé exprès : Tor resté en root
         self._ks6_attendu        = {}     # idem, blocage IPv6
         self._garde_vpn          = False  # garde du compte katakomba-vpn posée
+        self._ports_wg_fermes    = False  # ports WireGuard fermés au réseau
         self._ip_forward_avant   = None   # valeur d'origine, rendue à l'arrêt
         self._lan_active         = False
         self._lan_tun            = ""    # interface tunnel figée dans les règles LAN
@@ -513,6 +521,7 @@ class DaemonCore:
         self._ipv6_block_off()
         self._remove_dns_split()
         self._garde_vpn_off()
+        self._ports_wg_off()
         # Le blocage hors tunnel en dernier — et, sous systemd, pas ici : le
         # script d'ExecStopPost le lève si le service s'ARRÊTE et le garde
         # s'il REDÉMARRE (réveil de veille, mise à jour).  Lui seul le sait ;
@@ -666,6 +675,7 @@ class DaemonCore:
         # Avant Tor : rien ne doit sortir à découvert, même pendant le
         # bootstrap ou la première connexion.
         self._garde_vpn_on()
+        self._ports_wg_on()
         if not self._kill_switch_on():
             # Rien ne reste d'un lancement précédent (réglage désactivé
             # entre-temps, ou pose impossible : jamais de blocage à moitié).

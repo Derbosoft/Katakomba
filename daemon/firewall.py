@@ -15,7 +15,8 @@ from validation import interface_lan_admissible, verifier_dns, verifier_exclusio
 from .core import (
     _run,
     KILL_CHAINS, KS6_CHAIN, KS6_FWD_CHAIN, KS_LAN_CHAIN, KS_LAN_DNS_CHAIN,
-    LAN_DNSMASQ_PID, TOR_USER, VPN_CHAINS, VPN_USER,
+    LAN_DNSMASQ_PID, TOR_USER, TUN_IFACE, VPN_CHAINS, VPN_USER, WG_CHAINS,
+    WG_PORT, WG_PORT_SONDE,
 )
 
 # Destinations locales joignables hors tunnel : réseaux privés, lien local,
@@ -49,9 +50,9 @@ class FirewallMixin:
     # quelques minutes pendant lesquelles le trafic sortait par la connexion
     # normale, avec l'adresse réelle.
     #
-    # Principe : en sortie, seuls passent le tunnel (tun+), la boucle locale,
-    # Tor lui-même — reconnu à son utilisateur, debian-tor, ce qui couvre ses
-    # relais sans avoir à les connaître — et le réseau local.  OpenVPN ne
+    # Principe : en sortie, seuls passent le tunnel de Katakomba, la boucle
+    # locale, Tor lui-même — reconnu à son utilisateur, debian-tor, ce qui
+    # couvre ses relais sans avoir à les connaître — et le réseau local.  OpenVPN ne
     # parle qu'à Tor (127.0.0.1:9050) puis au tunnel : il n'a besoin de rien
     # d'autre, y compris pour résoudre le nom du serveur VPN, transmis tel
     # quel au proxy SOCKS.
@@ -89,7 +90,10 @@ class FirewallMixin:
         regles = []
         if not forward:
             regles.append(["-o", "lo", "-j", "RETURN"])
-        regles.append(["-o", "tun+", "-j", "RETURN"])
+        # Le tunnel de Katakomba seul (v4.11.0) : « tun+ » laissait sortir
+        # aussi vers le tun0 d'un autre VPN, donc hors de Tor.  Nom fixe
+        # depuis la v3.9.0, pour OpenVPN comme pour WireGuard.
+        regles.append(["-o", TUN_IFACE, "-j", "RETURN"])
         if not forward and tor_uid is not None:
             regles.append(["-m", "owner", "--uid-owner", str(tor_uid), "-j", "RETURN"])
         # Réponses aux connexions ENTRANTES (SSH depuis le LAN ou un VPN
@@ -133,15 +137,20 @@ class FirewallMixin:
         return r.stderr.decode(errors="ignore").strip()[:200] or f"code {r.returncode}"
 
     @staticmethod
-    def _regles_de(tool: str, chain: str):
+    def _table_de(table: str) -> tuple:
+        """Option « -t » de iptables, absente pour la table par défaut."""
+        return () if table == "filter" else ("-t", table)
+
+    @classmethod
+    def _regles_de(cls, tool: str, chain: str, table: str = "filter"):
         """Règles « -A … » de la chaîne, ou None si elle est illisible."""
-        r = _run(tool, "-S", chain)
+        r = _run(tool, *cls._table_de(table), "-S", chain)
         if r.returncode != 0:
             return None
         return [l.strip() for l in r.stdout.decode(errors="ignore").splitlines()
                 if l.startswith("-A ")]
 
-    def _brancher(self, tool: str, parent: str, chain: str):
+    def _brancher(self, tool: str, parent: str, chain: str, table: str = "filter"):
         """Branche la chaîne en tête de sa chaîne parente : devant toute règle
         qui n'est pas de Katakomba, et une seule fois.  Un autre outil (Docker,
         un pare-feu rechargé) peut insérer ses règles au-dessus, ou vider la
@@ -150,18 +159,19 @@ class FirewallMixin:
 
         Renvoie None si le branchement échoue, True s'il a fallu brancher ou
         déplacer, False si tout était en place."""
+        t = self._table_de(table)
         saut = f"-A {parent} -j {chain}"
-        regles = self._regles_de(tool, parent)
+        regles = self._regles_de(tool, parent, table)
         places = [i for i, l in enumerate(regles or []) if l == saut]
         if places and len(places) == 1 and all(
                 l.startswith(f"-A {parent} -j KATAKOMBA_") for l in regles[:places[0]]):
             return False
-        if _run(tool, "-I", parent, "1", "-j", chain).returncode != 0:
+        if _run(tool, *t, "-I", parent, "1", "-j", chain).returncode != 0:
             return None
         # Anciens branchements, du dernier au premier : chaque numéro reste
         # juste (décalé d'un rang par l'insertion en tête).
         for i in reversed(places):
-            _run(tool, "-D", parent, str(i + 2))
+            _run(tool, *t, "-D", parent, str(i + 2))
         return True
 
     def _kill_refus(self, message: str):
@@ -324,6 +334,54 @@ class FirewallMixin:
             _run(tool, "-F", chain)
             _run(tool, "-X", chain)
         self._garde_vpn = False
+
+    # ── Ports d'écoute WireGuard fermés au réseau (v4.11.0) ───────────────────
+    #
+    # Les interfaces WireGuard écoutent sur toutes les adresses (le noyau ne
+    # sait pas lier une interface à une seule), aux ports WG_PORT et
+    # WG_PORT_SONDE.  Or WireGuard adopte comme adresse de son pair la source
+    # de tout paquet authentifié : qui détient la clé du serveur — le
+    # fournisseur VPN — pouvait en envoyer un à l'adresse réelle de la
+    # machine.  Le tunnel quittait alors le pont (127.0.0.1:51871), donc Tor ;
+    # pendant une reconnexion, le client répondait même depuis son adresse
+    # réelle, que le blocage hors tunnel laissait sortir (réponse à une
+    # connexion entrante).  Tunnel monté, le paquet suffisait à le couper : un
+    # signal visible du fournisseur, qui permettait de chercher l'adresse.
+    #
+    # Seul le pont, sur la boucle locale, parle à ces ports.  Le reste est
+    # jeté dans la table raw, avant tout suivi de connexion : rien n'atteint
+    # WireGuard, rien n'entre dans la table conntrack.  Posé avant Tor, que le
+    # blocage hors tunnel soit activé ou non.
+
+    def _regles_ports_wg(self) -> list:
+        return [["-i", "lo", "-j", "RETURN"],
+                ["-p", "udp", "-m", "multiport", "--dports",
+                 f"{WG_PORT},{WG_PORT_SONDE}", "-j", "DROP"]]
+
+    @_exclusif
+    def _ports_wg_on(self) -> bool:
+        """Vrai si les deux familles d'adresses sont fermées."""
+        complet = True
+        for tool, chain in WG_CHAINS:
+            erreur = self._poser_chaines(tool, {chain: self._regles_ports_wg()}, "raw")
+            if erreur or self._brancher(tool, "PREROUTING", chain, "raw") is None:
+                self._log(f"Ports WireGuard OUVERTS au réseau ({tool}) : pose "
+                          f"impossible{' : ' + erreur if erreur else ''}.  Le "
+                          f"fournisseur VPN pourrait détourner le tunnel hors "
+                          f"de Tor.", "ERROR")
+                complet = False
+        self._ports_wg_fermes = complet
+        return complet
+
+    @_exclusif
+    def _ports_wg_off(self):
+        for tool, chain in WG_CHAINS:
+            for _ in range(25):
+                if _run(tool, "-t", "raw", "-D", "PREROUTING", "-j", chain).returncode != 0:
+                    break
+            _run(tool, "-t", "raw", "-F", chain)
+            _run(tool, "-t", "raw", "-X", chain)
+        self._ports_wg_fermes = False
 
     # ── Blocage IPv6 ──────────────────────────────────────────────────────────
     #

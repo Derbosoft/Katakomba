@@ -181,6 +181,27 @@ class InstallServiceUnitTest(unittest.TestCase):
             for chaine in ("OUTPUT KATAKOMBA_VPN", "OUTPUT KATAKOMBA_VPN6"):
                 self.assertIn(chaine, texte, f"{nom} : {chaine}")
 
+    def test_ports_wireguard_rouverts_partout(self):
+        """Chaînes raw de la v4.11.0 : retirées par le script d'arrêt et par
+        repair_network.sh, dans la table raw."""
+        cleanup = INSTALL[INSTALL.index("CLEANUP_EOF"):INSTALL.rindex("CLEANUP_EOF")]
+        self.assertIn('retirer "iptables -t raw" PREROUTING KATAKOMBA_WG\n', cleanup)
+        self.assertIn('retirer "ip6tables -t raw" PREROUTING KATAKOMBA_WG6\n', cleanup)
+        for chaine in ('"iptables KATAKOMBA_WG"', '"ip6tables KATAKOMBA_WG6"',
+                       '$1 -t raw -D PREROUTING -j "$2"', '$1 -t raw -X "$2"'):
+            self.assertIn(chaine, REPAIR)
+
+    def test_migration_ancienne_config_sans_suivre_de_lien(self):
+        """v4.11.0 : le config.json du dossier personnel est lu sous le compte
+        de l'utilisateur, jamais copié par root (« cp » suivait un lien vers
+        /etc/shadow et le donnait au groupe katakomba)."""
+        bloc = INSTALL[INSTALL.index("# Migration depuis une installation précédente"):
+                       INSTALL.index("# L'ancien code (fournisseurs")]
+        self.assertNotRegex(bloc, r"(?m)^\s*cp ")
+        self.assertIn('LIRE=(runuser -u "$REAL_USER" --)', bloc)
+        self.assertIn('! "${LIRE[@]}" test -L "$OLD/config.json"', bloc)
+        self.assertIn("os.O_EXCL | os.O_NOFOLLOW", bloc)
+
     def test_python_lance_en_root_isole_du_dossier_courant(self):
         """« python3 - » et « python3 -c » importent d'abord depuis le dossier
         courant : un json.py posé là où l'on tape « sudo katakomba status »
@@ -522,6 +543,7 @@ class DoctorCommandTest(unittest.TestCase):
             ("api.ipify.org", "sortie Internet réelle"),
             ("--interface", "sortie liée au tunnel"),
             ("incoming_return", "retour des connexions entrantes (SSH)"),
+            ("wg_ports_closed", "ports WireGuard fermés au réseau"),
             ('"rule", "show"', "règles de routage réellement posées"),
         ]:
             self.assertIn(sonde, bloc, f"doctor ne vérifie pas : {quoi}")
@@ -983,6 +1005,31 @@ class DoctorNetworkdTest(unittest.TestCase):
 
     def test_networkd_inactif_rien_a_dire(self):
         self.assertEqual(self._diagnostic(False, ""), [])
+
+
+class DoctorPortsWireGuardTest(unittest.TestCase):
+    """v4.11.0 : ports d'écoute WireGuard ouverts au réseau = KO."""
+
+    BLOC = CLI[CLI.index("# Ports d'écoute WireGuard : seul le pont"):]
+    BLOC = BLOC[:BLOC.index("# Réponses aux connexions entrantes")]
+
+    def _diagnostic(self, st):
+        notes = []
+        exec(self.BLOC, {"st": st, "note": lambda *a: notes.append(a),
+                         "_": lambda t: t, "OK": "OK", "KO": "KO"})
+        return notes
+
+    def test_fermes(self):
+        (niveau, titre, _d), = self._diagnostic({"wg_ports_closed": True})
+        self.assertEqual((niveau, titre), ("OK", "Ports WireGuard"))
+
+    def test_ouverts(self):
+        (niveau, _t, detail), = self._diagnostic({"wg_ports_closed": False})
+        self.assertEqual(niveau, "KO")
+        self.assertIn("hors de Tor", detail)
+
+    def test_daemon_ancien_rien_a_dire(self):
+        self.assertEqual(self._diagnostic({"kill_switch": True}), [])
 
 
 class DoctorConnexionsTorTest(unittest.TestCase):

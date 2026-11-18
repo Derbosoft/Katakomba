@@ -124,6 +124,9 @@ class StatusMixin:
             "lan_sharing":    self._lan_active,
             "ipv6_blocked":   self._ipv6_blocked,
             "kill_switch":    self._kill_active,
+            # Ports d'écoute WireGuard fermés au réseau (v4.11.0) : sinon le
+            # fournisseur VPN pourrait détourner le tunnel hors de Tor.
+            "wg_ports_closed": self._ports_wg_fermes,
             # Réponses aux connexions entrantes (SSH…) hors tunnel, par la
             # carte d'origine : sans elles, une session distante tombe.
             "incoming_return": self._retour_actif,

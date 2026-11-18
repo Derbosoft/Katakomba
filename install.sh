@@ -362,11 +362,32 @@ echo "    Créé : $CONFIG_DIR (root:katakomba, 2770)"
 
 # Migration depuis une installation précédente (avant la v3.2, la config
 # vivait aussi dans /opt/tor-vpn-manager — lu AVANT le déploiement du code).
+# Le fichier du dossier personnel est lu SOUS LE COMPTE de l'utilisateur
+# (v4.11.0) : un « cp » en root suivait un lien glissé à sa place (vers
+# /etc/shadow, par exemple) et en donnait le contenu au groupe katakomba.
+# Le fichier copié est créé sans suivre de lien, comme le torrc.
 for OLD in "/root/.config/tor-vpn-manager" "/home/$REAL_USER/.config/tor-vpn-manager" \
            "/opt/tor-vpn-manager"; do
-    if [ -f "$OLD/config.json" ] && absent "$CONFIG_DIR/config.json"; then
+    LIRE=()
+    case "$OLD" in
+        /home/*)
+            { [ -n "$REAL_USER" ] && [ "$REAL_USER" != root ]; } || continue
+            LIRE=(runuser -u "$REAL_USER" --) ;;
+    esac
+    if "${LIRE[@]}" test -f "$OLD/config.json" && ! "${LIRE[@]}" test -L "$OLD/config.json" \
+            && absent "$CONFIG_DIR/config.json"; then
         echo "    Migration config : $OLD → $CONFIG_DIR"
-        cp "$OLD/config.json" "$CONFIG_DIR/config.json"
+        # Lu d'abord en entier : un échec de lecture ne crée pas de fichier vide.
+        CONTENU=$("${LIRE[@]}" cat "$OLD/config.json") || continue
+        printf '%s\n' "$CONTENU" | python3 -I -c '
+import grp, os, sys
+fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o660)
+os.fchown(fd, 0, grp.getgrnam("katakomba").gr_gid)
+os.fchmod(fd, 0o660)
+with os.fdopen(fd, "w") as f:
+    f.write(sys.stdin.read())
+' "$CONFIG_DIR/config.json" || echo "    Migration config impossible : $OLD ignoré"
+        unset CONTENU
     fi
 done
 
@@ -609,6 +630,10 @@ fi
 # Garde du compte katakomba-vpn : reposée par le daemon à chaque lancement.
 retirer iptables OUTPUT KATAKOMBA_VPN
 retirer ip6tables OUTPUT KATAKOMBA_VPN6
+# Ports d'écoute WireGuard fermés au réseau (table raw) : l'interface part
+# juste après, le daemon les referme à chaque lancement.
+retirer "iptables -t raw" PREROUTING KATAKOMBA_WG
+retirer "ip6tables -t raw" PREROUTING KATAKOMBA_WG6
 # Interface tunnel créée par le daemon : son adresse et ses routes partent avec.
 ip link del dev tun-katakomba 2>/dev/null
 # Retour des connexions entrantes : marquage (mangle) et règles de routage.

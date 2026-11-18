@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.10.0
+# Katakomba — v4.11.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.10.0-blue)
+![Version](https://img.shields.io/badge/Version-4.11.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -1022,7 +1022,7 @@ Tant que le service tourne, le trafic sortant ne peut passer que par :
 
 | Autorisé | Pourquoi |
 |---|---|
-| Le tunnel (`tun+`) et la boucle locale | Trafic normal. OpenVPN ne parle qu'à Tor sur `127.0.0.1:9050`, et lui transmet le nom du serveur VPN sans le résoudre |
+| Le tunnel (`tun-katakomba`) et la boucle locale | Trafic normal. OpenVPN ne parle qu'à Tor sur `127.0.0.1:9050`, et lui transmet le nom du serveur VPN sans le résoudre |
 | Tor lui-même, reconnu à son utilisateur `debian-tor` | Joint ses relais sans que le daemon ait à les connaître, bootstrap et redémarrages complets compris |
 | Les réseaux locaux : `10/8`, `172.16/12`, `192.168/16`, lien local, multicast, diffusion ; `fe80::/10`, `fc00::/7`, `ff00::/8` | Imprimante, NAS, routeur, mDNS : ce trafic ne quitte pas le réseau local |
 | Le serveur DNS local (split DNS) et les réseaux exclus | Choisis par vous pour contourner le tunnel |
@@ -1049,6 +1049,8 @@ Tout le reste est refusé sur-le-champ (reset TCP) : une application échoue aus
 Désactivable dans **Réglages → Sécurité → Bloquer tout trafic hors du tunnel** (`kill_switch` dans `config.json`).
 
 Les règles ont été vérifiées sur un vrai noyau, dans un espace réseau isolé : Internet direct, DNS vers le routeur et IPv6 direct bloqués ; tunnel, Tor, réseau local, DNS local, exclusions et IPv6 de lien local autorisés ; tout retiré à l'arrêt.
+
+*(v4.11.0)* Le tunnel autorisé est celui de Katakomba, `tun-katakomba`, et non plus toute interface `tun+` : le `tun0` d'un autre VPN de la machine sortait hors de Tor.
 
 ### Connexions entrantes — `KATAKOMBA_RETOUR` / `KATAKOMBA_RETOUR_OUT` (mangle, v3.10.0)
 
@@ -1083,6 +1085,17 @@ DNAT    → <iface_lan>, vers <passerelle_lan>:53 (UDP et TCP) → DNS du VPN
 ```
 
 Réécrite d'un seul tenant (`iptables-restore`) quand une reconnexion apporte un autre DNS. `KATAKOMBA_RETOUR` laisse passer ces requêtes sans les marquer : voir [Partage LAN](#partage-lan).
+
+### Ports WireGuard fermés au réseau — `KATAKOMBA_WG` / `KATAKOMBA_WG6` (raw, PREROUTING, v4.11.0)
+
+```
+RETURN  → arrivé par lo (le pont WireGuard)
+DROP    → UDP vers 51873, 51874 (interfaces tun-katakomba et tun-kksonde)
+```
+
+Le noyau ne sait pas lier une interface WireGuard à une seule adresse : elle écoute sur toutes. Et WireGuard adopte comme adresse de son serveur la source de tout paquet authentifié. Avant la v4.11.0, qui détient la clé du serveur — le fournisseur VPN — pouvait écrire à l'adresse réelle de la machine (adresse publique, serveur) : pendant une reconnexion, le client lui répondait directement, et le blocage hors tunnel laissait passer cette réponse à une connexion « entrante » ; le tunnel quittait alors le pont, donc Tor. Tunnel monté, le même paquet suffisait à le couper : de quoi chercher l'adresse réelle par essais successifs. Derrière une box (NAT), le port n'était joignable que depuis le réseau local.
+
+Le reste est jeté dans la table `raw`, avant tout suivi de connexion. Posées avant Tor, que le blocage hors tunnel soit activé ou non, retirées à l'arrêt ; `katakomba doctor` signale un KO si elles manquent. Vérifié sur un vrai noyau (`tests_noyau`) : sans elles, le client répond depuis son adresse réelle ; avec, l'endpoint reste `127.0.0.1:51871`.
 
 ---
 

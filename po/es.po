@@ -2872,15 +2872,15 @@ msgstr "Bloqueo fuera del túnel"
 msgid "actif — seuls le tunnel, Tor et le réseau local sortent"
 msgstr "activo — solo salen el túnel, Tor y la red local"
 
-#: katakomba-cli.sh:794
+#: katakomba-cli.sh:803
 msgid "Exclusions vers Internet"
 msgstr "Exclusiones hacia Internet"
 
-#: katakomba-cli.sh:806 katakomba-cli.sh:814 katakomba-cli.sh:818
+#: katakomba-cli.sh:815 katakomba-cli.sh:823 katakomba-cli.sh:827
 msgid "Sortie Internet"
 msgstr "Salida a Internet"
 
-#: katakomba-cli.sh:829
+#: katakomba-cli.sh:838
 msgid "C'est normal et passager : relancez le diagnostic dans 30 s."
 msgstr "Es normal y pasajero: vuelva a ejecutar el diagnóstico dentro de 30 s."
 
@@ -2988,31 +2988,43 @@ msgstr "bloqueado"
 msgid "activé dans les réglages mais inactif — cause dans le journal (katakomba logs)"
 msgstr "activado en los ajustes pero inactivo — causa en el registro (katakomba logs)"
 
-#: katakomba-cli.sh:710 katakomba-cli.sh:713
+#: katakomba-cli.sh:709 katakomba-cli.sh:711
+msgid "Ports WireGuard"
+msgstr "Puertos WireGuard"
+
+#: katakomba-cli.sh:709
+msgid "fermés au réseau — seul le pont les joint"
+msgstr "cerrados a la red — solo el puente los alcanza"
+
+#: katakomba-cli.sh:712
+msgid "ouverts au réseau — le fournisseur VPN pourrait détourner le tunnel hors de Tor (cause dans le journal)"
+msgstr "abiertos a la red — el proveedor de VPN podría desviar el túnel fuera de Tor (causa en el registro)"
+
+#: katakomba-cli.sh:719 katakomba-cli.sh:722
 msgid "Connexions entrantes"
 msgstr "Conexiones entrantes"
 
-#: katakomba-cli.sh:711
+#: katakomba-cli.sh:720
 msgid "réponses par la carte réseau — SSH et services restent joignables"
 msgstr "respuestas por la tarjeta de red — SSH y los servicios siguen accesibles"
 
-#: katakomba-cli.sh:714
+#: katakomba-cli.sh:723
 msgid "réponses envoyées dans le tunnel — une session SSH distante serait coupée (cause dans le journal)"
 msgstr "respuestas enviadas al túnel — una sesión SSH remota se cortaría (causa en el registro)"
 
-#: katakomba-cli.sh:721 katakomba-cli.sh:724
+#: katakomba-cli.sh:730 katakomba-cli.sh:733
 msgid "Tor hors du tunnel"
 msgstr "Tor fuera del túnel"
 
-#: katakomba-cli.sh:722
+#: katakomba-cli.sh:731
 msgid "ses connexions sortent toutes par la carte réseau"
 msgstr "todas sus conexiones salen por la tarjeta de red"
 
-#: katakomba-cli.sh:725
+#: katakomba-cli.sh:734
 msgid "relais protégés seulement toutes les 30 s (cause dans le journal)"
 msgstr "relés protegidos solo cada 30 s (causa en el registro)"
 
-#: katakomba-cli.sh:839
+#: katakomba-cli.sh:848
 msgid "Piste : sudo katakomba restart (3 s de coupure), puis relancez ce diagnostic."
 msgstr "Pista: sudo katakomba restart (3 s de corte) y vuelva a ejecutar este diagnóstico."
 
@@ -3070,15 +3082,15 @@ msgstr "no bloqueado (opción desactivada en los ajustes)"
 msgid "désactivé — pendant une reconnexion, le trafic peut sortir à découvert"
 msgstr "desactivado — durante una reconexión, el tráfico puede salir sin protección"
 
-#: katakomba-cli.sh:781 katakomba-cli.sh:786
+#: katakomba-cli.sh:790 katakomba-cli.sh:795
 msgid "Connexions de Tor"
 msgstr "Conexiones de Tor"
 
-#: katakomba-cli.sh:795
+#: katakomba-cli.sh:804
 msgid "{reseaux} — ce trafic sort hors du tunnel, avec votre adresse réelle"
 msgstr "{reseaux} — este tráfico sale fuera del túnel, con su dirección real"
 
-#: katakomba-cli.sh:827
+#: katakomba-cli.sh:836
 msgid "Reconnexion en cours ({raison}) : les contrôles du tunnel sont reportés."
 msgstr "Reconexión en curso ({raison}): las comprobaciones del túnel se aplazan."
 
@@ -3130,33 +3142,33 @@ msgstr "{reglages} activo: en cada reinicio de networkd, el túnel se corta hast
 msgid "incomplet ({manquants}) — risque de requêtes hors tunnel"
 msgstr "incompleto ({manquants}) — riesgo de consultas fuera del túnel"
 
-#: katakomba-cli.sh:784
+#: katakomba-cli.sh:793
 msgid " — les circuits qui y passent calent"
 msgstr " — los circuitos que pasan por ellas se atascan"
 
-#: katakomba-cli.sh:816
+#: katakomba-cli.sh:825
 msgid " — adresse privée, sortie anormale"
 msgstr " — dirección privada, salida anómala"
 
-#: katakomba-cli.sh:818
+#: katakomba-cli.sh:827
 msgid "aucune réponse via {tun}"
 msgstr "ninguna respuesta por {tun}"
 
-#: katakomba-cli.sh:831
+#: katakomba-cli.sh:840
 msgid "{n} autre problème bloquant ci-dessus, à revoir ensuite."
 msgid_plural "{n} autres problèmes bloquants ci-dessus, à revoir ensuite."
 msgstr[0] "{n} otro problema bloqueante arriba, para revisar después."
 msgstr[1] "{n} otros problemas bloqueantes arriba, para revisar después."
 
-#: katakomba-cli.sh:846
+#: katakomba-cli.sh:855
 msgid "Aucun problème vu, mais l'état du daemon (Tor, tunnel, blocage hors tunnel) n'est pas lisible par ce compte."
 msgstr "Ningún problema detectado, pero esta cuenta no puede leer el estado del daemon (Tor, túnel, bloqueo fuera del túnel)."
 
-#: katakomba-cli.sh:848
+#: katakomba-cli.sh:857
 msgid "Supervision : sudo katakomba autoriser <compte> --statut (lecture seule), ou lancez avec sudo."
 msgstr "Supervisión: sudo katakomba autoriser <cuenta> --statut (solo lectura), o ejecute con sudo."
 
-#: katakomba-cli.sh:851
+#: katakomba-cli.sh:860
 msgid "Tout est conforme."
 msgstr "Todo está en orden."
 
@@ -3192,17 +3204,17 @@ msgstr "cuenta {n} ({min} min)"
 msgid "{serveurs} · ~. — default-route non vérifiable (format resolvectl inconnu)"
 msgstr "{serveurs} · ~. — default-route no verificable (formato de resolvectl desconocido)"
 
-#: katakomba-cli.sh:815
+#: katakomba-cli.sh:824
 msgid "IP publique {ip}"
 msgstr "IP pública {ip}"
 
-#: katakomba-cli.sh:837
+#: katakomba-cli.sh:846
 msgid "{n} avertissement."
 msgid_plural "{n} avertissements."
 msgstr[0] "{n} advertencia."
 msgstr[1] "{n} advertencias."
 
-#: katakomba-cli.sh:842
+#: katakomba-cli.sh:851
 msgid "Aucun problème bloquant, {n} avertissement à surveiller."
 msgid_plural "Aucun problème bloquant, {n} avertissements à surveiller."
 msgstr[0] "Ningún problema bloqueante, {n} advertencia que vigilar."
@@ -3228,25 +3240,25 @@ msgstr "{compte} — vence el {date}, en {n} d"
 msgid "{compte} — expire le {date}"
 msgstr "{compte} — vence el {date}"
 
-#: katakomba-cli.sh:775
+#: katakomba-cli.sh:784
 msgid "{n} part du tunnel"
 msgid_plural "{n} partent du tunnel"
 msgstr[0] "{n} sale del túnel"
 msgstr[1] "{n} salen del túnel"
 
-#: katakomba-cli.sh:778
+#: katakomba-cli.sh:787
 msgid "{n} d'une adresse disparue (tunnel précédent)"
 msgid_plural "{n} d'une adresse disparue (tunnel précédent)"
 msgstr[0] "{n} de una dirección desaparecida (túnel anterior)"
 msgstr[1] "{n} de una dirección desaparecida (túnel anterior)"
 
-#: katakomba-cli.sh:787
+#: katakomba-cli.sh:796
 msgid "{n} connexion vers un relais, par la carte réseau"
 msgid_plural "{n} connexions vers des relais, toutes par la carte réseau"
 msgstr[0] "{n} conexión a un relé, por la tarjeta de red"
 msgstr[1] "{n} conexiones a relés, todas por la tarjeta de red"
 
-#: katakomba-cli.sh:835
+#: katakomba-cli.sh:844
 msgid "{n} problème bloquant"
 msgid_plural "{n} problèmes bloquants"
 msgstr[0] "{n} problema bloqueante"
@@ -3268,7 +3280,7 @@ msgstr " — última causa: {raison}"
 msgid "fermé{depuis}{cause}"
 msgstr "cerrado{depuis}{cause}"
 
-#: katakomba-cli.sh:782
+#: katakomba-cli.sh:791
 msgid "{total} connexion vers un relais"
 msgid_plural "{total} connexions vers des relais"
 msgstr[0] "{total} conexión a un relé"

@@ -31,6 +31,7 @@ from validation import analyser_wg
 
 RACINE = Path(__file__).resolve().parents[1]
 INTERNET = "203.0.113.80"
+ATTAQUANT = "203.0.113.5"        # le fournisseur VPN, hors du réseau local
 
 try:
     from cryptography import x509
@@ -269,6 +270,7 @@ class WireGuardBoutEnBoutTest(CasNoyau):
         self.pair.serveur(8080)
 
         cli_priv, cli_pub = paire_wg()
+        self.cli_pub = cli_pub
         srv_priv, srv_pub = paire_wg()
         Path("/etc/wireguard/srv.conf").write_text(
             f"[Interface]\nPrivateKey = {srv_priv}\nListenPort = 51820\n\n"
@@ -380,6 +382,48 @@ class WireGuardBoutEnBoutTest(CasNoyau):
         # Le tunnel tombe (pont arrêté) : plus rien ne sort, même à découvert.
         self.d._demonter_tunnel()
         self.assertEqual(joindre(INTERNET, 8080, delai=2), "refus")
+
+    def _ecrire_a_l_adresse_reelle(self):
+        """Le fournisseur VPN — il a la clé du serveur — écrit directement à
+        l'adresse réelle du client (192.168.1.20), depuis une adresse
+        publique : le réseau local ne joue aucun rôle dans ce qui passe.
+        Rend (endpoint vu par le client, poignée de main reçue en retour)."""
+        self.pair.run(f"ip route replace 192.168.1.20/32 dev eth0 src {ATTAQUANT}")
+        self.pair.run(f"wg set wg-srv peer {self.cli_pub} endpoint 192.168.1.20:51873")
+        self.pair.run("ping -c1 -W3 10.2.0.2 >/dev/null", ok=False)
+        time.sleep(0.5)
+        poignee = self.pair.run("wg show wg-srv latest-handshakes").split()
+        return sh("wg show tun-katakomba endpoints"), poignee[1] != "0"
+
+    def test_port_wireguard_ferme_au_fournisseur(self):
+        """v4.11.0 : WireGuard écoute sur toutes les adresses et adopte la
+        source de tout paquet authentifié.  Pendant une (re)connexion —
+        interface levée, routes du tunnel pas encore posées — le client
+        répondait depuis son adresse réelle (le blocage hors tunnel laisse
+        passer les réponses) et le tunnel quittait le pont, donc Tor."""
+        self.pair.internet(ATTAQUANT)
+        self.assertTrue(self.d._ports_wg_on(), self.d.log_dump())
+        self.addCleanup(self.d._ports_wg_off)
+        self.assertEqual(self.d._configurer_wg(self.conf), "", self.d.log_dump())
+        endpoint, repondu = self._ecrire_a_l_adresse_reelle()
+        self.assertFalse(repondu, "le client a répondu depuis son adresse réelle")
+        self.assertIn("127.0.0.1:51871", endpoint, "le tunnel a quitté le pont")
+        # Puis la connexion normale, tunnel monté : rien n'a été dérangé.
+        self._pont()
+        self.assertTrue(self._poignee(), self._etat())
+        self.assertTrue(self.d._tunnel_actif(self.conf), self.d.log_dump())
+        endpoint, _ = self._ecrire_a_l_adresse_reelle()
+        self.assertIn("127.0.0.1:51871", endpoint, "tunnel monté : endpoint déplacé")
+        self.assertEqual(joindre(INTERNET, 8080, delai=5), "ok", self._etat())
+
+    def test_temoin_port_ouvert(self):
+        """Témoin : sans la fermeture des ports, la même attaque réussit —
+        sinon le test précédent ne prouverait rien."""
+        self.pair.internet(ATTAQUANT)
+        self.assertEqual(self.d._configurer_wg(self.conf), "", self.d.log_dump())
+        endpoint, repondu = self._ecrire_a_l_adresse_reelle()
+        self.assertTrue(repondu, "témoin : le client devait répondre\n" + self._etat())
+        self.assertIn(f"{ATTAQUANT}:51820", endpoint)
 
     def test_sonde_a_cote_d_un_tunnel_en_service(self):
         """Retour à la première étape : la sonde obtient une vraie poignée de

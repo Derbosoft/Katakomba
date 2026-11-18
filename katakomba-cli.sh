@@ -702,6 +702,15 @@ elif st.get("kill_switch_config"):
 elif "kill_switch_config" in st:
     note(WARN, _("Blocage hors tunnel"),
          _("désactivé — pendant une reconnexion, le trafic peut sortir à découvert"))
+# Ports d'écoute WireGuard : seul le pont (boucle locale) doit les joindre.
+# Absent d'un daemon plus ancien : rien à vérifier.
+if "wg_ports_closed" in st:
+    if st["wg_ports_closed"]:
+        note(OK, _("Ports WireGuard"), _("fermés au réseau — seul le pont les joint"))
+    else:
+        note(KO, _("Ports WireGuard"),
+             _("ouverts au réseau — le fournisseur VPN pourrait détourner le "
+               "tunnel hors de Tor (cause dans le journal)"))
 # Réponses aux connexions entrantes (SSH, services) : par la carte réseau.
 # Absent d'un daemon plus ancien : rien à vérifier.
 if st.get("tunnel_up") and "incoming_return" in st:

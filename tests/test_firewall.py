@@ -78,7 +78,7 @@ class KillSwitchTest(unittest.TestCase):
     def test_ordre_des_regles_en_sortie(self):
         _, r, _ = self._poser()
         regles = self._chaine(r, "KATAKOMBA_KILL")
-        self.assertEqual(regles[:2], ["-o lo -j RETURN", "-o tun+ -j RETURN"])
+        self.assertEqual(regles[:2], ["-o lo -j RETURN", "-o tun-katakomba -j RETURN"])
         self.assertIn(f"-m owner --uid-owner {self.TOR_UID} -j RETURN", regles)
         self.assertEqual(regles[-1], "-j REJECT", "le REJECT final n'est pas en dernier")
         refus_dns = regles.index("-p udp --dport 53 -j REJECT")
@@ -110,7 +110,7 @@ class KillSwitchTest(unittest.TestCase):
             self.assertTrue(regles)
             self.assertFalse([x for x in regles if "--uid-owner" in x or "-o lo " in x],
                              f"{chaine} : règle propre à la sortie locale")
-            self.assertEqual(regles[0], "-o tun+ -j RETURN")
+            self.assertEqual(regles[0], "-o tun-katakomba -j RETURN")
             self.assertEqual(regles[-1], "-j REJECT")
 
     def test_ipv6_voisinage_et_reseau_local(self):
@@ -359,6 +359,66 @@ class GardeVpnTest(unittest.TestCase):
         self.assertTrue(d.has_log("Garde du compte katakomba-vpn", "WARN"))
 
 
+class PortsWireGuardTest(unittest.TestCase):
+    """Ports d'écoute WireGuard fermés au réseau (v4.11.0) : seul le pont,
+    sur la boucle locale, les joint.  Sinon le détenteur de la clé du serveur
+    déplaçait le tunnel hors du pont, donc hors de Tor."""
+
+    def test_seule_la_boucle_locale_passe(self):
+        d = FakeDaemon(config={"kill_switch": False})     # même sans blocage
+        r = Recorder()
+        with patched_run(r):
+            self.assertTrue(d._ports_wg_on())
+        self.assertTrue(r.ran("iptables-restore --noflush"))
+        for outil, chaine in (("iptables", "KATAKOMBA_WG"), ("ip6tables", "KATAKOMBA_WG6")):
+            self.assertIn(f"{outil} *raw", r.calls)
+            regles = [c.split(f" -A {chaine} ", 1)[1] for c in r.calls
+                      if c.startswith(f"{outil} -A {chaine} ")]
+            self.assertEqual(regles, [
+                "-i lo -j RETURN",
+                "-p udp -m multiport --dports 51873,51874 -j DROP"])
+            self.assertTrue(r.ran(f"{outil} -t raw -I PREROUTING 1 -j {chaine}"))
+        self.assertTrue(d._ports_wg_fermes)
+
+    def test_ports_de_la_configuration_wireguard(self):
+        """Les ports fermés sont bien ceux que reçoivent les interfaces."""
+        from daemon.core import WG_PORT, WG_PORT_SONDE
+        from validation import conf_wg_noyau
+        regle = FakeDaemon()._regles_ports_wg()[1]
+        ports = regle[regle.index("--dports") + 1].split(",")
+        self.assertEqual(ports, [str(WG_PORT), str(WG_PORT_SONDE)])
+        self.assertIn(f"ListenPort = {WG_PORT}", conf_wg_noyau(
+            {"cle_privee": "x", "cle_publique": "y"}, "127.0.0.1:51871", WG_PORT))
+
+    def test_deja_branche_pas_de_doublon(self):
+        d = FakeDaemon()
+        r = Recorder({"-t raw -S PREROUTING": (0, b"-P PREROUTING ACCEPT\n"
+                                                b"-A PREROUTING -j KATAKOMBA_WG\n"
+                                                b"-A PREROUTING -j KATAKOMBA_WG6\n")})
+        with patched_run(r):
+            self.assertTrue(d._ports_wg_on())
+        self.assertFalse(r.ran("-I PREROUTING"))
+
+    def test_retrait(self):
+        d = FakeDaemon()
+        with patched_run(Recorder()):
+            d._ports_wg_on()
+        r = Recorder({" -D ": (1, "")})
+        with patched_run(r):
+            d._ports_wg_off()
+        self.assertTrue(r.ran("iptables -t raw -X KATAKOMBA_WG"))
+        self.assertTrue(r.ran("ip6tables -t raw -X KATAKOMBA_WG6"))
+        self.assertFalse(d._ports_wg_fermes)
+
+    def test_echec_signale_en_erreur(self):
+        d = FakeDaemon()
+        with patched_run(Recorder({"ip6tables-restore": (1, "")})):
+            self.assertFalse(d._ports_wg_on())
+        self.assertFalse(d._ports_wg_fermes)
+        self.assertTrue(d.has_log("Ports WireGuard OUVERTS au réseau (ip6tables)", "ERROR"))
+        self.assertFalse(d.has_log("(iptables)", "ERROR"))
+
+
 class Ipv6BlockTest(unittest.TestCase):
 
     def setUp(self):
@@ -377,7 +437,7 @@ class Ipv6BlockTest(unittest.TestCase):
         self.assertTrue(r.ran("ip6tables -I OUTPUT 1 -j KATAKOMBA_KS6"))
         self.assertTrue(r.ran("ip6tables -I FORWARD 1 -j KATAKOMBA_KS6_FWD"))
         # Le tunnel et lo doivent être exemptés AVANT le refus final.
-        self.assertTrue(r.ran("-A KATAKOMBA_KS6 -o tun+ -j RETURN"))
+        self.assertTrue(r.ran("-A KATAKOMBA_KS6 -o tun-katakomba -j RETURN"))
         self.assertTrue(r.ran("-A KATAKOMBA_KS6 -j REJECT"))
 
     def test_memes_regles_que_le_blocage_hors_tunnel(self):

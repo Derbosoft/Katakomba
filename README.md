@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.10.0
+# Katakomba — v4.11.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.10.0-blue)
+![Version](https://img.shields.io/badge/Version-4.11.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -974,7 +974,7 @@ While the service runs, outgoing traffic can only leave through:
 
 | Allowed | Why |
 |---|---|
-| The tunnel (`tun+`) and loopback | Normal traffic. OpenVPN only talks to Tor on `127.0.0.1:9050`, and passes the VPN server's name to Tor unresolved |
+| The tunnel (`tun-katakomba`) and loopback | Normal traffic. OpenVPN only talks to Tor on `127.0.0.1:9050`, and passes the VPN server's name to Tor unresolved |
 | Tor itself, recognised by its user `debian-tor` | Reaches its relays without the daemon having to know them, bootstrap and full restarts included |
 | Local networks: `10/8`, `172.16/12`, `192.168/16`, link-local, multicast, broadcast; `fe80::/10`, `fc00::/7`, `ff00::/8` | Printer, NAS, router, mDNS: this traffic does not leave the local network |
 | The local DNS server (split DNS) and the excluded networks | Chosen by you to bypass the tunnel |
@@ -1001,6 +1001,8 @@ Everything else is rejected at once (TCP reset), so applications fail immediatel
 Turn it off in **Settings → Security → Block all traffic outside the tunnel** (`kill_switch` in `config.json`).
 
 The rules were checked on a real kernel, in an isolated network namespace: direct Internet, DNS to the router and direct IPv6 blocked; tunnel, Tor, local network, local DNS, exclusions and link-local IPv6 allowed; everything removed on stop.
+
+*(v4.11.0)* The tunnel allowed is Katakomba's own, `tun-katakomba`, no longer any `tun+` interface: another VPN's `tun0` on the machine let traffic out outside Tor.
 
 ### Incoming connections — `KATAKOMBA_RETOUR` / `KATAKOMBA_RETOUR_OUT` (mangle, v3.10.0)
 
@@ -1035,6 +1037,17 @@ DNAT    → <lan_iface>, to <lan_gateway>:53 (UDP and TCP) → VPN's DNS server
 ```
 
 Rewritten in one piece (`iptables-restore`) when a reconnection brings another DNS server. `KATAKOMBA_RETOUR` lets these queries through unmarked: see [LAN Sharing](#lan-sharing).
+
+### WireGuard ports closed to the network — `KATAKOMBA_WG` / `KATAKOMBA_WG6` (raw, PREROUTING, v4.11.0)
+
+```
+RETURN  → arrived on lo (the WireGuard bridge)
+DROP    → UDP to 51873, 51874 (interfaces tun-katakomba and tun-kksonde)
+```
+
+The kernel cannot bind a WireGuard interface to a single address: it listens on all of them. And WireGuard takes the source of any authenticated packet as its server's new address. Before v4.11.0, whoever holds the server key — the VPN provider — could write to the machine's real address (public address, server): during a reconnection the client answered it directly, and the kill switch let that answer to an "incoming" connection out; the tunnel then left the bridge, and so Tor. With the tunnel up, the same packet was enough to cut it: a way to search for the real address by trial and error. Behind a home router (NAT), the port was reachable from the local network only.
+
+Everything else is dropped in the `raw` table, before connection tracking. Set up before Tor, whether the kill switch is on or off, removed at stop; `katakomba doctor` reports a KO if they are missing. Checked on a real kernel (`tests_noyau`): without them, the client answers from its real address; with them, the endpoint stays `127.0.0.1:51871`.
 
 ---
 

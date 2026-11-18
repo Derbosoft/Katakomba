@@ -95,6 +95,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.11.0" date="2026-11-18">
+      <description>
+        <p>Audit fixes: the VPN provider can no longer divert a WireGuard tunnel away from Tor.</p>
+        <ul>
+          <li>WireGuard listening ports are closed to the network: only the local bridge reaches them. A packet signed with the server key, sent to the machine's real address, moved the tunnel off Tor during a reconnection, or cut it once up</li>
+          <li>The kill switch lets out Katakomba's own tunnel only, not another VPN's tun interface</li>
+          <li>The installer reads a legacy configuration under the user's account: a symbolic link put in its place no longer exposes a system file to the katakomba group</li>
+          <li>katakomba doctor checks the WireGuard ports</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.11.0</url>
+    </release>
     <release version="4.10.0" date="2026-11-18">
       <description>
         <p>LAN sharing: client name resolution survives VPN reconnections.</p>

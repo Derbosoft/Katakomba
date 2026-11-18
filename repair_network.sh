@@ -61,6 +61,15 @@ if [[ $INTERNAL -eq 0 ]]; then
     $1 -F "$3" 2>/dev/null || true
     $1 -X "$3" 2>/dev/null || true
   done
+  # Ports d'écoute WireGuard fermés au réseau (table raw) : l'interface part
+  # avec le service, le daemon les referme à chaque lancement.
+  for c in "iptables KATAKOMBA_WG" "ip6tables KATAKOMBA_WG6"; do
+    # shellcheck disable=SC2086  # découpage voulu : « outil chaîne »
+    set -- $c
+    while $1 -t raw -D PREROUTING -j "$2" 2>/dev/null; do :; done
+    $1 -t raw -F "$2" 2>/dev/null || true
+    $1 -t raw -X "$2" 2>/dev/null || true
+  done
   rm -f /run/katakomba-echec
 fi
 while ip6tables -D OUTPUT  -j "${KS6_CHAIN}" 2>/dev/null; do :; done
