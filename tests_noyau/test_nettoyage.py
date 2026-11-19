@@ -42,10 +42,13 @@ class NettoyageTest(CasNoyau):
         debut = installeur.index("<< 'CLEANUP_EOF'\n") + len("<< 'CLEANUP_EOF'\n")
         script = installeur[debut:installeur.index("\nCLEANUP_EOF\n", debut)]
         script = script.replace("/run/", f"{self.tmp}/run/").replace(
-            "/etc/", f"{self.tmp}/etc/")
+            "/etc/", f"{self.tmp}/etc/").replace("/var/lib/", f"{self.tmp}/var/lib/")
         self.assertNotIn(' /run', script)
         self.assertNotIn(' /etc', script)
+        self.assertNotIn(' /var', script)
         (self.tmp / "run").mkdir()
+        (self.tmp / "var" / "lib" / "katakomba").mkdir(parents=True)
+        self.permanent = self.tmp / "var" / "lib" / "katakomba" / "blocage-permanent"
         (self.tmp / "faux").mkdir()
         self.script = self.tmp / "katakomba-cleanup.sh"
         self.script.write_text(script)
@@ -171,3 +174,53 @@ class NettoyageTest(CasNoyau):
         self.assertFalse(self._blocage())
         self.assertFalse(self.echec.exists())
         self.assertNotIn("KATAKOMBA", sh("iptables -S") + sh("ip6tables -S"))
+
+    # ── Blocage permanent (v4.13.0) ──────────────────────────────────────────
+
+    def _filtrage_lan(self) -> bool:
+        return "-A FORWARD -j KATAKOMBA_LAN_FWD" in sh("iptables -S")
+
+    def _avec_partage(self):
+        sh("iptables -N KATAKOMBA_LAN_FWD && iptables -A KATAKOMBA_LAN_FWD -i ens19 -j DROP"
+           " && iptables -I FORWARD -j KATAKOMBA_LAN_FWD")
+
+    def test_permanent_arret_demande_rien_n_est_leve(self):
+        self.permanent.write_text("")
+        self._avec_partage()
+        for mode, tache in (("apres", "stop"), ("", ""), ("avant", "")):
+            sortie, journal = self._lancer(mode, tache=tache)
+            self.assertTrue(self._blocage(), mode or "tout")
+            self.assertTrue(self._filtrage_lan(), mode or "tout")
+            self.assertNotIn("systemd-run", journal, "pas de filet")
+            if mode != "avant":
+                self.assertIn("Blocage permanent : gardé", sortie, mode or "tout")
+        # Le reste part comme d'habitude : garde du compte VPN, ports WireGuard.
+        self.assertNotIn("KATAKOMBA_VPN", sh("iptables -S"))
+        self.assertNotIn("KATAKOMBA_WG", self._raw())
+
+    def test_permanent_echec_sans_filet(self):
+        self.permanent.write_text("")
+        _sortie, journal = self._lancer("apres", resultat="exit-code", statut="1")
+        self.assertTrue(self._blocage())
+        self.assertTrue(self.echec.exists(), "la pause du lancement suivant reste")
+        self.assertNotIn("systemd-run", journal)
+
+    def test_permanent_filet_ne_leve_rien(self):
+        self.permanent.write_text("")
+        self._avec_partage()
+        self._lancer("filet", actif="inactive")
+        self.assertTrue(self._blocage())
+        self.assertTrue(self._filtrage_lan())
+
+    def test_permanent_desinstallation_leve_tout(self):
+        self.permanent.write_text("")
+        self._avec_partage()
+        self._lancer("desinstaller")
+        self.assertFalse(self._blocage())
+        self.assertFalse(self._filtrage_lan())
+        self.assertNotIn("KATAKOMBA", sh("iptables -S") + sh("ip6tables -S"))
+
+    def test_sans_permanent_filtrage_lan_retire(self):
+        self._avec_partage()
+        self._lancer("avant")
+        self.assertFalse(self._filtrage_lan())

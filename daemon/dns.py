@@ -20,7 +20,17 @@ class DNSMixin:
         """Vérifie au démarrage que systemd-resolved est disponible et actif.
         Sans lui, le DNS du VPN et le split DNS ne peuvent pas s'appliquer :
         le trafic reste tunnelé, mais les requêtes DNS peuvent échouer ou
-        fuir hors Tor.  On avertit tôt (au lieu d'attendre la 1re connexion)."""
+        fuir hors Tor.  On avertit tôt (au lieu d'attendre la 1re connexion).
+
+        Mode passerelle (v4.13.0) : systemd-resolved n'est pas requis.  Les
+        clients du partage LAN reçoivent le DNS du VPN par la passerelle
+        (KATAKOMBA_LAN_DNS), sans lui."""
+        if self._mode_passerelle():
+            if not self._resolved_utilisable():
+                self._log("Mode passerelle : systemd-resolved absent ou inactif — le DNS "
+                          "du VPN n'est pas appliqué à cette machine ; les clients du "
+                          "partage LAN le reçoivent par la passerelle.", "INFO")
+            return
         if not shutil.which("resolvectl"):
             self._log(
                 "resolvectl introuvable — systemd-resolved requis pour la "
@@ -34,6 +44,11 @@ class DNSMixin:
                 "systemd-resolved n'est pas actif — la protection DNS ne "
                 "pourra pas s'appliquer. Lancez : "
                 "systemctl enable --now systemd-resolved.", "WARN")
+
+    @staticmethod
+    def _resolved_utilisable() -> bool:
+        return bool(shutil.which("resolvectl")) and _run(
+            "systemctl", "is-active", "systemd-resolved").stdout.decode().strip() == "active"
 
     @staticmethod
     def _resolvectl_link_status(iface: str) -> dict:
@@ -87,6 +102,8 @@ class DNSMixin:
         réapplication uniquement si la config a effectivement été perdue."""
         if not self._tunnel_up:
             return
+        if self._mode_passerelle() and not shutil.which("resolvectl"):
+            return
         # 1. DNS du VPN (config runtime par interface — perdue si resolved
         #    redémarre, contrairement au drop-in qui est persistant).
         #
@@ -124,7 +141,7 @@ class DNSMixin:
         # 2. Drop-in split DNS (persistant, mais un autre outil a pu le
         #    supprimer) : le réécrire s'il devrait exister et manque.
         dns, domaines = self._split_dns()
-        if dns and domaines and not RESOLVED_DROP_IN.exists():
+        if dns and domaines and not RESOLVED_DROP_IN.exists() and not self._mode_passerelle():
             self._log("[dns] Drop-in split DNS disparu — réapplication.", "WARN")
             self._apply_dns_split()
 
@@ -162,6 +179,11 @@ class DNSMixin:
                 "panne DNS derrière redirect-gateway.", "WARN")
             return
         tun = self._tun_iface
+        if self._mode_passerelle() and not self._resolved_utilisable():
+            # La liste filtrée sert au partage LAN (_lan_dns_cible).
+            self._log(f"DNS du VPN : {', '.join(ips)} — donné aux clients du partage "
+                      "LAN (mode passerelle, sans systemd-resolved).", "OK")
+            return
         try:
             r = subprocess.run(["resolvectl", "dns", tun, *ips],
                                capture_output=True, timeout=10)
@@ -230,6 +252,14 @@ class DNSMixin:
         self._vpn_dns_ips = []
 
     def _apply_dns_split(self):
+        if self._mode_passerelle():
+            # Le split DNS règle la résolution de cette machine, que le mode
+            # passerelle ne gère pas.
+            self._remove_dns_split()
+            if self.config.get("excluded_domains"):
+                self._log("DNS split ignoré : mode passerelle (seul le partage LAN "
+                          "est géré).", "INFO")
+            return
         dns, domains = self._split_dns()
         refuses = len(self.config.get("excluded_domains", [])) - len(domains)
         if self.config.get("local_dns", "").strip() and not dns:

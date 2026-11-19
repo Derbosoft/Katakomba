@@ -13,6 +13,13 @@ INTERNAL=0
 if [[ "${1:-}" == "--internal" ]]; then
   INTERNAL=1
 fi
+# Blocage permanent (v4.13.0) : le blocage hors tunnel et le filtrage des
+# clients du partage LAN restent posés, réparation ou pas.  Seuls
+# « sudo katakomba blocage-permanent off » et la désinstallation les lèvent.
+PERMANENT=0
+if [[ -e /var/lib/katakomba/blocage-permanent ]]; then
+  PERMANENT=1
+fi
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Relancez avec : sudo bash repair_network.sh"
@@ -52,8 +59,13 @@ echo "[3/8] Nettoyage du blocage hors tunnel et des règles IPv6..."
 # service arrêté, sans tunnel, le blocage couperait tout.  Gardés quand c'est
 # le daemon qui répare (--internal) : il repart aussitôt.
 if [[ $INTERNAL -eq 0 ]]; then
-  for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
-           "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD" \
+  BLOCAGE=("iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD"
+           "ip6tables OUTPUT KATAKOMBA_KILL6" "ip6tables FORWARD KATAKOMBA_KILL6_FWD")
+  if [[ $PERMANENT -eq 1 ]]; then
+    echo "    Blocage permanent : blocage hors tunnel gardé (sudo katakomba blocage-permanent off pour le lever)."
+    BLOCAGE=()
+  fi
+  for c in "${BLOCAGE[@]}" \
            "iptables OUTPUT KATAKOMBA_VPN" "ip6tables OUTPUT KATAKOMBA_VPN6" \
            "iptables INPUT KATAKOMBA_TUN_IN" "iptables FORWARD KATAKOMBA_TUN_FWD" \
            "ip6tables INPUT KATAKOMBA_TUN6_IN" "ip6tables FORWARD KATAKOMBA_TUN6_FWD"; do
@@ -83,9 +95,11 @@ ip6tables -F "${KS6_FWD_CHAIN}" 2>/dev/null || true
 ip6tables -X "${KS6_FWD_CHAIN}" 2>/dev/null || true
 
 echo "[4/8] Nettoyage règles iptables LAN (KATAKOMBA_LAN_FWD, KATAKOMBA_LAN_DNS + NAT)..."
-while iptables -D FORWARD -j KATAKOMBA_LAN_FWD 2>/dev/null; do :; done
-iptables -F KATAKOMBA_LAN_FWD 2>/dev/null || true
-iptables -X KATAKOMBA_LAN_FWD 2>/dev/null || true
+if [[ $PERMANENT -eq 0 ]]; then
+  while iptables -D FORWARD -j KATAKOMBA_LAN_FWD 2>/dev/null; do :; done
+  iptables -F KATAKOMBA_LAN_FWD 2>/dev/null || true
+  iptables -X KATAKOMBA_LAN_FWD 2>/dev/null || true
+fi
 # DNS des clients du partage LAN, redirigé vers celui du VPN (table nat)
 while iptables -t nat -D PREROUTING -j KATAKOMBA_LAN_DNS 2>/dev/null; do :; done
 iptables -t nat -F KATAKOMBA_LAN_DNS 2>/dev/null || true
@@ -108,7 +122,8 @@ for T in "${TUNS[@]}"; do
   resolvectl revert "$T" 2>/dev/null || true
 done
 rm -f "${RESOLVED_DROP_IN}"
-systemctl restart systemd-resolved 2>/dev/null || true
+# Mode passerelle (v4.13.0) : resolved n'y est pas forcément voulu.
+[[ -e /var/lib/katakomba/passerelle ]] || systemctl restart systemd-resolved 2>/dev/null || true
 
 echo "[6/8] Suppression des routes /32 des relais Tor..."
 # Sans cela, le trafic vers ces IPs continue de contourner le tunnel après

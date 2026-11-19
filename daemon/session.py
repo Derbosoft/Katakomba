@@ -21,18 +21,23 @@ son issue ; la décision qui suit est prise ici.
 """
 
 import grp
+import hashlib
 import json
 import math
+import os
 import pwd
 import random
 import socket
+import stat
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 from .core import (
     RECONNECT_DELAY, RECONNECT_MAX, AUTH_COOLDOWN, AUTH_PASS_MAX,
-    AUTH_PASS_DELAY, VPN_USER, CIRCUITS_FILE, _read_regular, _write_private,
+    AUTH_PASS_DELAY, VPN_USER, CIRCUITS_FILE, HOOK_RESERVATION,
+    _read_regular, _run, _write_private,
 )
 from .gestion_wg import (
     CAUSE_API, CAUSE_COMPTES, CAUSE_CONFIG, CAUSE_COUPURES, CAUSE_MODULE,
@@ -327,6 +332,94 @@ class SessionMixin:
         self._log("Failover : tous les fournisseurs et comptes épuisés.", "ERROR")
         self._entrer_fournisseur(0)
         return False
+
+    # ── Réservation des comptes (v4.13.0) ────────────────────────────────────
+    #
+    # Plusieurs passerelles d'un même hyperviseur peuvent puiser dans un même
+    # lot de comptes : deux sur le même compte au même moment, et le
+    # fournisseur coupe l'une des deux.  Un script posé par l'administrateur
+    # (HOOK_RESERVATION) est appelé avant l'usage de chaque compte, et peut
+    # le refuser ; il est prévenu quand le compte est quitté :
+    #
+    #   reserver-compte reserver|liberer <fournisseur> <transport> <numéro> <empreinte>
+    #
+    # Code 0 : accordé.  Tout autre code, ou pas de réponse en 30 s : refusé,
+    # le compte passe en quarantaine comme après un refus du fournisseur, et
+    # le suivant est essayé.  L'empreinte désigne le compte sans le dévoiler,
+    # la même sur chaque passerelle qui l'a : SHA-256 de l'identifiant
+    # OpenVPN, ou du nom du fichier .conf, en 16 caractères.  WireGuard géré
+    # (IVPN, Mullvad) n'est pas concerné : chaque machine y a sa propre clé.
+
+    def _hook_reservation(self):
+        """Le script s'il est posé et sûr ; None s'il n'y en a pas ; False
+        s'il est là mais refusé.  Exécuté en root : à root, ainsi que son
+        dossier, sans droit d'écriture pour le groupe ni les autres."""
+        try:
+            st = os.lstat(HOOK_RESERVATION)
+        except FileNotFoundError:
+            return None
+        except OSError:
+            st = None
+        sur = False
+        if (st is not None and stat.S_ISREG(st.st_mode) and st.st_uid == os.geteuid()
+                and not st.st_mode & 0o022 and st.st_mode & 0o100):
+            try:
+                d = os.lstat(HOOK_RESERVATION.parent)
+                sur = (stat.S_ISDIR(d.st_mode) and d.st_uid == os.geteuid()
+                       and not d.st_mode & 0o022)
+            except OSError:
+                pass
+        if sur:
+            self._hook_refus_signale = False
+            return HOOK_RESERVATION
+        if not self._hook_refus_signale:
+            self._hook_refus_signale = True
+            self._log(f"Script de réservation {HOOK_RESERVATION} refusé : lui et son "
+                      "dossier doivent appartenir à root, sans droit d'écriture pour le "
+                      "groupe ni les autres, et il doit être exécutable. Aucun compte "
+                      "n'est utilisé tant qu'il est là.", "ERROR")
+        return False
+
+    @staticmethod
+    def _empreinte_compte(transport: str, compte) -> str:
+        """Désigne un compte sans le dévoiler (voir plus haut)."""
+        if transport == "wireguard":
+            base = Path(str(compte[0])).name
+        else:
+            base = str(compte[1]) if len(compte) > 1 else ""
+        return hashlib.sha256(f"{transport}:{base}".encode()).hexdigest()[:16]
+
+    def _reserver_compte(self, fournisseur: str, transport: str, idx: int, compte) -> bool:
+        """Vrai si le compte peut servir : pas de script, ou script d'accord."""
+        hook = self._hook_reservation()
+        cle = (fournisseur, transport, str(idx + 1), self._empreinte_compte(transport, compte))
+        if self._compte_reserve and self._compte_reserve != cle:
+            self._liberer_compte()
+        if hook is None:
+            return True
+        if hook is False:
+            return False
+        r = _run(str(hook), "reserver", *cle)
+        if r.returncode == 0:
+            if self._compte_reserve != cle:
+                self._log(f"Compte {idx + 1} ({fournisseur}) réservé par le script de "
+                          "réservation.", "INFO")
+            self._compte_reserve = cle
+            return True
+        detail = (r.stdout or r.stderr or b"").decode(errors="ignore").strip()
+        detail = detail.splitlines()[0][:120] if detail else f"code {r.returncode}"
+        self._log(f"Compte {idx + 1} ({fournisseur}) refusé par le script de "
+                  f"réservation ({detail}) — compte suivant.", "WARN")
+        return False
+
+    def _liberer_compte(self):
+        """Prévient le script que le compte réservé est quitté (au mieux)."""
+        cle, self._compte_reserve = getattr(self, "_compte_reserve", None), None
+        if not cle:
+            return
+        hook = self._hook_reservation()
+        if hook:
+            _run(str(hook), "liberer", *cle)
 
     def _compte_courant(self):
         if self._transport == "wireguard":
@@ -791,6 +884,7 @@ class SessionMixin:
         try:
             self._vpn_loop_body(start_provider_idx, start_account_idx, start_transport)
         finally:
+            self._liberer_compte()
             with self._vpn_lock:
                 self._vpn_loop_active = False
 
@@ -902,6 +996,21 @@ class SessionMixin:
                           f"{acc_idx+1} : {compte[0].rsplit('/', 1)[-1]})", "INFO")
             else:
                 self._log(f"Fournisseur : {prov_name}  (compte {acc_idx+1})", "INFO")
+
+            if gere:
+                self._liberer_compte()
+            elif not self._reserver_compte(prov_name, transport, acc_idx, compte):
+                # Pris par une autre passerelle : comme un refus du fournisseur.
+                self._reconnect_reason = "compte réservé ailleurs, compte suivant"
+                self._mettre_en_quarantaine(acc_idx)
+                if self._try_failover(CAUSE_COMPTES):
+                    continue
+                suite = self._nouvelle_passe("être réservé")
+                if suite is None:
+                    return
+                if suite:
+                    continue
+                break
 
             ids = self._utilisateur_vpn()
             if ids is None:

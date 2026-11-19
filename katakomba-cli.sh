@@ -85,6 +85,7 @@ case "${1:-help}" in
         # Le blocage hors tunnel, gardé quand le service redémarre ou sort en
         # échec, ne doit pas survivre à un arrêt demandé : arrêté pendant
         # l'attente d'un redémarrage, le service n'exécute plus son script.
+        # (Sauf blocage permanent : le script le garde.)
         for c in /usr/lib/katakomba/katakomba-cleanup.sh /usr/local/lib/katakomba-cleanup.sh; do
             if [ -x "$c" ] && [ ! -L "$c" ]; then
                 "$c" >/dev/null 2>&1 || true
@@ -181,6 +182,115 @@ case "${1:-help}" in
             echo "sans pouvoir modifier la configuration."
         fi
         echo "Prise d'effet à la prochaine ouverture de session de ce compte."
+        ;;
+
+    blocage-permanent|permanent-block)
+        # Passerelle (v4.13.0) : blocage hors tunnel et filtrage des clients
+        # du partage LAN posés dès le démarrage de la machine, avant le
+        # réseau, et jamais levés — ni à l'arrêt du service, ni par le filet.
+        # Seuls « off » et la désinstallation les retirent.
+        _need_root "$@"
+        MARQUE=/var/lib/katakomba/blocage-permanent
+        case "${2:-status}" in
+            on)
+                install -d -m 755 -o root -g root /var/lib/katakomba
+                install -m 644 -o root -g root /dev/null "$MARQUE"
+                systemctl enable katakomba-blocage.service 2>/dev/null || true
+                if systemctl restart katakomba-blocage.service; then
+                    echo "Blocage permanent activé : posé maintenant, puis à chaque démarrage"
+                    echo "de la machine, avant le réseau ; gardé à l'arrêt du service."
+                    echo "Rien ne sort hors du tunnel, sauf Tor et le réseau local."
+                else
+                    echo "Blocage permanent activé, mais sa pose a échoué :" >&2
+                    echo "    journalctl -u katakomba-blocage -n 20" >&2
+                    exit 1
+                fi
+                ;;
+            off)
+                rm -f "$MARQUE"
+                systemctl disable katakomba-blocage.service 2>/dev/null || true
+                systemctl stop katakomba-blocage.service 2>/dev/null || true
+                if systemctl is-active --quiet "$SERVICE"; then
+                    echo "Blocage permanent désactivé.  Le service tourne : le blocage suit"
+                    echo "maintenant le réglage kill-switch (sudo katakomba restart pour l'appliquer)."
+                else
+                    for c in /usr/lib/katakomba/katakomba-cleanup.sh /usr/local/lib/katakomba-cleanup.sh; do
+                        if [ -x "$c" ] && [ ! -L "$c" ]; then
+                            "$c" >/dev/null 2>&1 || true
+                            break
+                        fi
+                    done
+                    echo "Blocage permanent désactivé et levé (service arrêté)."
+                fi
+                ;;
+            status|statut)
+                if [ -e "$MARQUE" ]; then
+                    echo "Blocage permanent : activé"
+                else
+                    echo "Blocage permanent : désactivé"
+                fi
+                if systemctl is-enabled --quiet katakomba-blocage.service 2>/dev/null; then
+                    echo "  Pose au démarrage : oui (katakomba-blocage.service)"
+                else
+                    echo "  Pose au démarrage : non"
+                fi
+                if iptables -S OUTPUT 2>/dev/null | grep -q -- "-j KATAKOMBA_KILL$"; then
+                    echo "  Règles en place   : oui"
+                else
+                    echo "  Règles en place   : non"
+                fi
+                [ -e "$MARQUE" ] || exit 0
+                systemctl is-failed --quiet katakomba-blocage.service 2>/dev/null \
+                    && { echo "  Dernière pose     : ÉCHEC (journalctl -u katakomba-blocage)"; exit 1; }
+                ;;
+            *) echo "Usage : sudo katakomba blocage-permanent on|off|status" >&2; exit 2 ;;
+        esac
+        ;;
+
+    vsock)
+        # État lisible depuis l'hôte d'une machine virtuelle (v4.13.0) :
+        # status, ip, doctor et restart, pour l'hôte seul (CID 2).
+        _need_root "$@"
+        DROPIN=/etc/systemd/system/katakomba-vsock.socket.d
+        case "${2:-status}" in
+            on)
+                PORT="${3:-51875}"
+                if ! [[ "$PORT" =~ ^[0-9]{1,9}$ ]] || [ "$PORT" -lt 1 ]; then
+                    echo "Port vsock : un nombre entier (51875 par défaut)." >&2
+                    exit 2
+                fi
+                [ -e /dev/vsock ] || echo "Attention : pas de /dev/vsock (module vsock absent ? machine non virtuelle ?)." >&2
+                if [ "$PORT" = 51875 ]; then
+                    rm -rf "$DROPIN"
+                else
+                    install -d -m 755 "$DROPIN"
+                    printf '[Socket]\nListenStream=\nListenStream=vsock::%s\n' "$PORT" > "$DROPIN/port.conf"
+                fi
+                systemctl daemon-reload
+                systemctl enable katakomba-vsock.socket 2>/dev/null || true
+                if systemctl restart katakomba-vsock.socket; then
+                    echo "Écoute vsock active, port $PORT : status, ip, doctor, restart, pour l'hôte seul."
+                    echo "Depuis l'hôte :  echo status | socat - VSOCK-CONNECT:<CID>:$PORT"
+                else
+                    echo "Écoute vsock impossible : journalctl -u katakomba-vsock.socket" >&2
+                    exit 1
+                fi
+                ;;
+            off)
+                systemctl disable --now katakomba-vsock.socket 2>/dev/null || true
+                rm -rf "$DROPIN"
+                systemctl daemon-reload
+                echo "Écoute vsock arrêtée."
+                ;;
+            status|statut)
+                if systemctl is-active --quiet katakomba-vsock.socket; then
+                    echo "Écoute vsock : active ($(systemctl show katakomba-vsock.socket -p Listen --value))"
+                else
+                    echo "Écoute vsock : inactive"
+                fi
+                ;;
+            *) echo "Usage : sudo katakomba vsock on [PORT] | off | status" >&2; exit 2 ;;
+        esac
         ;;
 
     uninstall|desinstaller)
@@ -620,7 +730,11 @@ if sh("systemctl", "is-active", "systemd-networkd")[0] == 0:
         note(OK, _("systemd-networkd"), _("ne retire pas les routes du tunnel"))
 
 # ── 4. DNS ────────────────────────────────────────────────────────────────────
-rc, sortie = sh("resolvectl", "status", tun)
+# Mode passerelle (v4.13.0) sans systemd-resolved : le DNS de cette machine
+# n'est pas géré, celui des clients du partage passe par la passerelle.
+dns_non_gere = bool(st.get("gateway_mode")) and sh(
+    "systemctl", "is-active", "systemd-resolved")[0] != 0
+rc, sortie = ((1, "") if dns_non_gere else sh("resolvectl", "status", tun))
 attrs = {}
 for ligne in sortie.splitlines():
     label, sep, val = ligne.partition(":")
@@ -648,7 +762,10 @@ if "~." not in attrs.get("DNS Domain", "").split():
     manquants.append(_("domaine ~."))
 if route_dns is False:
     manquants.append("default-route")
-if en_cours:
+if dns_non_gere:
+    note(REPORTE, _("DNS du tunnel"),
+         _("mode passerelle : DNS de cette machine non géré (sans systemd-resolved)"))
+elif en_cours:
     note(REPORTE, _("DNS du tunnel"), NON_VERIFIE)
 elif manquants:
     note(KO, _("DNS du tunnel"),
@@ -668,12 +785,14 @@ if os.path.exists("/etc/systemd/resolved.conf.d/katakomba-split.conf"):
 # ~0 ms, celui du tunnel en dizaines/centaines de ms.  Plus de requête de
 # comparaison par la carte réseau (v4.9.0) : elle partait en clair chez le
 # résolveur du FAI, à chaque diagnostic.
-if not en_cours:
+if not en_cours and not dns_non_gere:
     t0 = time.monotonic()
     sh("resolvectl", "query", "--cache=no", "wikipedia.org", timeout=20)
     lat_defaut = time.monotonic() - t0
 
-if en_cours:
+if dns_non_gere:
+    pass
+elif en_cours:
     note(REPORTE, _("Chemin des requêtes DNS"), NON_VERIFIE)
 elif lat_defaut < 0.02:
     note(WARN, _("Chemin des requêtes DNS"),
@@ -702,6 +821,26 @@ elif st.get("kill_switch_config"):
 elif "kill_switch_config" in st:
     note(WARN, _("Blocage hors tunnel"),
          _("désactivé — pendant une reconnexion, le trafic peut sortir à découvert"))
+# Blocage permanent (v4.13.0) : posé au démarrage de la machine, avant le
+# réseau.  Absent d'un daemon plus ancien.
+if st.get("kill_switch_permanent"):
+    if sh("systemctl", "is-enabled", "katakomba-blocage")[0] == 0:
+        note(OK, _("Blocage permanent"),
+             _("posé dès le démarrage de la machine, gardé à l'arrêt du service"))
+    else:
+        note(WARN, _("Blocage permanent"),
+             _("activé, mais pas posé au démarrage de la machine — sudo katakomba "
+               "blocage-permanent on"))
+# Passerelle : partager le tunnel est sa raison d'être.
+if st.get("gateway_mode"):
+    if st.get("lan_sharing"):
+        note(OK, _("Partage LAN"), _("actif — les clients sortent par le tunnel"))
+    elif en_cours:
+        note(REPORTE, _("Partage LAN"), NON_VERIFIE)
+    elif st.get("tunnel_up"):
+        note(KO, _("Partage LAN"),
+             _("inactif en mode passerelle — cause dans le journal (katakomba logs), "
+               "réglages : katakomba set"))
 # Ports d'écoute WireGuard : seul le pont (boucle locale) doit les joindre.
 # Absent d'un daemon plus ancien : rien à vérifier.
 if "wg_ports_closed" in st:

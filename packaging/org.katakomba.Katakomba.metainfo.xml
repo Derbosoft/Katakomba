@@ -95,6 +95,20 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.13.0" date="2026-11-19">
+      <description>
+        <p>Katakomba as a gateway: a virtual machine that only shares its tunnel.</p>
+        <ul>
+          <li>Permanent kill switch, set from machine boot before the network and never lifted when the service stops: sudo katakomba blocage-permanent on</li>
+          <li>Gateway install mode (install.sh --passerelle): LAN sharing only, without split DNS, sleep hook or systemd-resolved</li>
+          <li>LAN sharing settings from the console (katakomba set lan-…)</li>
+          <li>Status, exit IP, diagnosis and restart readable from the virtual machine's host over vsock, for the host only</li>
+          <li>An administrator script can reserve each account before use, for several gateways sharing one pool of accounts</li>
+          <li>iptables is installed as a dependency; dnsmasq is required when LAN sharing serves DHCP</li>
+        </ul>
+      </description>
+      <url type="details">https://github.com/Derbosoft/Katakomba/releases/tag/v4.13.0</url>
+    </release>
     <release version="4.12.0" date="2026-11-18">
       <description>
         <p>Nothing new comes in through the tunnel, and LAN sharing clients only go out through it.</p>

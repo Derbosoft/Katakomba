@@ -19,6 +19,7 @@ leurs équivalents français ; messages dans la langue de l'utilisateur.
 """
 
 import getpass
+import ipaddress
 import os
 import sys
 import time
@@ -29,10 +30,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import i18n                                                    # noqa: E402
 from i18n import _, ngettext                                   # noqa: E402
 from gui import modele                                         # noqa: E402
-from validation import exclusion_locale                        # noqa: E402
+from validation import exclusion_locale, interface_lan_admissible  # noqa: E402
 
 # Réglages exposés : nom en console → (clé de config.json, type).  Les mêmes
-# que l'interface, sauf le partage LAN, rare sur un serveur.
+# que l'interface ; le partage LAN depuis la v4.13.0 (passerelle sans écran).
 REGLAGES = {
     "kill-switch":     ("kill_switch", "bool"),
     "block-ipv6":      ("block_ipv6", "bool"),
@@ -47,6 +48,11 @@ REGLAGES = {
     "circuit-retries": ("circuit_max_retries", "int"),
     "primary-retry-min": ("primary_retry_min", "int"),
     "circuit-recheck-min": ("circuit_recheck_min", "int"),
+    "lan-share":       ("lan_auto", "bool"),
+    "lan-iface":       ("lan_iface", "iface"),
+    "lan-gateway":     ("lan_gateway", "ipv4"),
+    "lan-subnet":      ("lan_subnet", "reseau4"),
+    "lan-dhcp":        ("lan_dhcp", "bool"),
 }
 PLACES_MULLVAD = 5
 OUI = ("on", "yes", "true", "1", "oui")
@@ -579,6 +585,21 @@ def reglage(args: list):
         erreur = modele.erreur_dns(valeur)
         if erreur:
             raise Erreur(erreur)
+    elif genre == "iface":
+        valeur = "" if brut.lower() in ("none", "aucun", "-", "") else brut
+        if valeur and not interface_lan_admissible(valeur):
+            raise Erreur(_("Interface refusée : nom invalide, boucle locale ou "
+                           "interface virtuelle."))
+    elif genre == "ipv4":
+        try:
+            valeur = str(ipaddress.IPv4Address(brut))
+        except ValueError:
+            raise Erreur(_("Adresse IPv4 attendue.")) from None
+    elif genre == "reseau4":
+        try:
+            valeur = str(ipaddress.IPv4Network(brut, strict=False))
+        except ValueError:
+            raise Erreur(_("Réseau IPv4 attendu (ex. 10.0.0.0/24).")) from None
     else:
         try:
             valeur = int(brut)
@@ -679,6 +700,10 @@ def aide():
             (_("autoriser <utilisateur>"), _("Donner accès à la configuration à un compte")),
             (_("autoriser <utilisateur> --statut"),
              _("Lecture seule de l'état (supervision), sans accès à la configuration")),
+            ("blocage-permanent on|off|status",
+             _("Passerelle : blocage posé dès le démarrage de la machine, jamais levé")),
+            ("vsock on [PORT] | off | status",
+             _("État lisible depuis l'hôte d'une machine virtuelle")),
             ("uninstall [--purge]", ""),
         ]),
     ]

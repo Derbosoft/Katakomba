@@ -135,6 +135,10 @@ class StatusMixin:
             "incoming_return": self._retour_actif,
             "tor_outside_tunnel": self._tor_hors_tunnel,
             "kill_switch_config": bool(self.config.get("kill_switch", True)),
+            # Passerelle (v4.13.0) : blocage posé dès le démarrage de la
+            # machine et jamais levé ; DNS de cette machine non géré.
+            "kill_switch_permanent": self._blocage_permanent(),
+            "gateway_mode":   self._mode_passerelle(),
             "public_exclusions": self._exclusions_publiques(),
         }
 

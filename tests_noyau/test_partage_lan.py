@@ -225,3 +225,46 @@ class PartageLanEtancheTest(_BancLan):
         ip[10:12] = struct.pack("!H", _somme(bytes(ip)))
         os.write(self.tun.fd, bytes(ip) + udp)
         self.assertNotEqual(ecoute.wait(5), 0, "le fournisseur a joint un client du partage")
+
+
+class PartageLanPermanentTest(PartageLanEtancheTest):
+    """Blocage permanent (v4.13.0) : service arrêté, ou machine qui vient de
+    démarrer, les clients du partage ne sortent pas par la carte réseau."""
+
+    def setUp(self):
+        super().setUp()
+        import daemon.core as m_core
+        self.marque = m_core.BLOCAGE_PERMANENT
+        self.marque.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(self.marque.unlink, missing_ok=True)
+
+    def _arreter_le_service(self):
+        """Ce que fait l'arrêt du daemon : partage, puis tunnel, retirés.
+        L'arrêt retire l'adresse de la carte de partage ; sur une passerelle,
+        netplan ou networkd la reposent (adresse fixe), et le routage reste
+        activé : le client a de nouveau une passerelle."""
+        self.tun.fermer()
+        self.d._teardown_lan_sharing()
+        self.d._demonter_tunnel()
+        self.assertNotIn("0.0.0.0/1", sh("ip route show"))
+        sh("ip addr replace 10.0.0.1/24 dev ens19 && sysctl -qw net.ipv4.ip_forward=1")
+
+    def test_temoin_sans_le_reglage_le_client_sort(self):
+        self._arreter_le_service()
+        self.assertTrue(self._udp_du_client(port_source=40010),
+                        "banc faux : sans aucune règle, le client devrait sortir")
+
+    def test_service_arrete_le_client_reste_bloque(self):
+        self.marque.write_text("")
+        self._arreter_le_service()
+        self.assertFalse(self._udp_du_client(port_source=40011),
+                         "service arrêté : le client sort par la carte réseau")
+
+    def test_au_demarrage_de_la_machine(self):
+        """Rien d'autre que ce que pose katakomba-blocage.service."""
+        self._arreter_le_service()
+        sh("iptables -D FORWARD -j KATAKOMBA_LAN_FWD", ok=False)
+        sh("iptables -F KATAKOMBA_LAN_FWD; iptables -X KATAKOMBA_LAN_FWD", ok=False)
+        self.marque.write_text("")
+        self.assertTrue(self.d._poser_lan_permanent(), self.d.log_dump())
+        self.assertFalse(self._udp_du_client(port_source=40012))

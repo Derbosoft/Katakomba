@@ -2,6 +2,14 @@
 # Katakomba — Installation (Ubuntu/Debian)
 # Usage : sudo bash install.sh                      (avec interface graphique)
 #         sudo bash install.sh --sans-interface     (serveur, sans écran)
+#         sudo bash install.sh --passerelle         (passerelle, partage LAN seul)
+#
+# --passerelle (v4.13.0), à combiner avec --sans-interface : pour une machine
+# (virtuelle, en général) qui partage son tunnel et ne sert qu'à cela.  Ni DNS
+# split, ni hook de veille, ni systemd-resolved requis : les clients du
+# partage reçoivent le DNS du VPN par la passerelle.  Le choix est retenu
+# d'une installation à l'autre ; --sans-passerelle y renonce.  Par le
+# paquet : sudo KATAKOMBA_PASSERELLE=1 apt install ./katakomba-headless_….deb
 #
 # Deux modes :
 #  - installation depuis les sources (usage ci-dessus) : copie le code dans
@@ -20,12 +28,21 @@ fi
 # katakomba-headless (qui ne livre pas main.py).  Sans elle : ni GTK, ni
 # lanceur, ni polkit ; la configuration se fait en console (katakomba help).
 AVEC_GUI=1
+PASSERELLE="${KATAKOMBA_PASSERELLE:-}"
 for a in "$@"; do
     case "$a" in
         --sans-interface|--headless) AVEC_GUI=0 ;;
+        --passerelle|--gateway) PASSERELLE=1 ;;
+        --sans-passerelle|--no-gateway) PASSERELLE=0 ;;
         *) echo "Option inconnue : $a" >&2; exit 2 ;;
     esac
 done
+# Ni option ni variable : le choix de l'installation précédente.
+case "$PASSERELLE" in
+    0|1) ;;
+    "") if [ -e /var/lib/katakomba/passerelle ]; then PASSERELLE=1; else PASSERELLE=0; fi ;;
+    *) echo "KATAKOMBA_PASSERELLE : 0 ou 1 attendu" >&2; exit 2 ;;
+esac
 if [ "$PAQUET" = "1" ] && [ ! -f /opt/katakomba/main.py ]; then
     AVEC_GUI=0
 fi
@@ -36,6 +53,11 @@ REAL_USER="${SUDO_USER:-$(logname 2>/dev/null || echo "$USER")}"
 SERVICE_FILE="/etc/systemd/system/katakomba.service"
 CLEANUP_SCRIPT="/usr/local/lib/katakomba-cleanup.sh"
 SLEEP_HOOK="/lib/systemd/system-sleep/katakomba-sleep"
+# Blocage permanent (v4.13.0) : posé avant le réseau, au démarrage de la machine.
+BLOCAGE_UNIT="/etc/systemd/system/katakomba-blocage.service"
+# État lisible depuis l'hôte d'une machine virtuelle (v4.13.0), par vsock.
+VSOCK_SOCKET="/etc/systemd/system/katakomba-vsock.socket"
+VSOCK_SERVICE="/etc/systemd/system/katakomba-vsock@.service"
 CLI_BIN="/usr/local/bin/katakomba"
 if [ "$PAQUET" = "1" ]; then
     # Un paquet n'écrit pas dans /usr/local (réservé à l'administrateur).
@@ -62,6 +84,7 @@ echo "  Source     : $SCRIPT_DIR"
 echo "  Déploiement: $INSTALL_DIR"
 echo "  Utilisateur: $REAL_USER"
 [ "$AVEC_GUI" = 1 ] || echo "  Interface  : aucune (configuration en console)"
+[ "$PASSERELLE" = 0 ] || echo "  Mode       : passerelle (partage LAN seul, sans systemd-resolved)"
 echo ""
 
 if [ "$EUID" -ne 0 ]; then
@@ -253,7 +276,9 @@ echo "[1/7] Installation des dépendances …"
 # et refuse sinon.  Sauter apt sur une machine incomplète produirait une
 # installation à moitié fonctionnelle, plus difficile à diagnostiquer qu'un
 # échec franc.
-DEPS_BIN=(tor openvpn wg python3 curl)
+# iptables (v4.13.0) : absent des images cloud minimales, où l'installation
+# réussissait puis le daemon échouait.
+DEPS_BIN=(tor openvpn wg python3 curl iptables ip6tables iptables-restore ip6tables-restore ip)
 # Interface graphique : GTK 4 et libadwaita 1.5 ou plus (Ubuntu 24.04+, Debian 13+).
 DEPS_GUI=(python3-gi python3-gi-cairo gir1.2-gtk-4.0 gir1.2-adw-1 librsvg2-common)
 gui_disponible() {
@@ -289,28 +314,45 @@ else
     apt-get update -qq
     if [ "$AVEC_GUI" = 1 ]; then
         apt-get install -y tor openvpn wireguard-tools python3 python3-cryptography \
-                           curl "${DEPS_GUI[@]}"
+                           curl iptables iproute2 procps "${DEPS_GUI[@]}"
     else
-        apt-get install -y tor openvpn wireguard-tools python3 python3-cryptography curl
+        apt-get install -y tor openvpn wireguard-tools python3 python3-cryptography \
+                           curl iptables iproute2 procps
     fi
 fi
 
-# dnsmasq ne sert QU'au partage LAN (fonction optionnelle, désactivée par
-# défaut).  On ne l'installe donc pas systématiquement pour le désactiver
-# aussitôt : uniquement s'il est déjà présent ou si le partage est configuré.
-LAN_CONFIGURED=false
-if [ -f "$CONFIG_DIR/config.json" ] && python3 -I -c "
-import json,sys
-d = json.load(open('$CONFIG_DIR/config.json'))
-sys.exit(0 if d.get('lan_auto') or d.get('lan_iface') else 1)
-" 2>/dev/null; then
-    LAN_CONFIGURED=true
-fi
+# dnsmasq ne sert QU'au DHCP du partage LAN (fonction optionnelle,
+# désactivée par défaut).  On ne l'installe donc pas systématiquement pour le
+# désactiver aussitôt : uniquement s'il est déjà présent ou si le partage est
+# configuré avec DHCP.  Il est alors obligatoire (v4.13.0) : sans lui, les
+# clients n'obtenaient aucune adresse, et rien ne le disait à l'installation.
+# Partage sans DHCP (clients à adresse fixe) : inutile.
+LAN_PARTAGE=$(python3 -I -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+if d.get('lan_auto') or d.get('lan_iface'):
+    print('dhcp' if d.get('lan_dhcp', True) is not False else 'fixe')
+" "$CONFIG_DIR/config.json" 2>/dev/null || true)
 if command -v dnsmasq &>/dev/null; then
     echo "    dnsmasq déjà présent (partage LAN disponible)"
-elif [ "$LAN_CONFIGURED" = true ] && [ "${KATAKOMBA_SKIP_APT:-0}" != "1" ]; then
-    echo "    Partage LAN configuré — installation de dnsmasq …"
-    apt-get install -y dnsmasq || true
+elif [ "$LAN_PARTAGE" = dhcp ] && [ "$PAQUET" = "1" ]; then
+    # Un postinst en échec laisserait le paquet à moitié configuré.
+    echo "    ATTENTION : partage LAN avec DHCP configuré, dnsmasq absent —"
+    echo "    les clients n'obtiendront aucune adresse : sudo apt install dnsmasq"
+elif [ "$LAN_PARTAGE" = dhcp ] && [ "${KATAKOMBA_SKIP_APT:-0}" = "1" ]; then
+    echo "ERREUR : partage LAN avec DHCP configuré, mais dnsmasq absent."
+    echo "  Installez-le (sudo apt install dnsmasq), ou relancez sans KATAKOMBA_SKIP_APT."
+    echo "  Clients à adresse fixe : katakomba set lan-dhcp off, puis relancez."
+    exit 1
+elif [ "$LAN_PARTAGE" = dhcp ]; then
+    echo "    Partage LAN avec DHCP configuré — installation de dnsmasq …"
+    if ! apt-get install -y dnsmasq; then
+        echo "ERREUR : dnsmasq impossible à installer : le DHCP du partage LAN ne"
+        echo "  marcherait pas.  Clients à adresse fixe : katakomba set lan-dhcp off."
+        exit 1
+    fi
+elif [ "$LAN_PARTAGE" = fixe ]; then
+    echo "    dnsmasq non requis : partage LAN sans DHCP (clients à adresse fixe)"
 else
     echo "    dnsmasq non installé (inutile : partage LAN désactivé)"
     echo "    Si vous activez le partage LAN : sudo apt install dnsmasq"
@@ -397,8 +439,15 @@ if [ -d /opt/tor-vpn-manager ] && [ ! -L /opt/tor-vpn-manager ] \
     rm -rf /opt/tor-vpn-manager
 fi
 
-# Répertoire d'état (root seul) : données Tor, routes /32 persistées.
+# Répertoire d'état (root seul) : données Tor, routes /32 persistées, et les
+# réglages réservés à root (mode passerelle, blocage permanent).
 install -d -m 755 -o root -g root "$STATE_DIR"
+if [ "$PASSERELLE" = 1 ]; then
+    install -m 644 -o root -g root /dev/null "$STATE_DIR/passerelle"
+    echo "    Mode passerelle retenu ($STATE_DIR/passerelle)"
+else
+    rm -f "$STATE_DIR/passerelle"
+fi
 # Clé de l'interface WireGuard, le temps que wg la lise (voir l'unité).
 install -d -m 700 -o root -g root /etc/wireguard
 if [ -d "$CONFIG_DIR/tor_data" ] && [ ! -L "$CONFIG_DIR/tor_data" ] \
@@ -457,7 +506,7 @@ echo "[3/7] Déploiement du code dans $INSTALL_DIR …"
 # n'importe quel programme lancé sous ce compte pouvait réécrire le daemon et
 # obtenir root au redémarrage suivant, sans mot de passe.
 FICHIERS_CODE=(constants.py main.py console.py validation.py adaptation.py i18n.py daemon gui
-               pont_wg.py ivpn.py mullvad.py
+               pont_wg.py ivpn.py mullvad.py statut_vsock.py
                assets polkit po repair_network.sh katakomba-cli.sh install.sh uninstall.sh
                template.ovpn LICENSE README.md README.fr.md)
 if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
@@ -524,8 +573,13 @@ fi
 # ── [4/7] Services système ───────────────────────────────────────────────────
 echo "[4/7] Configuration des services système …"
 
+if [ "$PASSERELLE" = 1 ]; then
+    # Le DNS de cette machine n'est pas géré : resolved n'est ni installé ni
+    # activé.  (Laissé tel quel s'il est là : le DNS du VPN lui est alors
+    # appliqué.)
+    echo "    Mode passerelle : systemd-resolved ni requis ni activé"
 # Sur Debian 12+, systemd-resolved est un paquet séparé non installé par défaut.
-if ! systemctl list-unit-files systemd-resolved.service --no-legend 2>/dev/null | grep -q systemd-resolved; then
+elif ! systemctl list-unit-files systemd-resolved.service --no-legend 2>/dev/null | grep -q systemd-resolved; then
     if [ "${KATAKOMBA_SKIP_APT:-0}" = "1" ]; then
         echo "    systemd-resolved absent — non installé (KATAKOMBA_SKIP_APT=1)"
     else
@@ -533,10 +587,13 @@ if ! systemctl list-unit-files systemd-resolved.service --no-legend 2>/dev/null 
         apt-get install -y systemd-resolved || true
     fi
 fi
-systemctl enable systemd-resolved 2>/dev/null || true
-# Doit exister : l'unité le déclare en ReadWritePaths (reste de /etc en lecture seule).
-mkdir -p /etc/systemd/resolved.conf.d
-systemctl start  systemd-resolved 2>/dev/null || true
+if [ "$PASSERELLE" = 0 ]; then
+    systemctl enable systemd-resolved 2>/dev/null || true
+    # Doit exister : l'unité le déclare en ReadWritePaths (reste de /etc en
+    # lecture seule ; facultatif, « - », en mode passerelle).
+    mkdir -p /etc/systemd/resolved.conf.d
+    systemctl start  systemd-resolved 2>/dev/null || true
+fi
 
 # Tor géré en subprocess par le daemon — évite le conflit sur le port 9050
 systemctl disable tor 2>/dev/null || true
@@ -564,10 +621,19 @@ cat > "$CLEANUP_SCRIPT" << 'CLEANUP_EOF'
 #            revenait pendant ces intervalles.
 #   filet    lancé 30 s après un blocage gardé : le lève si le service est
 #            resté arrêté.
-#   (rien)   tout, blocage compris : « katakomba stop », désinstallation.
+#   (rien)   tout, blocage compris : « katakomba stop ».
+#   desinstaller  tout, blocage permanent compris.
+#
+# Blocage permanent (v4.13.0, sudo katakomba blocage-permanent on) : le
+# blocage hors tunnel et le filtrage des clients du partage LAN restent
+# posés dans tous les modes, sauf « desinstaller ».
 MODE="${1:-tout}"
 SERVICE=katakomba.service
 ECHEC=/run/katakomba-echec
+PERMANENT=0
+if [ -e /var/lib/katakomba/blocage-permanent ] && [ "$MODE" != desinstaller ]; then
+    PERMANENT=1
+fi
 retirer() {
     # Suppression en boucle : des crashs répétés peuvent empiler plusieurs jumps
     while $1 -D "$2" -j "$3" 2>/dev/null; do :; done
@@ -608,17 +674,23 @@ case "$MODE" in
         if [ "$lever" = 0 ]; then
             echo "Blocage hors tunnel gardé (${tache:-sortie en échec : ${SERVICE_RESULT:-?}})."
             [ -n "$tache" ] || : > "$ECHEC"
-            systemd-run --quiet --collect --on-active=30 \
+            [ "$PERMANENT" = 1 ] || systemd-run --quiet --collect --on-active=30 \
                 --description="Katakomba : levée du blocage si le service est resté arrêté" \
                 "$0" filet 2>/dev/null || true
         fi
         ;;
     filet)
+        [ "$PERMANENT" = 0 ] || exit 0
         case "$(systemctl is-active "$SERVICE" 2>/dev/null)" in
             active|activating|deactivating|reloading) exit 0 ;;
         esac
         ;;
 esac
+if [ "$PERMANENT" = 1 ] && [ "$lever" = 1 ]; then
+    lever=0
+    rm -f "$ECHEC"
+    echo "Blocage permanent : gardé (sudo katakomba blocage-permanent off pour le lever)."
+fi
 if [ "$lever" = 1 ]; then
     # Blocage hors tunnel : le service s'arrête, la connexion normale revient.
     for c in "iptables OUTPUT KATAKOMBA_KILL" "iptables FORWARD KATAKOMBA_KILL_FWD" \
@@ -659,9 +731,13 @@ ip6tables -X KATAKOMBA_KS6                 2>/dev/null
 while ip6tables -D FORWARD -j KATAKOMBA_KS6_FWD 2>/dev/null; do :; done
 ip6tables -F KATAKOMBA_KS6_FWD            2>/dev/null
 ip6tables -X KATAKOMBA_KS6_FWD            2>/dev/null
-while iptables  -D FORWARD -j KATAKOMBA_LAN_FWD 2>/dev/null; do :; done
-iptables  -F KATAKOMBA_LAN_FWD            2>/dev/null
-iptables  -X KATAKOMBA_LAN_FWD            2>/dev/null
+# Filtrage des clients du partage LAN : gardé en blocage permanent, où il
+# les tient hors d'Internet tant que le tunnel n'est pas là.
+if [ "$PERMANENT" = 0 ]; then
+    while iptables  -D FORWARD -j KATAKOMBA_LAN_FWD 2>/dev/null; do :; done
+    iptables  -F KATAKOMBA_LAN_FWD            2>/dev/null
+    iptables  -X KATAKOMBA_LAN_FWD            2>/dev/null
+fi
 # DNS des clients du partage LAN, redirigé vers celui du VPN (table nat)
 while iptables -t nat -D PREROUTING -j KATAKOMBA_LAN_DNS 2>/dev/null; do :; done
 iptables -t nat -F KATAKOMBA_LAN_DNS      2>/dev/null
@@ -683,9 +759,13 @@ if [ -f "$CONFIG_JSON" ]; then
 fi
 # Sockets de statut d'un daemon arrêté brutalement (recréés au démarrage).
 rm -f /run/katakomba.sock /run/katakomba-statut.sock
-# DNS split drop-in
-rm -f /etc/systemd/resolved.conf.d/katakomba-split.conf
-systemctl reload-or-restart systemd-resolved 2>/dev/null || true
+# DNS split drop-in.  resolved n'est relancé que s'il y en avait un :
+# « reload-or-restart » le démarrait aussi là où il est arrêté exprès (mode
+# passerelle, v4.13.0).
+if [ -e /etc/systemd/resolved.conf.d/katakomba-split.conf ]; then
+    rm -f /etc/systemd/resolved.conf.d/katakomba-split.conf
+    systemctl reload-or-restart systemd-resolved 2>/dev/null || true
+fi
 [ "$pause" = 0 ] || sleep "$pause"
 exit 0
 CLEANUP_EOF
@@ -788,13 +868,88 @@ TimeoutStopSec=30
 WantedBy=multi-user.target
 SERVICE_EOF
 
+# Blocage permanent (v4.13.0) : posé au démarrage de la machine, avant le
+# réseau et avant katakomba.service, par le même code que le daemon.  Activé
+# par « sudo katakomba blocage-permanent on » ; sans le réglage, l'unité ne
+# fait rien (ConditionPathExists).  Pas d'ExecStop : rien n'est levé à
+# l'arrêt.  Ordonnancement de nftables.service.
+cat > "$BLOCAGE_UNIT" << BLOCAGE_EOF
+[Unit]
+Description=Katakomba — blocage permanent hors tunnel, posé avant le réseau
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target katakomba.service shutdown.target
+Wants=network-pre.target
+Conflicts=shutdown.target
+ConditionPathExists=$STATE_DIR/blocage-permanent
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=$INSTALL_DIR
+ExecStart=/usr/bin/python3 -m daemon.permanent poser
+Environment=PYTHONDONTWRITEBYTECODE=1
+NoNewPrivileges=yes
+ProtectHome=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=katakomba-blocage
+
+[Install]
+WantedBy=sysinit.target
+BLOCAGE_EOF
+
+# État lisible depuis l'hôte d'une machine virtuelle (v4.13.0) : status, ip,
+# doctor et restart, rien d'autre, pour l'hôte seul (CID 2).  Désactivé par
+# défaut : « sudo katakomba vsock on [PORT] ».  Un processus par connexion,
+# qui tourne en root pour « restart » ; l'hôte d'une machine virtuelle a
+# déjà tout pouvoir sur elle.
+cat > "$VSOCK_SOCKET" << 'VSOCK_EOF'
+[Unit]
+Description=Katakomba — état lisible depuis l'hôte (vsock)
+
+[Socket]
+ListenStream=vsock::51875
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target
+VSOCK_EOF
+cat > "$VSOCK_SERVICE" << VSOCK_EOF
+[Unit]
+Description=Katakomba — réponse à l'hôte (vsock)
+
+[Service]
+ExecStart=/usr/bin/python3 -I $INSTALL_DIR/statut_vsock.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+SyslogIdentifier=katakomba-vsock
+RuntimeMaxSec=180
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+PrivateTmp=yes
+VSOCK_EOF
+
 systemctl daemon-reload
 systemctl enable katakomba
 echo "    Service  : $SERVICE_FILE"
 echo "    Activé   : démarrage automatique au boot"
+if [ -e "$STATE_DIR/blocage-permanent" ]; then
+    systemctl enable katakomba-blocage.service 2>/dev/null || true
+    echo "    Blocage permanent : posé dès le démarrage de la machine"
+else
+    systemctl disable katakomba-blocage.service 2>/dev/null || true
+fi
 
 # ── [6/7] Hook veille/réveil ─────────────────────────────────────────────────
 echo "[6/7] Hook veille/réveil (résolution VPN-sans-Tor après suspend) …"
+if [ "$PASSERELLE" = 1 ]; then
+    rm -f "$SLEEP_HOOK"
+    echo "    Mode passerelle : pas de hook de veille"
+else
 
 # Après un réveil, les circuits Tor sont périmés mais le port 9050 peut rester
 # ouvert → OpenVPN se reconnecte sans passer par Tor. Le hook force un redémarrage
@@ -814,6 +969,7 @@ exit 0
 SLEEP_EOF
 chmod +x "$SLEEP_HOOK"
 echo "    Hook     : $SLEEP_HOOK"
+fi
 
 # ── [7/7] CLI + Lanceur GUI ──────────────────────────────────────────────────
 echo "[7/7] Création du CLI katakomba et du lanceur GUI …"
@@ -879,7 +1035,7 @@ echo ""
 echo "── Vérification ────────────────────────────────────────"
 all_ok=true
 
-for bin in tor openvpn wg python3 curl; do
+for bin in tor openvpn wg python3 curl iptables; do
     if command -v "$bin" &>/dev/null; then
         echo "  OK  $bin"
     else
@@ -907,6 +1063,8 @@ fi
 
 if systemctl is-active systemd-resolved &>/dev/null; then
     echo "  OK  systemd-resolved actif"
+elif [ "$PASSERELLE" = 1 ]; then
+    echo "  --  systemd-resolved : non requis (mode passerelle)"
 else
     echo "  KO  systemd-resolved inactif"
     all_ok=false
@@ -918,6 +1076,9 @@ systemctl is-enabled tor &>/dev/null \
 
 [ -f "$SERVICE_FILE" ]             && echo "  OK  service systemd créé"
 [ -x "$SLEEP_HOOK" ]               && echo "  OK  hook veille/réveil installé"
+[ "$PASSERELLE" = 1 ]              && echo "  OK  mode passerelle (partage LAN seul)"
+[ -e "$STATE_DIR/blocage-permanent" ] && systemctl is-enabled katakomba-blocage &>/dev/null \
+                                   && echo "  OK  blocage permanent : posé dès le démarrage"
 systemctl is-enabled katakomba &>/dev/null && echo "  OK  démarrage auto activé"
 [ -x "$CLI_BIN" ]                  && echo "  OK  commande katakomba disponible"
 if [ "$AVEC_GUI" = 1 ]; then

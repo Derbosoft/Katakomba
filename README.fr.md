@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.12.0
+# Katakomba — v4.13.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.12.0-blue)
+![Version](https://img.shields.io/badge/Version-4.13.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -24,23 +24,24 @@ Daemon + interface graphique pour router **tout le trafic réseau via WireGuard 
 2. [Prérequis](#prérequis)
 3. [Installation](#installation)
 4. [Serveur sans écran](#serveur-sans-écran)
-5. [WireGuard à travers Tor](#wireguard-à-travers-tor)
-6. [Structure du projet](#structure-du-projet)
-7. [Interface graphique](#interface-graphique)
-8. [CLI `katakomba`](#cli-katakomba)
-9. [Fonctionnement détaillé du daemon](#fonctionnement-détaillé-du-daemon)
-10. [Chaînes iptables](#chaînes-iptables)
-11. [Failover et watchdog](#failover-et-watchdog)
-12. [Partage LAN](#partage-lan)
-13. [DNS split — Domaines locaux](#dns-split--domaines-locaux)
-14. [Configuration Tor (torrc)](#configuration-tor-torrc)
-15. [Réparation réseau automatique](#réparation-réseau-automatique)
-16. [Format config.json](#format-configjson)
-17. [Tests](#tests)
-18. [Traductions](#traductions)
-19. [Sécurité](#sécurité)
-20. [Premiers pas](#premiers-pas)
-21. [Désinstallation](#désinstallation)
+5. [Passerelle (machine virtuelle)](#passerelle-machine-virtuelle)
+6. [WireGuard à travers Tor](#wireguard-à-travers-tor)
+7. [Structure du projet](#structure-du-projet)
+8. [Interface graphique](#interface-graphique)
+9. [CLI `katakomba`](#cli-katakomba)
+10. [Fonctionnement détaillé du daemon](#fonctionnement-détaillé-du-daemon)
+11. [Chaînes iptables](#chaînes-iptables)
+12. [Failover et watchdog](#failover-et-watchdog)
+13. [Partage LAN](#partage-lan)
+14. [DNS split — Domaines locaux](#dns-split--domaines-locaux)
+15. [Configuration Tor (torrc)](#configuration-tor-torrc)
+16. [Réparation réseau automatique](#réparation-réseau-automatique)
+17. [Format config.json](#format-configjson)
+18. [Tests](#tests)
+19. [Traductions](#traductions)
+20. [Sécurité](#sécurité)
+21. [Premiers pas](#premiers-pas)
+22. [Désinstallation](#désinstallation)
 
 ---
 
@@ -96,9 +97,10 @@ Le GUI et le daemon sont **entièrement découplés** : le GUI écrit uniquement
 | openvpn | 2.4+ | Tunnel chiffré vers le fournisseur VPN (transport OpenVPN) |
 | wireguard-tools + module noyau `wireguard` | — | Transport WireGuard (module présent dans tout noyau Linux ≥ 5.6) |
 | python3-cryptography | — | Emballage VMess du pont WireGuard et clés du WireGuard géré (IVPN, Mullvad) |
-| dnsmasq | — | **Optionnel** — serveur DHCP, uniquement pour le partage LAN |
+| iptables, iproute2 | — | Blocage hors tunnel, routes, partage LAN (installés d'office depuis la v4.13.0 : absents des images cloud minimales) |
+| dnsmasq | — | **Optionnel** — serveur DHCP du partage LAN ; obligatoire quand le partage sert le DHCP *(v4.13.0)* |
 | curl | — | Mesure de débit et tests de connectivité |
-| systemd + systemd-resolved | — | Gestion du service et DNS |
+| systemd + systemd-resolved | — | Gestion du service et DNS (resolved non requis en [mode passerelle](#passerelle-machine-virtuelle)) |
 
 ---
 
@@ -285,7 +287,7 @@ En root, ou en membre du groupe `katakomba` (sans `sudo`, comme l'interface). Le
 | `compte liste\|ajouter\|retirer <fournisseur> …` | Comptes d'un fournisseur : `ajouter` demande les identifiants OpenVPN, ou ajoute des `.conf` donnés en argument ; `retirer <fournisseur> wg2` retire un fichier WireGuard |
 | `exclusion liste\|ajouter\|retirer <adresse\|réseau\|domaine>` | Exclusions du tunnel et domaines locaux, mêmes contrôles que l'interface |
 | `reglage` | Réglages actuels |
-| `reglage <réglage> <valeur>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (adresse ou `aucun`), `circuit-check`, `circuit-min-kbs`, `circuit-retries`, `circuit-recheck-min` (minutes, `0` = une fois par démarrage), `primary-retry-min` (minutes, `0` = jamais) |
+| `reglage <réglage> <valeur>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (adresse ou `aucun`), `circuit-check`, `circuit-min-kbs`, `circuit-retries`, `circuit-recheck-min` (minutes, `0` = une fois par démarrage), `primary-retry-min` (minutes, `0` = jamais) ; partage LAN *(v4.13.0)* : `lan-share`, `lan-dhcp` (`on`/`off`), `lan-iface` (carte, ou `aucun`), `lan-gateway` (adresse IPv4), `lan-subnet` (réseau IPv4) |
 | `sauvegarde exporter\|restaurer <fichier.zip>` | Même format que la sauvegarde de l'interface ; l'export est en `600` (il contient les identifiants) |
 
 Messages et aide (`katakomba help`) suivent la langue du système. Les commandes existent aussi en anglais (`provider add`, `exclude remove`, `set`, `backup`, `start --trial`…), le nom sous lequel les présente l'aide.
@@ -295,6 +297,74 @@ Messages et aide (`katakomba help`) suivent la langue du système. Les commandes
 Une fois Internet routé dans le tunnel, la réponse à une connexion entrante partirait elle aussi dans le tunnel : elle arriverait au client depuis une autre adresse, et la session tomberait. Démarrer le service sur un serveur administré en SSH vous coupait la main.
 
 Le daemon marque désormais les connexions entrantes et renvoie leurs réponses par la carte réseau par laquelle elles sont arrivées (voir [Connexions entrantes](#connexions-entrantes-v3100)). Seules les réponses sont concernées : elles vont à qui a contacté la machine par son adresse réelle, et la connaît donc déjà. **Tout ce que la machine émet elle-même passe toujours par le tunnel.** Une session SSH ouverte avant le démarrage du service survit à la montée du tunnel, aux reconnexions et à l'arrêt ; `katakomba doctor` le vérifie (ligne *Connexions entrantes*).
+
+---
+
+## Passerelle (machine virtuelle)
+
+*(v4.13.0)* Katakomba peut tourner dans une petite machine virtuelle qui ne sert qu'à partager son tunnel : l'hôte, ou d'autres machines, n'ont alors plus que cette passerelle pour route vers Internet.
+
+### Installer
+
+```bash
+sudo bash install.sh --sans-interface --passerelle
+# par le paquet :
+sudo KATAKOMBA_PASSERELLE=1 apt install ./katakomba-headless_<version>_all.deb
+```
+
+`--passerelle` (retenu d'une mise à jour à l'autre, `--sans-passerelle` pour y renoncer) : ni DNS split, ni hook de veille, ni systemd-resolved requis. Les clients du partage reçoivent le DNS du VPN par la passerelle (`KATAKOMBA_LAN_DNS`), sans lui. Si resolved est tout de même actif, le DNS du VPN lui est appliqué ; sinon, la résolution de la passerelle elle-même n'est pas gérée. `katakomba doctor` en tient compte et vérifie le partage LAN.
+
+`iptables` fait partie des dépendances installées (absent des images cloud minimales). `dnsmasq` est **obligatoire** quand le partage LAN sert le DHCP : l'installation échoue sans lui. Avec des clients à adresse fixe (`lan-dhcp off`), il n'est pas nécessaire.
+
+### Partage LAN en console
+
+```bash
+katakomba reglage lan-iface ens4          # carte vers les clients, PAS celle de la route par défaut
+katakomba reglage lan-gateway 10.0.0.1    # adresse que prend la passerelle sur cette carte
+katakomba reglage lan-subnet 10.0.0.0/24
+katakomba reglage lan-dhcp off            # clients à adresse fixe
+katakomba reglage lan-share on
+sudo katakomba restart
+```
+
+Il faut **deux cartes** : l'une porte la route par défaut (Tor sort par elle), l'autre mène aux clients. Le partage refuse la carte de la route par défaut, et retire les adresses de la carte de partage pour y poser `lan-gateway`. Un client à adresse fixe prend une adresse du sous-réseau, `lan-gateway` comme passerelle **et comme DNS**.
+
+### Blocage permanent
+
+```bash
+sudo katakomba blocage-permanent on       # off, status
+```
+
+Le blocage hors tunnel (sorties et routage) et le filtrage des clients du partage (`KATAKOMBA_LAN_FWD`) sont posés **dès le démarrage de la machine**, avant le réseau, par `katakomba-blocage.service`, puis gardés à l'arrêt du service, après le filet de 30 s et par `repair_network.sh`. Seuls `blocage-permanent off` et la désinstallation les retirent. Le réglage impose le blocage hors tunnel même si `kill-switch` est à `off`. Service arrêté, rien ne sort hors du tunnel sauf Tor et le réseau local, et les clients du partage ne sortent pas du tout. Vérifié sur un vrai noyau : service arrêté, adresse de la carte de partage reposée par le système, un client ne sort pas par la carte réseau.
+
+### État lisible depuis l'hôte (vsock)
+
+```bash
+sudo katakomba vsock on [PORT]            # 51875 par défaut ; off, status
+# depuis l'hôte :
+echo status | socat - VSOCK-CONNECT:<CID de la VM>:51875
+```
+
+Quatre commandes, une ligne de JSON en réponse : `status` (le JSON du socket d'état), `ip` (adresse de sortie, demandée par le tunnel), `doctor` (comme `katakomba doctor --json`), `restart`. Rien d'autre : ni configuration, ni arrêt, ni levée du blocage. Seul l'hôte de la machine virtuelle est servi (CID 2) ; sur une machine qui héberge elle-même des machines virtuelles, leurs connexions sont refusées. Désactivé par défaut.
+
+### Plusieurs passerelles, un même lot de comptes
+
+Deux passerelles sur le même compte au même moment : le fournisseur coupe l'une des deux. Un script posé par l'administrateur, **`/usr/local/lib/katakomba/reserver-compte`**, est appelé avant l'usage de chaque compte et peut le refuser :
+
+```
+reserver-compte reserver|liberer <fournisseur> <transport> <numéro> <empreinte>
+```
+
+Code 0 : compte accordé ; tout autre code, ou pas de réponse en 30 s : refusé, le compte passe en quarantaine et le suivant est essayé. `liberer` est appelé quand le compte est quitté (changement de compte, arrêt) — au mieux : après un plantage, il ne vient pas, prévoyez une expiration de votre côté. `reserver` est rappelé à chaque reconnexion du même compte. L'empreinte (16 caractères hexadécimaux, SHA-256 de l'identifiant OpenVPN ou du nom du fichier `.conf`) est la même sur chaque passerelle qui a le même compte, sans le dévoiler. Le script et son dossier doivent appartenir à root, sans droit d'écriture pour le groupe ni les autres : sinon il est refusé, et **aucun compte n'est utilisé** tant qu'il est là. Il tourne dans le bac à sable du service : réseau local joignable (le blocage hors tunnel le laisse passer), pas de vsock, fichiers en écriture seulement sous `/run`, `/etc/katakomba` et `/var/lib/katakomba`. Le WireGuard géré (IVPN, Mullvad) n'est pas concerné : chaque machine y a sa propre clé.
+
+### Derrière un réseau NATé
+
+La carte de sortie de la passerelle peut être derrière le NAT de l'hôte : les routes `/32` des relais Tor et la règle `uidrange` de `debian-tor` passent par la passerelle d'origine, quelle qu'elle soit, pourvu que la route par défaut ait un `via`. Deux points sont de votre côté :
+
+- **l'hôte ne doit pas renvoyer le trafic de la passerelle vers elle-même.** Si sa seule route par défaut mène à la passerelle, le trafic que la VM émet (Tor compris) et que l'hôte NATe repart… vers la VM : Tor dépendrait du tunnel qui dépend de lui. Il faut une route à part pour ce qui vient de la VM (règle de routage sur la carte d'entrée, ou table dédiée vers la vraie passerelle) ;
+- **l'IPv6 de l'hôte** ne passe pas par le tunnel : sans route IPv6 par défaut ailleurs, rien ne sort ; sinon il sort à découvert.
+
+Pour une carte gérée par systemd-networkd (images cloud) : `ManageForeignRoutes=no` et `ManageForeignRoutingPolicyRules=no` dans `networkd.conf`, et la carte de partage déclarée sans passerelle ni DHCP, ou `Unmanaged=yes`.
 
 ---
 
@@ -462,6 +532,7 @@ katakomba/
 ├── constants.py         Constantes partagées interface + daemon (chemins, config par défaut)
 ├── validation.py        Listes blanches : directives .ovpn, .conf WireGuard, options torrc (daemon + GUI)
 ├── pont_wg.py           Pont WireGuard → Tor : emballages Proton (TLS), IVPN (VMess), Mullvad (udp-over-tcp)
+├── statut_vsock.py      État lisible depuis l'hôte d'une VM : status, ip, doctor, restart (vsock)
 ├── ivpn.py              Configuration WireGuard d'un compte IVPN, obtenue par son API à travers Tor
 ├── mullvad.py           Appareils WireGuard d'un compte Mullvad, par son API à travers Tor
 ├── essai/               essai_wg_tor.sh : essai réel d'un .conf par Tor, sans root ni installation
@@ -491,6 +562,7 @@ katakomba/
 │   ├── openvpn.py       OpenVPNMixin — transport OpenVPN
 │   ├── wireguard.py     WireGuardMixin — transport WireGuard : interface, clés, pont, poignées de main
 │   ├── gestion_wg.py    GestionWgMixin — WireGuard géré : session IVPN de ce PC, clé, serveurs
+│   ├── permanent.py     Blocage permanent, posé au démarrage de la machine (katakomba-blocage.service)
 │   └── watchdog.py      WatchdogMixin — surveillance connectivité, redémarrage complet
 │
 ├── gui/                 Interface graphique (GTK 4 + libadwaita)
@@ -815,6 +887,10 @@ katakomba doctor           # Diagnostic des invariants — verdict OK/WARN/KO
 katakomba logs [n]         # n dernières lignes de journal (défaut : 60)
 katakomba follow           # Logs en direct (Ctrl+C pour quitter)
 katakomba ip               # IP publique actuelle
+
+# Passerelle (requiert root, v4.13.0)
+sudo katakomba blocage-permanent on|off|status   # posé dès le démarrage, jamais levé
+sudo katakomba vsock on [PORT]|off|status        # état lisible depuis l'hôte de la VM
 ```
 
 
@@ -1637,7 +1713,7 @@ python3 outils/traductions.py verifier        # manques, {champs} incohérents (
 
 **Credentials VPN :** stockés en base64 dans `config.json`. C'est de l'obfuscation, **pas du chiffrement**. Le fichier est en mode `660 root:katakomba`, dans un répertoire `2770 root:katakomba`.
 
-**Blocage hors tunnel :** tant que le service n'est pas arrêté, rien ne sort hors du tunnel, sauf Tor et le réseau local — reconnexions, redémarrages et sorties en échec compris *(v4.7.0)* (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)).
+**Blocage hors tunnel :** tant que le service n'est pas arrêté, rien ne sort hors du tunnel, sauf Tor et le réseau local — reconnexions, redémarrages et sorties en échec compris *(v4.7.0)*. Avec le [blocage permanent](#blocage-permanent) *(v4.13.0)*, aussi service arrêté et dès le démarrage de la machine (voir [Blocage hors tunnel](#blocage-hors-tunnel-kill-switch--katakomba_kill-v380)).
 
 **Entrées par le tunnel *(v4.12.0)* :** rien de neuf n'entre par le tunnel, que le blocage soit activé ou non. Seules passent les réponses à ce que la machine, ou un client du partage LAN, a ouvert : le fournisseur VPN ne joint ni les services de la machine ni ceux qu'elle route.
 

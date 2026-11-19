@@ -156,6 +156,7 @@ class SuiteIntegrityTest(unittest.TestCase):
         "retour":   "test_retour.py",
         "status":   "test_config_status.py",
         "watchdog": "test_watchdog.py",
+        "permanent": "test_passerelle.py",
     }
 
     def test_tous_les_modules_daemon_sont_couverts(self):

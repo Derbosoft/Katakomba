@@ -292,6 +292,33 @@ class ReglageTest(Console):
         _, sortie, _ = self.lancer("set", "kill-switch", "off")
         self.assertIn("à découvert", sortie)
 
+    def test_partage_lan_en_console(self):
+        """v4.13.0 : une passerelle sans écran règle son partage LAN."""
+        for args in (("lan-iface", "ens19"), ("lan-gateway", "10.9.0.1"),
+                     ("lan-subnet", "10.9.0.7/24"), ("lan-dhcp", "off"),
+                     ("lan-share", "on")):
+            code, _, err = self.lancer("set", *args)
+            self.assertEqual(code, 0, (args, err))
+        c = self.config()
+        self.assertEqual((c["lan_iface"], c["lan_gateway"], c["lan_subnet"]),
+                         ("ens19", "10.9.0.1", "10.9.0.0/24"))
+        self.assertIs(c["lan_dhcp"], False)
+        self.assertIs(c["lan_auto"], True)
+        self.assertIn("lan-iface           ens19", self.lancer("set")[1])
+
+    def test_partage_lan_valeurs_refusees(self):
+        for args in (("lan-iface", "lo"), ("lan-iface", "docker0"), ("lan-iface", "a b"),
+                     ("lan-gateway", "fe80::1"), ("lan-gateway", "x"),
+                     ("lan-subnet", "10.0.0.0/33")):
+            code, _, _ = self.lancer("set", *args)
+            self.assertEqual(code, 1, args)
+        self.assertFalse(modele.CONFIG_FILE.exists())
+        # Passerelle hors de son sous-réseau : refusée une fois le partage activé.
+        self.assertEqual(self.lancer("set", "lan-gateway", "192.168.5.1")[0], 0)
+        code, _, err = self.lancer("set", "lan-share", "on")
+        self.assertEqual(code, 1)
+        self.assertIn("n'appartient pas", err)
+
 
 class SauvegardeTest(Console):
 

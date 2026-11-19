@@ -198,7 +198,12 @@ class TorMixin:
         except OSError as e:
             self._log(f"[tor] Répertoire de données inutilisable : {e}", "ERROR")
             return
-        if user is None and self._kill_active:
+        if user is None and self._kill_active and self._blocage_permanent():
+            # Passerelle : rien ne sort en direct, Tor resté root non plus.
+            self._log("[tor] Tor reste en root : le blocage permanent l'empêche de "
+                      "joindre ses relais — aucune connexion possible. Utilisateur "
+                      "debian-tor : sudo apt install --reinstall tor", "ERROR")
+        elif user is None and self._kill_active:
             # Le blocage laisse passer Tor par son utilisateur, debian-tor.
             # Resté root, Tor serait bloqué, et toute connexion avec lui.
             self._log("[tor] Tor reste en root : le blocage hors tunnel "

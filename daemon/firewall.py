@@ -62,6 +62,17 @@ class FirewallMixin:
     # redémarrages du service et ses sorties en échec (v4.7.0 : le script
     # d'ExecStopPost ne les retire qu'à l'arrêt demandé), revérifiées toutes
     # les 30 s (_verifier_blocage).
+    #
+    # Blocage permanent (v4.13.0, sudo katakomba blocage-permanent on) : les
+    # mêmes chaînes, et le filtrage des clients du partage LAN, posés dès le
+    # démarrage de la machine (katakomba-blocage.service, avant le réseau) et
+    # jamais levés — ni à l'arrêt, ni par le filet.  Seule la désinstallation
+    # les retire.  Pour une passerelle, qui ne doit jamais rien laisser sortir
+    # en direct.
+
+    def _blocage_voulu(self) -> bool:
+        """Réglage kill_switch, ou blocage permanent (qui l'impose)."""
+        return bool(self.config.get("kill_switch", True)) or self._blocage_permanent()
 
     def _kill_switch_destinations(self, v6: bool) -> list:
         """Destinations voulues hors tunnel : DNS local (split DNS) et
@@ -192,7 +203,7 @@ class FirewallMixin:
         aucun instant sans blocage."""
         if self._kill_active:
             return True
-        if not self.config.get("kill_switch", True):
+        if not self._blocage_voulu():
             self._log("Blocage hors tunnel désactivé dans les réglages : pendant "
                       "une reconnexion, le trafic peut sortir à découvert.", "WARN")
             return False
@@ -231,8 +242,12 @@ class FirewallMixin:
 
     @_exclusif
     def _kill_switch_off(self, force: bool = False):
-        """Retire le blocage.  force : nettoie même s'il n'a pas abouti."""
+        """Retire le blocage.  force : nettoie même s'il n'a pas abouti.
+        Jamais en blocage permanent : une pose ratée laisse les règles déjà
+        en place (celles du démarrage de la machine), plutôt que rien."""
         if not (self._kill_active or force):
+            return
+        if self._blocage_permanent():
             return
         for tool, parent, chain, _v6, _fwd in KILL_CHAINS:
             # Jumps d'abord : une chaîne vidée mais encore branchée ne
@@ -262,7 +277,8 @@ class FirewallMixin:
         le retirait sans bruit : le statut affichait « actif », et plus rien
         ne bloquait.  Vrai si quelque chose a été reposé."""
         repose = False
-        if self.config.get("kill_switch", True) and not self._kill_renonce:
+        if self._blocage_permanent() or (self.config.get("kill_switch", True)
+                                         and not self._kill_renonce):
             chaines = [(t, p, c) for t, p, c, _v6, _fwd in KILL_CHAINS]
             if not self._kill_active:
                 repose = self._kill_switch_on()       # pose impossible plus tôt
@@ -299,7 +315,11 @@ class FirewallMixin:
             if etat["voulue"]:
                 repose = self._verifier_garde(nom) or repose
         if self._lan_active:
-            repose = self._verifier_lan_fwd() or repose
+            repose = self._verifier_lan_fwd(self._lan_iface, self._lan_tun) or repose
+        elif self._blocage_permanent() and self._iface_lan_permanente():
+            # Partage pas encore monté (tunnel absent) : le filtrage posé au
+            # démarrage de la machine tient les clients en attendant.
+            repose = self._verifier_lan_fwd(self._iface_lan_permanente(), TUN_IFACE) or repose
         return repose
 
     # ── Garde du compte katakomba-vpn ─────────────────────────────────────────
@@ -636,17 +656,33 @@ class FirewallMixin:
             return False
         return True
 
-    def _verifier_lan_fwd(self) -> bool:
+    def _iface_lan_permanente(self) -> str:
+        """Carte du partage LAN dont le blocage permanent filtre les clients,
+        partage monté ou non : celle de la configuration, si le partage est
+        activé.  Vide sinon."""
+        iface = str(self.config.get("lan_iface", "")).strip()
+        if self.config.get("lan_auto") and interface_lan_admissible(iface):
+            return iface
+        return ""
+
+    def _poser_lan_permanent(self) -> bool:
+        """Démarrage de la machine, blocage permanent : les clients du partage
+        ne sortent que par le tunnel, encore absent.  Vrai si rien n'est à
+        poser ou si c'est posé."""
+        iface = self._iface_lan_permanente()
+        return not iface or self._poser_lan_fwd(iface, TUN_IFACE)
+
+    def _verifier_lan_fwd(self, iface: str, tun: str) -> bool:
         """Toutes les 30 s, avec le blocage hors tunnel (v4.12.0) : un
         pare-feu rechargé retirait la chaîne, et le trafic des clients
         sortait par la carte réseau dès que le tunnel tombait.  Vrai si
         elle a été reposée."""
-        attendu = len(self._regles_lan_fwd(self._lan_iface, self._lan_tun))
+        attendu = len(self._regles_lan_fwd(iface, tun))
         if not self._chaines_intactes([("iptables", "FORWARD", KS_LAN_CHAIN)],
                                       {KS_LAN_CHAIN: attendu}):
             self._log("Partage LAN : filtrage des clients modifié ou retiré par un "
                       "autre outil (pare-feu rechargé ?) — reposé.", "WARN")
-            self._poser_lan_fwd(self._lan_iface, self._lan_tun)
+            self._poser_lan_fwd(iface, tun)
             return True
         if self._brancher("iptables", "FORWARD", KS_LAN_CHAIN):
             self._log(f"Partage LAN : {KS_LAN_CHAIN} n'était plus en tête de "
@@ -742,11 +778,16 @@ class FirewallMixin:
         except ValueError:
             net = None
         try:
-            for _ in range(25):
-                if _run("iptables", "-D", "FORWARD", "-j", KS_LAN_CHAIN).returncode != 0:
-                    break
-            _run("iptables", "-F", KS_LAN_CHAIN)
-            _run("iptables", "-X", KS_LAN_CHAIN)
+            if self._blocage_permanent():
+                # Les clients restent tenus : sans tunnel, rien ne sort.
+                # Remplacé d'un seul tenant au prochain partage.
+                self._poser_lan_fwd(self._lan_iface or iface, TUN_IFACE)
+            else:
+                for _ in range(25):
+                    if _run("iptables", "-D", "FORWARD", "-j", KS_LAN_CHAIN).returncode != 0:
+                        break
+                _run("iptables", "-F", KS_LAN_CHAIN)
+                _run("iptables", "-X", KS_LAN_CHAIN)
             self._retirer_dns_lan()
             if net:
                 # Supprimer avec l'interface RÉELLEMENT utilisée à la création,

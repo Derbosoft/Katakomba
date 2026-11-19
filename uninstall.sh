@@ -40,25 +40,36 @@ done
 
 echo "Arrêt du service …"
 systemctl disable --now katakomba 2>/dev/null || true
+# Blocage permanent et écoute vsock (v4.13.0).  Le réglage du blocage
+# permanent reste, comme les autres (effacé par --purge) : une
+# réinstallation le reprend.
+systemctl disable --now katakomba-vsock.socket 2>/dev/null || true
+systemctl disable katakomba-blocage.service 2>/dev/null || true
+systemctl stop katakomba-blocage.service 2>/dev/null || true
 
 # Le script de nettoyage défait exactement ce que le daemon installe
-# (règles ip6tables/iptables, NAT du partage LAN, dnsmasq, drop-in DNS).
+# (règles ip6tables/iptables, NAT du partage LAN, dnsmasq, drop-in DNS) —
+# blocage permanent compris : seule la désinstallation le lève.
 for c in /usr/lib/katakomba/katakomba-cleanup.sh /usr/local/lib/katakomba-cleanup.sh; do
     if [ -x "$c" ]; then
-        "$c" || true
+        "$c" desinstaller || true
     fi
 done
 
 echo "Retrait des fichiers système …"
 rm -f /etc/systemd/system/katakomba.service \
+      /etc/systemd/system/katakomba-blocage.service \
+      /etc/systemd/system/katakomba-vsock.socket \
+      /etc/systemd/system/katakomba-vsock@.service \
       /lib/systemd/system-sleep/katakomba-sleep \
       /usr/local/lib/katakomba-cleanup.sh \
       /etc/systemd/resolved.conf.d/katakomba-split.conf \
       /etc/xdg/autostart/katakomba.desktop \
       /etc/wireguard/katakomba-wg.conf
-rm -rf /usr/lib/katakomba /run/katakomba
+rm -rf /usr/lib/katakomba /run/katakomba /etc/systemd/system/katakomba-vsock.socket.d
 systemctl daemon-reload 2>/dev/null || true
-systemctl reload-or-restart systemd-resolved 2>/dev/null || true
+# Pas en mode passerelle : resolved n'y est pas forcément voulu.
+[ -e /var/lib/katakomba/passerelle ] || systemctl reload-or-restart systemd-resolved 2>/dev/null || true
 
 if [ "$PAQUET" = "0" ]; then
     rm -f /usr/local/bin/katakomba /usr/share/applications/katakomba.desktop \

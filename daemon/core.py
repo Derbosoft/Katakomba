@@ -63,6 +63,16 @@ REPRISES_FILE     = STATE_DIR / "reprises.json"
 REPRISES_MEMOIRE  = 900   # s : au-delà, une ancienne panne ne compte plus
 # Mesures des circuits tirés par cette machine : base du seuil relatif (v4.8.0).
 CIRCUITS_FILE     = STATE_DIR / "circuits.json"
+# Passerelle (v4.13.0) : réglages de l'administrateur, dans STATE_DIR (root
+# seul), hors de portée du groupe katakomba.  Le fichier présent : activé.
+#   blocage-permanent  blocage hors tunnel posé dès le démarrage de la
+#                      machine, jamais levé (seule la désinstallation le retire)
+#   passerelle         partage LAN seul : ni DNS split, ni systemd-resolved requis
+BLOCAGE_PERMANENT = STATE_DIR / "blocage-permanent"
+MODE_PASSERELLE   = STATE_DIR / "passerelle"
+# Script de réservation des comptes (v4.13.0), posé par l'administrateur :
+# appelé avant l'usage d'un compte, il peut le refuser.  Voir SessionMixin.
+HOOK_RESERVATION  = Path("/usr/local/lib/katakomba/reserver-compte")
 
 # Processus orphelins d'une session précédente, reconnus à leur ligne de
 # commande.  Jamais « pkill -x openvpn » ni « pkill -x tor » : ce serait
@@ -359,6 +369,9 @@ class DaemonCore:
         # signifie souvent « quota de connexions simultanées atteint », donc un
         # compte parfaitement valide qui remarchera plus tard.
         self._account_cooldown     = {}
+        # Script de réservation (SessionMixin) : compte tenu, refus signalé.
+        self._compte_reserve       = None
+        self._hook_refus_signale   = False
         # Passes complètes (tous fournisseurs, tous comptes) épuisées sur des
         # refus d'authentification.
         self._auth_passes          = 0
@@ -509,6 +522,21 @@ class DaemonCore:
         cfg["providers"] = fournisseurs
         return cfg
 
+    # ── Réglages de l'administrateur (v4.13.0) ────────────────────────────────
+
+    @staticmethod
+    def _blocage_permanent() -> bool:
+        """Blocage hors tunnel permanent : posé avant le réseau au démarrage
+        de la machine (katakomba-blocage.service), gardé à l'arrêt du
+        service.  Il impose le blocage, quel que soit le réglage kill_switch."""
+        return os.path.lexists(BLOCAGE_PERMANENT)
+
+    @staticmethod
+    def _mode_passerelle() -> bool:
+        """Installé avec --passerelle : le DNS de cette machine n'est pas
+        géré (le partage LAN donne le sien aux clients)."""
+        return os.path.lexists(MODE_PASSERELLE)
+
     # ── Logging ───────────────────────────────────────────────────────────────
 
     def _log(self, msg: str, level: str = "INFO"):
@@ -524,6 +552,7 @@ class DaemonCore:
         self._stop_vpn      = True
         self._stop_tor_flag = True
         self._stop_vpn_process()
+        self._liberer_compte()
         self._stop_tor()
         self._revert_vpn_dns()
         self._demonter_tunnel()
@@ -559,9 +588,13 @@ class DaemonCore:
                 if _run(tool, "-D", parent, "-j", chain).returncode != 0:
                     break
 
+        # Blocage permanent : le filtrage des clients du partage LAN, posé au
+        # démarrage de la machine, reste jusqu'à ce que le partage le remplace.
+        lan_garde = self._blocage_permanent()
         _purge_jumps("ip6tables", "OUTPUT",  KS6_CHAIN)
         _purge_jumps("ip6tables", "FORWARD", KS6_FWD_CHAIN)
-        _purge_jumps("iptables",  "FORWARD", KS_LAN_CHAIN)
+        if not lan_garde:
+            _purge_jumps("iptables",  "FORWARD", KS_LAN_CHAIN)
         for _ in range(25):
             if _run("iptables", "-t", "nat", "-D", "PREROUTING",
                     "-j", KS_LAN_DNS_CHAIN).returncode != 0:
@@ -574,8 +607,8 @@ class DaemonCore:
             ("ip6tables", "-X", KS6_CHAIN),
             ("ip6tables", "-F", KS6_FWD_CHAIN),
             ("ip6tables", "-X", KS6_FWD_CHAIN),
-            ("iptables",  "-F", KS_LAN_CHAIN),
-            ("iptables",  "-X", KS_LAN_CHAIN),
+            *([] if lan_garde else [("iptables", "-F", KS_LAN_CHAIN),
+                                    ("iptables", "-X", KS_LAN_CHAIN)]),
             ("iptables",  "-t", "nat", "-F", KS_LAN_DNS_CHAIN),
             ("iptables",  "-t", "nat", "-X", KS_LAN_DNS_CHAIN),
         ]:
@@ -693,7 +726,10 @@ class DaemonCore:
             # Rien ne reste d'un lancement précédent (réglage désactivé
             # entre-temps, ou pose impossible : jamais de blocage à moitié).
             self._kill_switch_off(force=True)
-            if self.config.get("kill_switch", True):
+            if self._blocage_permanent():
+                self._log("Blocage permanent : nouvelle pose impossible — les règles "
+                          "déjà en place restent ; nouvel essai toutes les 30 s.", "ERROR")
+            elif self._blocage_voulu():
                 self._log("Le service continue SANS blocage hors tunnel ; "
                           "nouvel essai toutes les 30 s.", "ERROR")
         self._start_status_server()

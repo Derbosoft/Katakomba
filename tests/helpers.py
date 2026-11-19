@@ -70,6 +70,10 @@ _REDIRECTIONS = {
     "LEGACY_DNSMASQ_PID": _BAC_A_SABLE / "etc" / "tor-vpn-dnsmasq.pid",
     # Réglage noyau : lancés en root, les tests l'auraient modifié pour de bon.
     "SRC_VALID_MARK":     _BAC_A_SABLE / "src_valid_mark",
+    # Réglages de l'administrateur et script de réservation (v4.13.0).
+    "BLOCAGE_PERMANENT":  _STATE / "blocage-permanent",
+    "MODE_PASSERELLE":    _STATE / "passerelle",
+    "HOOK_RESERVATION":   _BAC_A_SABLE / "hooks" / "reserver-compte",
 }
 for _m in RUN_MODULES:
     for _nom, _chemin in _REDIRECTIONS.items():

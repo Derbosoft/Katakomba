@@ -1360,3 +1360,148 @@ class LogoTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PasserelleScriptsTest(unittest.TestCase):
+    """v4.13.0 : passerelle — installation, blocage permanent, vsock."""
+
+    @staticmethod
+    def _bloc(texte, debut, fin):
+        bloc = texte[texte.index(debut):]
+        return bloc[:bloc.index(fin, len(debut))]
+
+    def _cleanup(self):
+        return self._bloc(INSTALL, "<< 'CLEANUP_EOF'", "\nCLEANUP_EOF\n")
+
+    def test_iptables_installe_et_verifie(self):
+        """Image cloud minimale : l'installation réussissait, puis le daemon échouait."""
+        appels = re.findall(r"apt-get install -y tor openvpn [^\n]*\\\n[^\n]+", INSTALL)
+        self.assertEqual(len(appels), 2, "avec et sans interface")
+        for a in appels:
+            self.assertIn("iptables", a)
+            self.assertIn("iproute2", a)
+        deps = INSTALL[INSTALL.index("DEPS_BIN=("):].split(")", 1)[0]
+        for binaire in ("iptables", "ip6tables", "iptables-restore", "ip6tables-restore"):
+            self.assertIn(f" {binaire}", deps)
+
+    def test_dnsmasq_obligatoire_avec_le_dhcp_du_partage(self):
+        bloc = self._bloc(INSTALL, "LAN_PARTAGE=$(", "[2/7]")
+        self.assertIn("lan_dhcp", bloc)
+        self.assertIn("if ! apt-get install -y dnsmasq; then", bloc)
+        self.assertNotIn("dnsmasq || true", bloc)
+        self.assertEqual(bloc.count("exit 1"), 2, "SKIP_APT et échec d'apt")
+        # Paquet : un postinst en échec laisserait le paquet à moitié configuré.
+        paquet = bloc[bloc.index('[ "$PAQUET" = "1" ]'):bloc.index("KATAKOMBA_SKIP_APT")]
+        self.assertNotIn("exit 1", paquet)
+        self.assertIn('elif [ "$LAN_PARTAGE" = fixe ]', bloc)
+
+    def test_option_passerelle_retenue(self):
+        self.assertIn("--passerelle|--gateway) PASSERELLE=1", INSTALL)
+        self.assertIn("--sans-passerelle|--no-gateway) PASSERELLE=0", INSTALL)
+        self.assertIn('PASSERELLE="${KATAKOMBA_PASSERELLE:-}"', INSTALL)
+        self.assertIn("if [ -e /var/lib/katakomba/passerelle ]; then PASSERELLE=1", INSTALL)
+        self.assertIn('install -m 644 -o root -g root /dev/null "$STATE_DIR/passerelle"', INSTALL)
+
+    def test_passerelle_sans_resolved_ni_hook_de_veille(self):
+        bloc = self._bloc(INSTALL, "[4/7] Configuration", "# Tor géré en subprocess")
+        self.assertLess(bloc.index('if [ "$PASSERELLE" = 1 ]; then'), bloc.index("apt-get install"))
+        actions = bloc[bloc.index('if [ "$PASSERELLE" = 0 ]; then'):]
+        for ligne in ("systemctl enable systemd-resolved", "mkdir -p /etc/systemd/resolved.conf.d"):
+            self.assertIn(ligne, actions)
+        veille = self._bloc(INSTALL, "[6/7] Hook", "[7/7]")
+        self.assertLess(veille.index('rm -f "$SLEEP_HOOK"'), veille.index("cat > \"$SLEEP_HOOK\""))
+        verif = INSTALL[INSTALL.index("── Vérification"):]
+        self.assertIn("non requis (mode passerelle)", verif)
+
+    def test_resolved_relance_seulement_s_il_y_avait_un_drop_in(self):
+        cleanup = self._cleanup()
+        bloc = cleanup[cleanup.index("if [ -e /etc/systemd/resolved.conf.d/katakomba-split.conf ]"):]
+        self.assertLess(bloc.index("reload-or-restart"), bloc.index("fi"))
+        self.assertIn("[ -e /var/lib/katakomba/passerelle ] || systemctl reload-or-restart",
+                      UNINSTALL)
+        self.assertIn("[[ -e /var/lib/katakomba/passerelle ]] || systemctl restart", REPAIR)
+
+    def test_unite_du_blocage_permanent(self):
+        unite = self._bloc(INSTALL, 'cat > "$BLOCAGE_UNIT" << BLOCAGE_EOF', "\nBLOCAGE_EOF") + "\n"
+        for directive in ("DefaultDependencies=no", "Before=network-pre.target katakomba.service shutdown.target",
+                          "Wants=network-pre.target", "ConditionPathExists=$STATE_DIR/blocage-permanent",
+                          "Type=oneshot", "RemainAfterExit=yes",
+                          "ExecStart=/usr/bin/python3 -m daemon.permanent poser",
+                          "WantedBy=sysinit.target"):
+            self.assertIn("\n" + directive + "\n", unite, directive)
+        self.assertNotIn("ExecStop", unite, "rien n'est levé à l'arrêt")
+        self.assertIn('systemctl enable katakomba-blocage.service', INSTALL)
+
+    def test_nettoyage_garde_le_blocage_permanent(self):
+        cleanup = self._cleanup()
+        self.assertIn('if [ -e /var/lib/katakomba/blocage-permanent ] && [ "$MODE" != desinstaller ]',
+                      cleanup)
+        self.assertIn('[ "$PERMANENT" = 1 ] || systemd-run', cleanup)
+        self.assertIn('[ "$PERMANENT" = 0 ] || exit 0', cleanup)
+        self.assertLess(cleanup.index('if [ "$PERMANENT" = 1 ] && [ "$lever" = 1 ]; then'),
+                        cleanup.index('if [ "$lever" = 1 ]; then'))
+        lan = cleanup[cleanup.index('if [ "$PERMANENT" = 0 ]; then\n    while iptables  -D FORWARD'):]
+        self.assertLess(lan.index("KATAKOMBA_LAN_FWD"), lan.index("\nfi\n"))
+
+    def test_seule_la_desinstallation_leve_le_blocage_permanent(self):
+        self.assertIn('"$c" desinstaller || true', UNINSTALL)
+        for unite in ("katakomba-blocage.service", "katakomba-vsock.socket",
+                      "katakomba-vsock@.service"):
+            self.assertIn(f"/etc/systemd/system/{unite}", UNINSTALL)
+        self.assertIn("PERMANENT=1", REPAIR)
+        bloc = REPAIR[REPAIR.index("[3/8]"):REPAIR.index("[4/8]")]
+        self.assertIn("BLOCAGE=()", bloc)
+        stop = CLI[CLI.index("    stop)"):CLI.index("    restart)")]
+        self.assertNotIn("desinstaller", stop)
+
+    def test_vsock(self):
+        socket_ = self._bloc(INSTALL, "cat > \"$VSOCK_SOCKET\" << 'VSOCK_EOF'", "\nVSOCK_EOF")
+        for directive in ("ListenStream=vsock::51875", "Accept=yes", "MaxConnections=4"):
+            self.assertIn("\n" + directive + "\n", socket_)
+        service = self._bloc(INSTALL, 'cat > "$VSOCK_SERVICE" << VSOCK_EOF', "\nVSOCK_EOF")
+        for directive in ("ExecStart=/usr/bin/python3 -I $INSTALL_DIR/statut_vsock.py",
+                          "StandardInput=socket", "StandardOutput=socket",
+                          "NoNewPrivileges=yes", "ProtectSystem=strict"):
+            self.assertIn("\n" + directive + "\n", service)
+        self.assertNotIn("systemctl enable katakomba-vsock", INSTALL, "désactivé par défaut")
+        self.assertIn("statut_vsock.py", _liste_bash(INSTALL, "FICHIERS_CODE"))
+
+    def test_commandes_root(self):
+        for cmd in ("blocage-permanent|permanent-block)", "vsock)"):
+            bloc = CLI[CLI.index(f"    {cmd}"):]
+            self.assertIn("_need_root", bloc[:600], cmd)
+        bloc = CLI[CLI.index("    vsock)"):CLI.index("    uninstall|desinstaller)")]
+        self.assertIn('[[ "$PORT" =~ ^[0-9]{1,9}$ ]]', bloc)
+
+
+class DoctorPasserelleTest(unittest.TestCase):
+    BLOC = CLI[CLI.index("# Blocage permanent (v4.13.0) : posé au démarrage"):]
+    BLOC = BLOC[:BLOC.index("# Ports d'écoute WireGuard : seul le pont")]
+
+    def _diagnostic(self, st, active=True, en_cours=""):
+        notes = []
+        exec(self.BLOC, {"st": st, "note": lambda *a: notes.append(a), "_": lambda t: t,
+                         "sh": lambda *c: (0 if active else 1, ""), "en_cours": en_cours,
+                         "NON_VERIFIE": "reporté", "OK": "OK", "KO": "KO", "WARN": "WARN",
+                         "REPORTE": "--"})
+        return notes
+
+    def test_blocage_permanent(self):
+        self.assertEqual(self._diagnostic({"kill_switch_permanent": True})[0][:2],
+                         ("OK", "Blocage permanent"))
+        self.assertEqual(self._diagnostic({"kill_switch_permanent": True}, active=False)[0][0],
+                         "WARN")
+        self.assertEqual(self._diagnostic({"kill_switch": True}), [])
+
+    def test_partage_lan_de_la_passerelle(self):
+        st = {"gateway_mode": True, "tunnel_up": True}
+        self.assertEqual(self._diagnostic({**st, "lan_sharing": True})[0][0], "OK")
+        self.assertEqual(self._diagnostic({**st, "lan_sharing": False})[0][0], "KO")
+        self.assertEqual(self._diagnostic({"gateway_mode": True}, en_cours="x")[0][0], "--")
+        self.assertEqual(self._diagnostic({"lan_sharing": False, "tunnel_up": True}), [])
+
+    def test_dns_non_gere_sans_resolved(self):
+        self.assertIn('dns_non_gere = bool(st.get("gateway_mode")) and sh(', CLI)
+        bloc = CLI[CLI.index("# ── 4. DNS"):CLI.index("# ── 5. IPv6")]
+        self.assertIn("if not en_cours and not dns_non_gere:", bloc)
+        self.assertLess(bloc.index("if dns_non_gere:"), bloc.index("elif manquants:"))
