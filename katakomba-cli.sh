@@ -328,8 +328,11 @@ case "${1:-help}" in
                 esac
                 install -d -m 755 -o root -g root /var/lib/katakomba
                 TMP="$(mktemp /var/lib/katakomba/.vsock-restart.XXXXXX)"
-                printf '%s\n' "$ECRIRE" > "$TMP" && chmod 600 "$TMP" \
-                    && mv -fT "$TMP" "$REGLAGE_RESTART" || { rm -f "$TMP"; exit 1; }
+                if ! { printf '%s\n' "$ECRIRE" > "$TMP" && chmod 600 "$TMP" \
+                        && mv -fT "$TMP" "$REGLAGE_RESTART"; }; then
+                    rm -f "$TMP"
+                    exit 1
+                fi
                 echo "restart par vsock : $(_mode_restart)"
                 if [ "${3:-}" = secret ]; then
                     echo "Secret : $SECRET"
