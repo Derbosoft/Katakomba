@@ -95,6 +95,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.14.0" date="2026-11-20">
+      <description>
+        <p>Gateway follow-up, after tests on a gateway virtual machine.</p>
+        <ul>
+          <li>restart over vsock can be removed or reserved to a shared secret: sudo katakomba vsock restart off|secret|on</li>
+          <li>katakomba set takes several settings at once, checked together: the LAN gateway and subnet can be changed in one command</li>
+        </ul>
+      </description>
+    </release>
     <release version="4.13.0" date="2026-11-19">
       <description>
         <p>Katakomba as a gateway: a virtual machine that only shares its tunnel.</p>

@@ -1473,6 +1473,19 @@ class PasserelleScriptsTest(unittest.TestCase):
         bloc = CLI[CLI.index("    vsock)"):CLI.index("    uninstall|desinstaller)")]
         self.assertIn('[[ "$PORT" =~ ^[0-9]{1,9}$ ]]', bloc)
 
+    def test_vsock_restart_meme_reglage_que_l_ecoute(self):
+        """v4.14.0 : la CLI écrit ce que statut_vsock.py lit, au même endroit
+        (root seul, hors de /etc/katakomba), avec la même règle de secret."""
+        import statut_vsock
+        bloc = CLI[CLI.index("    vsock)"):CLI.index("    uninstall|desinstaller)")]
+        self.assertIn(f"REGLAGE_RESTART={statut_vsock.REGLAGE_RESTART}", bloc)
+        self.assertFalse(statut_vsock.REGLAGE_RESTART.startswith("/etc/katakomba"))
+        self.assertIn(f'=~ ^{statut_vsock.SECRET_VALIDE.pattern}$ ]]', bloc)
+        self.assertIn('mv -fT "$TMP" "$REGLAGE_RESTART"', bloc)
+        self.assertIn('"$(stat -c \'%u %a\' "$REGLAGE_RESTART")" != "0 600"', bloc)
+        # La ligne « restart <secret le plus long> » tient dans ce que lit l'écoute.
+        self.assertLessEqual(len("restart ") + 48, statut_vsock.LIGNE_MAX)
+
 
 class DoctorPasserelleTest(unittest.TestCase):
     BLOC = CLI[CLI.index("# Blocage permanent (v4.13.0) : posé au démarrage"):]

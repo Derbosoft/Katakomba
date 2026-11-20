@@ -319,6 +319,31 @@ class ReglageTest(Console):
         self.assertEqual(code, 1)
         self.assertIn("n'appartient pas", err)
 
+    def test_changer_de_sous_reseau_lan(self):
+        """v4.14.0 : passerelle et sous-réseau changés ensemble, validés après
+        les deux ; chacun seul est refusé contre l'autre."""
+        self.assertEqual(self.lancer("set", "lan-gateway", "192.168.1.1",
+                                     "lan-subnet", "192.168.1.0/24", "lan-share", "on")[0], 0)
+        code, _, err = self.lancer("set", "lan-gateway", "192.168.124.1")
+        self.assertEqual(code, 1)
+        self.assertIn("lan-subnet <", err, "la commande à deux paires est suggérée")
+        self.assertEqual(self.lancer("set", "lan-subnet", "192.168.124.0/24")[0], 1)
+        code, sortie, err = self.lancer("set", "lan-subnet", "192.168.124.0/24",
+                                        "lan-gateway", "192.168.124.1")
+        self.assertEqual(code, 0, err)
+        self.assertIn("lan-gateway = 192.168.124.1", sortie)
+        c = self.config()
+        self.assertEqual((c["lan_gateway"], c["lan_subnet"]),
+                         ("192.168.124.1", "192.168.124.0/24"))
+
+    def test_plusieurs_paires_tout_ou_rien(self):
+        self.assertEqual(self.lancer("set", "kill-switch", "on")[0], 0)
+        for args in (("kill-switch", "off", "circuit-retries", "x"),
+                     ("kill-switch", "off", "inconnu", "1"),
+                     ("kill-switch", "off", "lan-subnet")):
+            self.assertEqual(self.lancer("set", *args)[0], 1, args)
+            self.assertIs(self.config()["kill_switch"], True, args)
+
 
 class SauvegardeTest(Console):
 

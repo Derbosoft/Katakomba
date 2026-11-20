@@ -7,8 +7,11 @@ arrêté) est rejoué sur un vrai noyau dans tests_noyau/test_nettoyage.py."""
 import json
 import os
 import socket
+import tempfile
 import types
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import daemon.core as m_core
 import daemon.dns as m_dns
@@ -387,6 +390,93 @@ class VsockTest(unittest.TestCase):
         self.assertEqual(r, {"erreur": "Pas de tunnel : IP non demandée."})
         self.assertEqual(json.dumps(statut_vsock.repondre("doctor", lambda *c, delai: (1, ""))),
                          '{"erreur": "diagnostic illisible"}')
+
+
+class VsockRestartTest(unittest.TestCase):
+    """v4.14.0 : « restart » retiré, ou réservé à un secret partagé."""
+    SECRET = "0123456789abcdef0123456789abcdef"
+
+    def setUp(self):
+        self.dossier = Path(tempfile.mkdtemp())
+        self.chemin = self.dossier / "vsock-restart"
+        self.appels = []
+        self.journal = []
+        patch = mock.patch.object(statut_vsock, "_journal", self.journal.append)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def tearDown(self):
+        for f in self.dossier.iterdir():
+            f.unlink()
+        self.dossier.rmdir()
+
+    def _ecrire(self, texte, droits=0o600):
+        self.chemin.write_text(texte)
+        os.chmod(self.chemin, droits)
+
+    def _reglage(self):
+        return statut_vsock.reglage_restart(str(self.chemin), proprietaire=os.getuid())
+
+    def _restart(self, ligne):
+        def executer(*cmd, delai):
+            self.appels.append(cmd)
+            return 0, ""
+        return statut_vsock.repondre(ligne, executer, reglage=self._reglage)
+
+    def test_absent_ouvert_comme_en_4_13(self):
+        self.assertEqual(self._reglage(), ("on", None))
+        self.assertEqual(self._restart("restart"), {"ok": True})
+
+    def test_desactive(self):
+        self._ecrire("off\n")
+        for ligne in ("restart", f"restart {self.SECRET}"):
+            self.assertEqual(self._restart(ligne)["erreur"],
+                             "restart désactivé sur cette machine")
+        self.assertEqual(self.appels, [])
+
+    def test_secret(self):
+        self._ecrire(f"secret {self.SECRET}\n")
+        for ligne in ("restart", "restart faux-secret-de-16c", f"restart {self.SECRET}x",
+                      f"restart {self.SECRET[:-1]}"):
+            self.assertIn("secret requis", self._restart(ligne)["erreur"], ligne)
+        self.assertEqual(self.appels, [])
+        self.assertEqual(len(self.journal), 4, "chaque refus au journal")
+        self.assertNotIn(self.SECRET[:8], " ".join(self.journal))
+        self.assertEqual(self._restart(f"restart {self.SECRET}"), {"ok": True})
+        self.assertEqual(len(self.appels), 1)
+
+    def test_la_ligne_avec_le_secret_tient_dans_la_lecture(self):
+        secret = "a" * 48
+        self._ecrire(f"secret {secret}\n")
+        recu = statut_vsock.lire_commande(
+            _Conn(socket.AF_UNIX, recu=f"restart {secret}\n".encode()))
+        self.assertEqual(self._restart(recu), {"ok": True})
+
+    def test_reglage_douteux_ferme(self):
+        """Un réglage abîmé ou à la portée d'un autre compte ne rouvre pas restart."""
+        for texte, droits in ((f"secret {self.SECRET}", 0o644), ("on", 0o640),
+                              ("secret court", 0o600), ("secret", 0o600),
+                              ("ouvert", 0o600), ("", 0o600)):
+            self._ecrire(texte, droits)
+            self.assertEqual(self._reglage(), ("off", None), (texte, oct(droits)))
+        self._ecrire("on\n")
+        self.assertEqual(statut_vsock.reglage_restart(str(self.chemin),
+                                                      proprietaire=os.getuid() + 1),
+                         ("off", None), "autre propriétaire")
+        self.chemin.unlink()
+        cible = self.dossier / "cible"
+        cible.write_text("on\n")
+        os.chmod(cible, 0o600)
+        self.chemin.symlink_to(cible)
+        self.assertEqual(self._reglage(), ("off", None), "lien symbolique")
+        cible.unlink()
+        self.assertEqual(self._reglage(), ("off", None), "lien pendant")
+
+    def test_les_autres_commandes_ne_prennent_pas_d_argument(self):
+        self._ecrire(f"secret {self.SECRET}\n")
+        for ligne in (f"status {self.SECRET}", "doctor x", "ip x"):
+            self.assertEqual(self._restart(ligne)["erreur"], "commande inconnue", ligne)
+        self.assertEqual(self.appels, [])
 
 
 if __name__ == "__main__":

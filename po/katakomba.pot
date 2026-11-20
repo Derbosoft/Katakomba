@@ -209,11 +209,11 @@ msgstr ""
 msgid "Exclusions"
 msgstr ""
 
-#: gui/fenetre.py:32 katakomba-cli.sh:837 katakomba-cli.sh:839 katakomba-cli.sh:841
+#: gui/fenetre.py:32 katakomba-cli.sh:885 katakomba-cli.sh:887 katakomba-cli.sh:889
 msgid "Partage LAN"
 msgstr ""
 
-#: gui/fenetre.py:33 katakomba-cli.sh:541 katakomba-cli.sh:543 katakomba-cli.sh:545
+#: gui/fenetre.py:33 katakomba-cli.sh:589 katakomba-cli.sh:591 katakomba-cli.sh:593
 msgid "Tor"
 msgstr ""
 
@@ -517,7 +517,7 @@ msgstr ""
 msgid "chemin refusé"
 msgstr ""
 
-#: gui/modele.py:717 katakomba-cli.sh:613
+#: gui/modele.py:717 katakomba-cli.sh:661
 msgid "WireGuard géré"
 msgstr ""
 
@@ -627,7 +627,7 @@ msgstr ""
 msgid "Reprises"
 msgstr ""
 
-#: gui/modele.py:1425 katakomba-cli.sh:808 katakomba-cli.sh:810 katakomba-cli.sh:812
+#: gui/modele.py:1425 katakomba-cli.sh:856 katakomba-cli.sh:858 katakomba-cli.sh:860
 msgid "IPv6"
 msgstr ""
 
@@ -699,7 +699,7 @@ msgstr[1] ""
 msgid "fichier introuvable ou illisible"
 msgstr ""
 
-#: gui/modele.py:961 console.py:645
+#: gui/modele.py:961 console.py:665
 msgid "Ce fichier n'est pas une sauvegarde Katakomba."
 msgstr ""
 
@@ -819,7 +819,7 @@ msgstr[1] ""
 msgid "{debit} · il y a {duree}"
 msgstr ""
 
-#: gui/modele.py:82 katakomba-cli.sh:476
+#: gui/modele.py:82 katakomba-cli.sh:524
 msgid "{h} h {m:02d}"
 msgstr ""
 
@@ -1993,15 +1993,11 @@ msgstr ""
 msgid "katakomba provider wg-auto <nom> on|off | countries <NL,CH|europe|all> | reserved on|off"
 msgstr ""
 
-#: console.py:570
-msgid "katakomba set <réglage> <valeur>"
-msgstr ""
-
-#: console.py:710
+#: console.py:733
 msgid "Usage : katakomba <commande>"
 msgstr ""
 
-#: console.py:715
+#: console.py:738
 msgid "Équivalents français : fournisseur, compte, exclusion, reglage, sauvegarde ; ajouter, retirer, liste, priorite, exporter, restaurer ; confirmer."
 msgstr ""
 
@@ -2073,27 +2069,23 @@ msgstr ""
 msgid "Valeur attendue : wireguard,openvpn (défaut), openvpn,wireguard, wireguard ou openvpn."
 msgstr ""
 
-#: console.py:615
-msgid "Attention : pendant une reconnexion, le trafic peut sortir à découvert."
-msgstr ""
-
-#: console.py:636
+#: console.py:656
 msgid "Elle contient vos identifiants : gardez-la en lieu sûr."
 msgstr ""
 
-#: console.py:663
+#: console.py:683
 msgid "Service (sudo) :"
 msgstr ""
 
-#: console.py:671
+#: console.py:691
 msgid "Configuration (sudo, ou membre du groupe katakomba) :"
 msgstr ""
 
-#: console.py:694
+#: console.py:715
 msgid "Surveillance :"
 msgstr ""
 
-#: console.py:699
+#: console.py:720
 msgid "Installation (sudo) :"
 msgstr ""
 
@@ -2121,7 +2113,7 @@ msgstr ""
 msgid "Un seul type à la fois : des fichiers .conf (WireGuard) ou un .ovpn (OpenVPN). Ajoutez l'autre ensuite avec « katakomba account add »."
 msgstr ""
 
-#: console.py:315 console.py:487 console.py:654 console.py:541
+#: console.py:315 console.py:487 console.py:674 console.py:541
 msgid "Action inconnue : {action}"
 msgstr ""
 
@@ -2137,7 +2129,7 @@ msgstr ""
 msgid "Si tous les comptes sont pleins, l'un d'eux sera remis à zéro : ses autres appareils seront déconnectés."
 msgstr ""
 
-#: console.py:387 console.py:170 console.py:347 console.py:198 console.py:299 console.py:429 console.py:743
+#: console.py:387 console.py:170 console.py:347 console.py:611 console.py:198 console.py:299 console.py:429 console.py:766
 msgid "Usage : {usage}"
 msgstr ""
 
@@ -2165,11 +2157,19 @@ msgstr ""
 msgid "Les domaines exclus sont résolus par le serveur DNS local : réglez-le avec « katakomba set local-dns <adresse> »."
 msgstr ""
 
-#: console.py:579
+#: console.py:569
 msgid "Valeur attendue : on ou off."
 msgstr ""
 
-#: console.py:623
+#: console.py:628
+msgid "Pour changer les deux ensemble : katakomba set lan-subnet <réseau> lan-gateway <adresse>"
+msgstr ""
+
+#: console.py:635
+msgid "Attention : pendant une reconnexion, le trafic peut sortir à découvert."
+msgstr ""
+
+#: console.py:643
 msgid "katakomba backup {action} <fichier.zip>"
 msgstr ""
 
@@ -2221,158 +2221,162 @@ msgstr ""
 msgid "« {valeur} » exclu du tunnel."
 msgstr ""
 
-#: console.py:573
-msgid "Réglage inconnu : {nom}. Réglages : {liste}"
+#: console.py:612
+msgid "katakomba set <réglage> <valeur> [<réglage> <valeur>…]"
 msgstr ""
 
-#: console.py:635
+#: console.py:655
 msgid "Sauvegarde écrite : {fichier}"
 msgstr ""
 
-#: console.py:650
+#: console.py:670
 msgid "Sauvegarde restaurée : {n} fournisseur."
 msgid_plural "Sauvegarde restaurée : {n} fournisseurs."
 msgstr[0] ""
 msgstr[1] ""
 
-#: console.py:664
+#: console.py:684
 msgid "start [--essai [MIN]]"
 msgstr ""
 
-#: console.py:665
+#: console.py:685
 msgid "Démarrer ; à l'essai : arrêt automatique sans « katakomba confirm » (5 min par défaut)"
 msgstr ""
 
-#: console.py:667
+#: console.py:687
 msgid "Garder le service démarré à l'essai"
 msgstr ""
 
-#: console.py:668
+#: console.py:688
 msgid "Arrêter, redémarrer"
 msgstr ""
 
-#: console.py:669
+#: console.py:689
 msgid "Démarrage automatique au boot"
 msgstr ""
 
-#: console.py:672
+#: console.py:692
 msgid "provider list | add <fichier.ovpn|.zip|.conf…> [--name NOM] [--stdin]"
 msgstr ""
 
-#: console.py:673
+#: console.py:693
 msgid "provider remove <nom> | priority <nom> <rang>"
 msgstr ""
 
-#: console.py:674
+#: console.py:694
 msgid "provider transports <nom> <ordre|default>"
 msgstr ""
 
-#: console.py:675
+#: console.py:695
 msgid "Ordre propre au fournisseur (ex. openvpn,wireguard)"
 msgstr ""
 
-#: console.py:676
+#: console.py:696
 msgid "provider managed <mullvad|ivpn> [--name NOM] [--stdin]"
 msgstr ""
 
-#: console.py:677
+#: console.py:697
 msgid "Fournisseur sans fichier, par numéro de compte"
 msgstr ""
 
-#: console.py:678
+#: console.py:698
 msgid "provider wg-auto <nom> on|off"
 msgstr ""
 
-#: console.py:679
+#: console.py:699
 msgid "WireGuard géré : clé enregistrée par Katakomba (IVPN, Mullvad)"
 msgstr ""
 
-#: console.py:680
+#: console.py:700
 msgid "provider wg-auto <nom> countries <NL,CH|europe|all> | reserved on|off"
 msgstr ""
 
-#: console.py:681
+#: console.py:701
 msgid "provider random <nom> on|off|default"
 msgstr ""
 
-#: console.py:682
+#: console.py:702
 msgid "Ordre des comptes propre au fournisseur (au hasard ou dans l'ordre)"
 msgstr ""
 
-#: console.py:683
+#: console.py:703
 msgid "provider devices <nom>"
 msgstr ""
 
-#: console.py:684
+#: console.py:704
 msgid "Mullvad : appareils et échéance de chaque compte"
 msgstr ""
 
-#: console.py:685
+#: console.py:705
 msgid "account list <fournisseur> | add <fournisseur> [--stdin]"
 msgstr ""
 
-#: console.py:686
+#: console.py:706
 msgid "account add <fournisseur> <fichier.conf>…"
 msgstr ""
 
-#: console.py:687
+#: console.py:707
 msgid "Fichiers WireGuard (Proton, Mullvad, IVPN)"
 msgstr ""
 
-#: console.py:688
+#: console.py:708
 msgid "account remove <fournisseur> <numéro|wgN>"
 msgstr ""
 
-#: console.py:689
+#: console.py:709
 msgid "exclude list | add <adresse|réseau|domaine> | remove <…>"
 msgstr ""
 
-#: console.py:690
-msgid "set [<réglage> <valeur>]"
+#: console.py:710
+msgid "set [<réglage> <valeur>…]"
 msgstr ""
 
-#: console.py:690
-msgid "sans argument : réglages actuels"
+#: console.py:711
+msgid "sans argument : réglages actuels ; plusieurs paires validées ensemble"
 msgstr ""
 
-#: console.py:691
+#: console.py:712
 msgid "backup export | restore <fichier.zip>"
 msgstr ""
 
-#: console.py:692
+#: console.py:713
 msgid "Interface graphique (paquet katakomba)"
 msgstr ""
 
-#: console.py:695
+#: console.py:716
 msgid "État complet"
 msgstr ""
 
-#: console.py:696
+#: console.py:717
 msgid "Diagnostic : routage, DNS, fuites"
 msgstr ""
 
-#: console.py:700
+#: console.py:721
 msgid "autoriser <utilisateur>"
 msgstr ""
 
-#: console.py:700
+#: console.py:721
 msgid "Donner accès à la configuration à un compte"
 msgstr ""
 
-#: console.py:701
+#: console.py:722
 msgid "autoriser <utilisateur> --statut"
 msgstr ""
 
-#: console.py:702
+#: console.py:723
 msgid "Lecture seule de l'état (supervision), sans accès à la configuration"
 msgstr ""
 
-#: console.py:704
+#: console.py:725
 msgid "Passerelle : blocage posé dès le démarrage de la machine, jamais levé"
 msgstr ""
 
-#: console.py:706
+#: console.py:727
 msgid "État lisible depuis l'hôte d'une machine virtuelle"
+msgstr ""
+
+#: console.py:729
+msgid "restart par vsock : ouvert, retiré, ou réservé à un secret"
 msgstr ""
 
 #: console.py:199
@@ -2439,7 +2443,11 @@ msgstr ""
 msgid "« {valeur} » retiré."
 msgstr ""
 
-#: console.py:627
+#: console.py:616
+msgid "Réglage inconnu : {nom}. Réglages : {liste}"
+msgstr ""
+
+#: console.py:647
 msgid "{fichier} existe déjà."
 msgstr ""
 
@@ -2459,7 +2467,7 @@ msgstr ""
 msgid "« {valeur} » n'est pas dans la liste."
 msgstr ""
 
-#: console.py:591
+#: console.py:581
 msgid "Interface refusée : nom invalide, boucle locale ou interface virtuelle."
 msgstr ""
 
@@ -2467,19 +2475,19 @@ msgstr ""
 msgid "{option} attend une valeur."
 msgstr ""
 
-#: console.py:597
+#: console.py:587
 msgid "Adresse IPv4 attendue."
 msgstr ""
 
-#: console.py:602
+#: console.py:592
 msgid "Réseau IPv4 attendu (ex. 10.0.0.0/24)."
 msgstr ""
 
-#: console.py:607
+#: console.py:597
 msgid "Nombre entier attendu."
 msgstr ""
 
-#: console.py:744
+#: console.py:767
 msgid "katakomba backup export|restore <fichier.zip>"
 msgstr ""
 
@@ -2815,527 +2823,527 @@ msgstr ""
 msgid "directive non prise en charge par le daemon"
 msgstr ""
 
-#: katakomba-cli.sh:460
+#: katakomba-cli.sh:508
 msgid "reporté — le tunnel se reconnecte"
 msgstr ""
 
-#: katakomba-cli.sh:504 katakomba-cli.sh:502
+#: katakomba-cli.sh:552 katakomba-cli.sh:550
 msgid "Service"
 msgstr ""
 
-#: katakomba-cli.sh:504
+#: katakomba-cli.sh:552
 msgid "actif"
 msgstr ""
 
-#: katakomba-cli.sh:502
+#: katakomba-cli.sh:550
 msgid "katakomba n'est pas actif — sudo katakomba start"
 msgstr ""
 
-#: katakomba-cli.sh:526 katakomba-cli.sh:530
+#: katakomba-cli.sh:574 katakomba-cli.sh:578
 msgid "Socket de statut"
 msgstr ""
 
-#: katakomba-cli.sh:527
+#: katakomba-cli.sh:575
 msgid "non vérifiable — réservé aux groupes katakomba et katakomba-statut (ou sudo)"
 msgstr ""
 
-#: katakomba-cli.sh:539
+#: katakomba-cli.sh:587
 msgid "Version du daemon"
 msgstr ""
 
-#: katakomba-cli.sh:650 katakomba-cli.sh:652 katakomba-cli.sh:655
+#: katakomba-cli.sh:698 katakomba-cli.sh:700 katakomba-cli.sh:703
 msgid "Route par défaut"
 msgstr ""
 
-#: katakomba-cli.sh:650
+#: katakomba-cli.sh:698
 msgid "absente"
 msgstr ""
 
-#: katakomba-cli.sh:691 katakomba-cli.sh:693
+#: katakomba-cli.sh:739 katakomba-cli.sh:741
 msgid "Redirection du trafic"
 msgstr ""
 
-#: katakomba-cli.sh:703 katakomba-cli.sh:707
+#: katakomba-cli.sh:751 katakomba-cli.sh:755
 msgid "Réseaux locaux"
 msgstr ""
 
-#: katakomba-cli.sh:760
+#: katakomba-cli.sh:808
 msgid "serveur"
 msgstr ""
 
-#: katakomba-cli.sh:762
+#: katakomba-cli.sh:810
 msgid "domaine ~."
 msgstr ""
 
-#: katakomba-cli.sh:766 katakomba-cli.sh:769 katakomba-cli.sh:771 katakomba-cli.sh:775 katakomba-cli.sh:779
+#: katakomba-cli.sh:814 katakomba-cli.sh:817 katakomba-cli.sh:819 katakomba-cli.sh:823 katakomba-cli.sh:827
 msgid "DNS du tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:767
+#: katakomba-cli.sh:815
 msgid "mode passerelle : DNS de cette machine non géré (sans systemd-resolved)"
 msgstr ""
 
-#: katakomba-cli.sh:782
+#: katakomba-cli.sh:830
 msgid "DNS split"
 msgstr ""
 
-#: katakomba-cli.sh:782
+#: katakomba-cli.sh:830
 msgid "drop-in en place"
 msgstr ""
 
-#: katakomba-cli.sh:815 katakomba-cli.sh:818 katakomba-cli.sh:822
+#: katakomba-cli.sh:863 katakomba-cli.sh:866 katakomba-cli.sh:870
 msgid "Blocage hors tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:816
+#: katakomba-cli.sh:864
 msgid "actif — seuls le tunnel, Tor et le réseau local sortent"
 msgstr ""
 
-#: katakomba-cli.sh:951
+#: katakomba-cli.sh:999
 msgid "Exclusions vers Internet"
 msgstr ""
 
-#: katakomba-cli.sh:963 katakomba-cli.sh:971 katakomba-cli.sh:975
+#: katakomba-cli.sh:1011 katakomba-cli.sh:1019 katakomba-cli.sh:1023
 msgid "Sortie Internet"
 msgstr ""
 
-#: katakomba-cli.sh:986
+#: katakomba-cli.sh:1034
 msgid "C'est normal et passager : relancez le diagnostic dans 30 s."
 msgstr ""
 
-#: katakomba-cli.sh:503
+#: katakomba-cli.sh:551
 msgid "Le service est arrêté : aucun autre contrôle n'a de sens."
 msgstr ""
 
-#: katakomba-cli.sh:541
+#: katakomba-cli.sh:589
 msgid "bootstrap terminé"
 msgstr ""
 
-#: katakomba-cli.sh:549 katakomba-cli.sh:555 katakomba-cli.sh:560 katakomba-cli.sh:564 katakomba-cli.sh:569
+#: katakomba-cli.sh:597 katakomba-cli.sh:603 katakomba-cli.sh:608 katakomba-cli.sh:612 katakomba-cli.sh:617
 msgid "Tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:572
+#: katakomba-cli.sh:620
 msgid "composant manquant"
 msgstr ""
 
-#: katakomba-cli.sh:573
+#: katakomba-cli.sh:621
 msgid "comptes pleins"
 msgstr ""
 
-#: katakomba-cli.sh:574
+#: katakomba-cli.sh:622
 msgid "API injoignable"
 msgstr ""
 
-#: katakomba-cli.sh:575
+#: katakomba-cli.sh:623
 msgid "captcha demandé par l'API"
 msgstr ""
 
-#: katakomba-cli.sh:576
+#: katakomba-cli.sh:624
 msgid "abonnement expiré"
 msgstr ""
 
-#: katakomba-cli.sh:577
+#: katakomba-cli.sh:625
 msgid "comptes refusés"
 msgstr ""
 
-#: katakomba-cli.sh:578
+#: katakomba-cli.sh:626
 msgid "serveurs muets"
 msgstr ""
 
-#: katakomba-cli.sh:579
+#: katakomba-cli.sh:627
 msgid "connexion instable"
 msgstr ""
 
-#: katakomba-cli.sh:580
+#: katakomba-cli.sh:628
 msgid "fichier de configuration refusé"
 msgstr ""
 
-#: katakomba-cli.sh:581
+#: katakomba-cli.sh:629
 msgid "Mode secours"
 msgstr ""
 
-#: katakomba-cli.sh:613
+#: katakomba-cli.sh:661
 msgid "python3-cryptography manque : aucune clé ne peut être créée (sudo apt install python3-cryptography)"
 msgstr ""
 
-#: katakomba-cli.sh:623
+#: katakomba-cli.sh:671
 msgid "débit non mesuré"
 msgstr ""
 
-#: katakomba-cli.sh:624 katakomba-cli.sh:629
+#: katakomba-cli.sh:672 katakomba-cli.sh:677
 msgid "Qualité du circuit"
 msgstr ""
 
-#: katakomba-cli.sh:638
+#: katakomba-cli.sh:686
 msgid "Comptes en quarantaine"
 msgstr ""
 
-#: katakomba-cli.sh:640
+#: katakomba-cli.sh:688
 msgid "Comptes"
 msgstr ""
 
-#: katakomba-cli.sh:640
+#: katakomba-cli.sh:688
 msgid "aucun écarté"
 msgstr ""
 
-#: katakomba-cli.sh:666 katakomba-cli.sh:682 katakomba-cli.sh:686 katakomba-cli.sh:672 katakomba-cli.sh:674
+#: katakomba-cli.sh:714 katakomba-cli.sh:730 katakomba-cli.sh:734 katakomba-cli.sh:720 katakomba-cli.sh:722
 msgid "Protection des guards Tor"
 msgstr ""
 
-#: katakomba-cli.sh:687
+#: katakomba-cli.sh:735
 msgid "aucune route /32 — Tor risque de joindre ses relais par le tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:725 katakomba-cli.sh:730
+#: katakomba-cli.sh:773 katakomba-cli.sh:778
 msgid "systemd-networkd"
 msgstr ""
 
-#: katakomba-cli.sh:730
+#: katakomba-cli.sh:778
 msgid "ne retire pas les routes du tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:796 katakomba-cli.sh:798 katakomba-cli.sh:801
+#: katakomba-cli.sh:844 katakomba-cli.sh:846 katakomba-cli.sh:849
 msgid "Chemin des requêtes DNS"
 msgstr ""
 
-#: katakomba-cli.sh:808
+#: katakomba-cli.sh:856
 msgid "bloqué"
 msgstr ""
 
-#: katakomba-cli.sh:819
+#: katakomba-cli.sh:867
 msgid "activé dans les réglages mais inactif — cause dans le journal (katakomba logs)"
 msgstr ""
 
-#: katakomba-cli.sh:828 katakomba-cli.sh:831
+#: katakomba-cli.sh:876 katakomba-cli.sh:879
 msgid "Blocage permanent"
 msgstr ""
 
-#: katakomba-cli.sh:829
+#: katakomba-cli.sh:877
 msgid "posé dès le démarrage de la machine, gardé à l'arrêt du service"
 msgstr ""
 
-#: katakomba-cli.sh:832
+#: katakomba-cli.sh:880
 msgid "activé, mais pas posé au démarrage de la machine — sudo katakomba blocage-permanent on"
 msgstr ""
 
-#: katakomba-cli.sh:837
+#: katakomba-cli.sh:885
 msgid "actif — les clients sortent par le tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:848 katakomba-cli.sh:850
+#: katakomba-cli.sh:896 katakomba-cli.sh:898
 msgid "Ports WireGuard"
 msgstr ""
 
-#: katakomba-cli.sh:848
+#: katakomba-cli.sh:896
 msgid "fermés au réseau — seul le pont les joint"
 msgstr ""
 
-#: katakomba-cli.sh:851
+#: katakomba-cli.sh:899
 msgid "ouverts au réseau — le fournisseur VPN pourrait détourner le tunnel hors de Tor (cause dans le journal)"
 msgstr ""
 
-#: katakomba-cli.sh:856 katakomba-cli.sh:859
+#: katakomba-cli.sh:904 katakomba-cli.sh:907
 msgid "Entrées par le tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:857
+#: katakomba-cli.sh:905
 msgid "refusées — seules les réponses à ce que la machine a ouvert passent"
 msgstr ""
 
-#: katakomba-cli.sh:860
+#: katakomba-cli.sh:908
 msgid "non filtrées — le fournisseur VPN pourrait joindre les services de la machine (cause dans le journal)"
 msgstr ""
 
-#: katakomba-cli.sh:867 katakomba-cli.sh:870
+#: katakomba-cli.sh:915 katakomba-cli.sh:918
 msgid "Connexions entrantes"
 msgstr ""
 
-#: katakomba-cli.sh:868
+#: katakomba-cli.sh:916
 msgid "réponses par la carte réseau — SSH et services restent joignables"
 msgstr ""
 
-#: katakomba-cli.sh:871
+#: katakomba-cli.sh:919
 msgid "réponses envoyées dans le tunnel — une session SSH distante serait coupée (cause dans le journal)"
 msgstr ""
 
-#: katakomba-cli.sh:878 katakomba-cli.sh:881
+#: katakomba-cli.sh:926 katakomba-cli.sh:929
 msgid "Tor hors du tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:879
+#: katakomba-cli.sh:927
 msgid "ses connexions sortent toutes par la carte réseau"
 msgstr ""
 
-#: katakomba-cli.sh:882
+#: katakomba-cli.sh:930
 msgid "relais protégés seulement toutes les 30 s (cause dans le journal)"
 msgstr ""
 
-#: katakomba-cli.sh:996
+#: katakomba-cli.sh:1044
 msgid "Piste : sudo katakomba restart (3 s de coupure), puis relancez ce diagnostic."
 msgstr ""
 
-#: katakomba-cli.sh:543
+#: katakomba-cli.sh:591
 msgid "démarrage en cours"
 msgstr ""
 
-#: katakomba-cli.sh:545
+#: katakomba-cli.sh:593
 msgid "pas prêt"
 msgstr ""
 
-#: katakomba-cli.sh:591
+#: katakomba-cli.sh:639
 msgid "Compte {fournisseur}"
 msgstr ""
 
-#: katakomba-cli.sh:618
+#: katakomba-cli.sh:666
 msgid ", {ms} ms à l'ouverture d'une connexion"
 msgstr ""
 
-#: katakomba-cli.sh:629
+#: katakomba-cli.sh:677
 msgid "aucune mesure pour ce tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:638
+#: katakomba-cli.sh:686
 msgid " — essayés en dernier"
 msgstr ""
 
-#: katakomba-cli.sh:675
+#: katakomba-cli.sh:723
 msgid "aucun relais protégé dans la table de routage — Tor risque de joindre ses relais par le tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:694
+#: katakomba-cli.sh:742
 msgid "{n}/2 routes def1 présentes"
 msgstr ""
 
-#: katakomba-cli.sh:704
+#: katakomba-cli.sh:752
 msgid "détourné(s) par une route via : {reseaux} — casse l'accès aux machines du segment"
 msgstr ""
 
-#: katakomba-cli.sh:708
+#: katakomba-cli.sh:756
 msgid "{n} réseau en accès direct"
 msgid_plural "{n} réseaux en accès direct"
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:799
+#: katakomba-cli.sh:847
 msgid "trop rapide pour passer par Tor — vérifiez une éventuelle fuite"
 msgstr ""
 
-#: katakomba-cli.sh:810
+#: katakomba-cli.sh:858
 msgid "bloqué hors tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:812
+#: katakomba-cli.sh:860
 msgid "non bloqué (option désactivée dans les paramètres)"
 msgstr ""
 
-#: katakomba-cli.sh:823
+#: katakomba-cli.sh:871
 msgid "désactivé — pendant une reconnexion, le trafic peut sortir à découvert"
 msgstr ""
 
-#: katakomba-cli.sh:938 katakomba-cli.sh:943
+#: katakomba-cli.sh:986 katakomba-cli.sh:991
 msgid "Connexions de Tor"
 msgstr ""
 
-#: katakomba-cli.sh:952
+#: katakomba-cli.sh:1000
 msgid "{reseaux} — ce trafic sort hors du tunnel, avec votre adresse réelle"
 msgstr ""
 
-#: katakomba-cli.sh:984
+#: katakomba-cli.sh:1032
 msgid "Reconnexion en cours ({raison}) : les contrôles du tunnel sont reportés."
 msgstr ""
 
-#: katakomba-cli.sh:530
+#: katakomba-cli.sh:578
 msgid "injoignable ({erreur})"
 msgstr ""
 
-#: katakomba-cli.sh:549
+#: katakomba-cli.sh:597
 msgid "{iface} depuis {duree} ({fournisseur}, WireGuard géré, compte {n}, clé du {date})"
 msgstr ""
 
-#: katakomba-cli.sh:595
+#: katakomba-cli.sh:643
 msgid "aucune place enregistrée pour ce PC"
 msgstr ""
 
-#: katakomba-cli.sh:621
+#: katakomba-cli.sh:669
 msgid "{kbs} Ko/s (~{mbps} Mb/s)"
 msgstr ""
 
-#: katakomba-cli.sh:627
+#: katakomba-cli.sh:675
 msgid " — sur un circuit précédent"
 msgstr ""
 
-#: katakomba-cli.sh:653
+#: katakomba-cli.sh:701
 msgid "pointe sur {tun} — boucle de routage probable"
 msgstr ""
 
-#: katakomba-cli.sh:656
+#: katakomba-cli.sh:704
 msgid "{route} (hors tunnel)"
 msgstr ""
 
-#: katakomba-cli.sh:667
+#: katakomba-cli.sh:715
 msgid "{n}/{total} relais routé hors tunnel"
 msgid_plural "{n}/{total} relais routés hors tunnel"
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:683
+#: katakomba-cli.sh:731
 msgid "{n} route /32 hors tunnel"
 msgid_plural "{n} routes /32 hors tunnel"
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:726
+#: katakomba-cli.sh:774
 msgid "{reglages} actif : à chaque redémarrage de networkd, le tunnel est coupé jusqu'à 30 s — « =no » dans networkd.conf l'évite (README)"
 msgstr ""
 
-#: katakomba-cli.sh:842
+#: katakomba-cli.sh:890
 msgid "inactif en mode passerelle — cause dans le journal (katakomba logs), réglages : katakomba set"
 msgstr ""
 
-#: katakomba-cli.sh:941
+#: katakomba-cli.sh:989
 msgid " — les circuits qui y passent calent"
 msgstr ""
 
-#: katakomba-cli.sh:973
+#: katakomba-cli.sh:1021
 msgid " — adresse privée, sortie anormale"
 msgstr ""
 
-#: katakomba-cli.sh:975
+#: katakomba-cli.sh:1023
 msgid "aucune réponse via {tun}"
 msgstr ""
 
-#: katakomba-cli.sh:988
+#: katakomba-cli.sh:1036
 msgid "{n} autre problème bloquant ci-dessus, à revoir ensuite."
 msgid_plural "{n} autres problèmes bloquants ci-dessus, à revoir ensuite."
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:1003
+#: katakomba-cli.sh:1051
 msgid "Aucun problème vu, mais l'état du daemon (Tor, tunnel, blocage hors tunnel) n'est pas lisible par ce compte."
 msgstr ""
 
-#: katakomba-cli.sh:1005
+#: katakomba-cli.sh:1053
 msgid "Supervision : sudo katakomba autoriser <compte> --statut (lecture seule), ou lancez avec sudo."
 msgstr ""
 
-#: katakomba-cli.sh:1008
+#: katakomba-cli.sh:1056
 msgid "Tout est conforme."
 msgstr ""
 
-#: katakomba-cli.sh:488
+#: katakomba-cli.sh:536
 msgid "Diagnostic Katakomba"
 msgstr ""
 
-#: katakomba-cli.sh:555
+#: katakomba-cli.sh:603
 msgid "{iface} depuis {duree} ({fournisseur}, WireGuard, fichier {n})"
 msgstr ""
 
-#: katakomba-cli.sh:582
+#: katakomba-cli.sh:630
 msgid "étape {rang}/{total} depuis {duree} : {raison}"
 msgstr ""
 
-#: katakomba-cli.sh:599
+#: katakomba-cli.sh:647
 msgid "{compte} — échéance relevée au prochain renouvellement"
 msgstr ""
 
-#: katakomba-cli.sh:605
+#: katakomba-cli.sh:653
 msgid "{compte} — abonnement expiré le {date}"
 msgstr ""
 
-#: katakomba-cli.sh:625
+#: katakomba-cli.sh:673
 msgid "{mesure}{latence}, mesuré il y a {age}"
 msgstr ""
 
-#: katakomba-cli.sh:636
+#: katakomba-cli.sh:684
 msgid "compte {n} ({min} min)"
 msgstr ""
 
-#: katakomba-cli.sh:772
+#: katakomba-cli.sh:820
 msgid "incomplet ({manquants}) — risque de requêtes hors tunnel"
 msgstr ""
 
-#: katakomba-cli.sh:972
+#: katakomba-cli.sh:1020
 msgid "IP publique {ip}"
 msgstr ""
 
-#: katakomba-cli.sh:994
+#: katakomba-cli.sh:1042
 msgid "{n} avertissement."
 msgid_plural "{n} avertissements."
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:999
+#: katakomba-cli.sh:1047
 msgid "Aucun problème bloquant, {n} avertissement à surveiller."
 msgid_plural "Aucun problème bloquant, {n} avertissements à surveiller."
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:560
+#: katakomba-cli.sh:608
 msgid "{iface} depuis {duree} ({fournisseur}, compte {n})"
 msgstr ""
 
-#: katakomba-cli.sh:585
+#: katakomba-cli.sh:633
 msgid "cause inconnue"
 msgstr ""
 
-#: katakomba-cli.sh:586
+#: katakomba-cli.sh:634
 msgid " — prochain essai dans {duree}"
 msgstr ""
 
-#: katakomba-cli.sh:608
+#: katakomba-cli.sh:656
 msgid "{compte} — expire le {date}, dans {n} j"
 msgstr ""
 
-#: katakomba-cli.sh:611
+#: katakomba-cli.sh:659
 msgid "{compte} — expire le {date}"
 msgstr ""
 
-#: katakomba-cli.sh:776
+#: katakomba-cli.sh:824
 msgid "{serveurs} · ~. — default-route non vérifiable (format resolvectl inconnu)"
 msgstr ""
 
-#: katakomba-cli.sh:932
+#: katakomba-cli.sh:980
 msgid "{n} part du tunnel"
 msgid_plural "{n} partent du tunnel"
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:935
+#: katakomba-cli.sh:983
 msgid "{n} d'une adresse disparue (tunnel précédent)"
 msgid_plural "{n} d'une adresse disparue (tunnel précédent)"
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:944
+#: katakomba-cli.sh:992
 msgid "{n} connexion vers un relais, par la carte réseau"
 msgid_plural "{n} connexions vers des relais, toutes par la carte réseau"
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:992
+#: katakomba-cli.sh:1040
 msgid "{n} problème bloquant"
 msgid_plural "{n} problèmes bloquants"
 msgstr[0] ""
 msgstr[1] ""
 
-#: katakomba-cli.sh:564
+#: katakomba-cli.sh:612
 msgid "reconnexion en cours depuis {s} s ({raison})"
 msgstr ""
 
-#: katakomba-cli.sh:567
+#: katakomba-cli.sh:615
 msgid " depuis {m} min {s:02d} s"
 msgstr ""
 
-#: katakomba-cli.sh:568
+#: katakomba-cli.sh:616
 msgid " — dernière cause : {raison}"
 msgstr ""
 
-#: katakomba-cli.sh:569
+#: katakomba-cli.sh:617
 msgid "fermé{depuis}{cause}"
 msgstr ""
 
-#: katakomba-cli.sh:939
+#: katakomba-cli.sh:987
 msgid "{total} connexion vers un relais"
 msgid_plural "{total} connexions vers des relais"
 msgstr[0] ""

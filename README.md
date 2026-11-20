@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.13.0
+# Katakomba — v4.14.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.13.0-blue)
+![Version](https://img.shields.io/badge/Version-4.14.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -287,7 +287,7 @@ Run as root, or as a member of the `katakomba` group (no `sudo` needed, like the
 | `account list\|add\|remove <provider> …` | Accounts of a provider: `add` asks for the OpenVPN credentials, or adds the `.conf` files given as arguments; `remove <provider> wg2` removes a WireGuard file |
 | `exclude list\|add\|remove <address\|network\|domain>` | Exclusions from the tunnel and local domains, same checks as the interface |
 | `set` | Current settings |
-| `set <setting> <value>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (address or `none`), `circuit-check`, `circuit-min-kbs`, `circuit-retries`, `circuit-recheck-min` (minutes, `0` = once per start), `primary-retry-min` (minutes, `0` = never); LAN sharing *(v4.13.0)*: `lan-share`, `lan-dhcp` (`on`/`off`), `lan-iface` (card, or `none`), `lan-gateway` (IPv4 address), `lan-subnet` (IPv4 network) |
+| `set <setting> <value> […]` | Several pairs in one command are checked together *(v4.14.0)*. `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (address or `none`), `circuit-check`, `circuit-min-kbs`, `circuit-retries`, `circuit-recheck-min` (minutes, `0` = once per start), `primary-retry-min` (minutes, `0` = never); LAN sharing *(v4.13.0)*: `lan-share`, `lan-dhcp` (`on`/`off`), `lan-iface` (card, or `none`), `lan-gateway` (IPv4 address), `lan-subnet` (IPv4 network) |
 | `backup export\|restore <file.zip>` | Same format as the interface's backup; the export is mode `600` (it holds the credentials) |
 
 Messages and help (`katakomba help`) follow the system language. French command names work too (`fournisseur ajouter`, `exclusion retirer`, `start --essai`…).
@@ -320,14 +320,15 @@ sudo KATAKOMBA_PASSERELLE=1 apt install ./katakomba-headless_<version>_all.deb
 
 ```bash
 katakomba set lan-iface ens4          # card towards the clients, NOT the default route's
-katakomba set lan-gateway 10.0.0.1    # address the gateway takes on that card
-katakomba set lan-subnet 10.0.0.0/24
+katakomba set lan-subnet 10.0.0.0/24 lan-gateway 10.0.0.1   # address the gateway takes on that card
 katakomba set lan-dhcp off            # fixed-address clients
 katakomba set lan-share on
 sudo katakomba restart
 ```
 
 You need **two cards**: one carries the default route (Tor goes out through it), the other leads to the clients. Sharing refuses the default route's card, and removes the sharing card's addresses to set `lan-gateway` on it. A fixed-address client takes an address in the subnet, and `lan-gateway` as its gateway **and DNS**.
+
+The gateway must belong to the subnet. To move to another subnet, change both in the same command: `katakomba set lan-subnet 192.168.124.0/24 lan-gateway 192.168.124.1`. Either one alone is refused against the other's old value.
 
 ### Permanent kill switch
 
@@ -341,11 +342,15 @@ The kill switch (output and forwarding) and the LAN sharing client filter (`KATA
 
 ```bash
 sudo katakomba vsock on [PORT]            # 51875 by default; off, status
+sudo katakomba vsock restart secret       # v4.14.0: restart reserved to a secret (printed); off, on
 # from the host:
 echo status | socat - VSOCK-CONNECT:<VM CID>:51875
+echo "restart $SECRET" | socat - VSOCK-CONNECT:<VM CID>:51875
 ```
 
 Four commands, one line of JSON in reply: `status` (the status socket's JSON), `ip` (exit address, asked through the tunnel), `doctor` (like `katakomba doctor --json`), `restart`. Nothing else: no configuration, no stop, no lifting of the kill switch. Only the virtual machine's host is served (CID 2); on a machine that itself hosts virtual machines, their connections are refused. Off by default.
+
+vsock does not pass on the calling account: on the host, **any account** can reach the listener. For `restart` *(v4.14.0)*: `vsock restart off` removes it, `vsock restart secret [SECRET]` reserves it to `restart <secret>` (16 to 48 characters `A-Z a-z 0-9 _ -`, drawn at random if not given), `vsock restart on` opens it again (the default, as in 4.13). Keep the secret root-only on the host. The setting lives in `/var/lib/katakomba/vsock-restart`, root-only in 600, not in `/etc/katakomba`, which the katakomba group can modify. If it is damaged, readable by others or not owned by root, `restart` is refused. Each refusal is logged (`journalctl -t katakomba-vsock`). `status`, `ip` and `doctor` stay open: they change nothing.
 
 ### Several gateways, one pool of accounts
 
@@ -864,6 +869,7 @@ katakomba ip               # Current public IP
 # Gateway (requires root, v4.13.0)
 sudo katakomba blocage-permanent on|off|status   # set from boot, never lifted
 sudo katakomba vsock on [PORT]|off|status        # status readable from the VM's host
+sudo katakomba vsock restart on|off|secret [S]   # restart over vsock: open, removed, reserved to a secret
 ```
 
 

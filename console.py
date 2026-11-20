@@ -561,18 +561,8 @@ def _afficher(valeur, genre: str) -> str:
     return str(valeur) if valeur not in ("", None) else "—"
 
 
-def reglage(args: list):
-    config = modele.charger_config()
-    if not args:
-        for nom, (cle, genre) in REGLAGES.items():
-            print(f"  {nom:<19} {_afficher(config.get(cle), genre)}")
-        return
-    _attendre(args, 2, _("katakomba set <réglage> <valeur>"))
-    nom, brut = args[0], args[1].strip()
-    if nom not in REGLAGES:
-        raise Erreur(_("Réglage inconnu : {nom}. Réglages : {liste}").format(
-            nom=nom, liste=", ".join(REGLAGES)))
-    _verifier_droits()
+def _lire_valeur(nom: str, brut: str):
+    """(clé de config.json, type, valeur) d'un réglage saisi ; Erreur sinon."""
     cle, genre = REGLAGES[nom]
     if genre == "bool":
         if brut.lower() not in OUI + NON:
@@ -605,15 +595,45 @@ def reglage(args: list):
             valeur = int(brut)
         except ValueError:
             raise Erreur(_("Nombre entier attendu.")) from None
-    essai = {**config, cle: valeur}
+    return cle, genre, valeur
+
+
+def reglage(args: list):
+    """« set », « set <réglage> <valeur> », ou plusieurs paires validées
+    ensemble (v4.14.0) : changer de sous-réseau LAN demande la passerelle et
+    le sous-réseau à la fois, chacun étant refusé seul contre l'autre."""
+    config = modele.charger_config()
+    if not args:
+        for nom, (cle, genre) in REGLAGES.items():
+            print(f"  {nom:<19} {_afficher(config.get(cle), genre)}")
+        return
+    if len(args) % 2:
+        raise Erreur(_("Usage : {usage}").format(
+            usage=_("katakomba set <réglage> <valeur> [<réglage> <valeur>…]")))
+    paires = list(zip(args[::2], args[1::2]))
+    for nom, _brut in paires:
+        if nom not in REGLAGES:
+            raise Erreur(_("Réglage inconnu : {nom}. Réglages : {liste}").format(
+                nom=nom, liste=", ".join(REGLAGES)))
+    _verifier_droits()
+    changements = [(nom, *_lire_valeur(nom, brut.strip())) for nom, brut in paires]
+    essai = {**config, **{cle: valeur for _nom, cle, _genre, valeur in changements}}
     erreurs = modele.erreurs_config(essai)
     if erreurs:
+        noms = {nom for nom, *_reste in changements}
+        if (essai.get("lan_auto") and noms & {"lan-gateway", "lan-subnet"}
+                and not {"lan-gateway", "lan-subnet"} <= noms
+                and modele.erreurs_lan(essai.get("lan_gateway", ""),
+                                       essai.get("lan_subnet", ""))):
+            erreurs.append(_("Pour changer les deux ensemble : katakomba set "
+                             "lan-subnet <réseau> lan-gateway <adresse>"))
         raise Erreur("\n".join(erreurs))
-    config[cle] = valeur
-    print(f"{nom} = {_afficher(valeur, genre)}")
-    if cle == "kill_switch" and not valeur:
-        print(_("Attention : pendant une reconnexion, le trafic peut sortir à "
-                "découvert."))
+    for nom, cle, genre, valeur in changements:
+        config[cle] = valeur
+        print(f"{nom} = {_afficher(valeur, genre)}")
+        if cle == "kill_switch" and not valeur:
+            print(_("Attention : pendant une reconnexion, le trafic peut sortir à "
+                    "découvert."))
     _enregistrer(config)
 
 
@@ -687,7 +707,8 @@ def aide():
              _("Fichiers WireGuard (Proton, Mullvad, IVPN)")),
             (_("account remove <fournisseur> <numéro|wgN>"), ""),
             (_("exclude list | add <adresse|réseau|domaine> | remove <…>"), ""),
-            (_("set [<réglage> <valeur>]"), _("sans argument : réglages actuels")),
+            (_("set [<réglage> <valeur>…]"),
+             _("sans argument : réglages actuels ; plusieurs paires validées ensemble")),
             (_("backup export | restore <fichier.zip>"), ""),
             ("gui", _("Interface graphique (paquet katakomba)")),
         ]),
@@ -704,6 +725,8 @@ def aide():
              _("Passerelle : blocage posé dès le démarrage de la machine, jamais levé")),
             ("vsock on [PORT] | off | status",
              _("État lisible depuis l'hôte d'une machine virtuelle")),
+            ("vsock restart on|off|secret [SECRET]",
+             _("restart par vsock : ouvert, retiré, ou réservé à un secret")),
             ("uninstall [--purge]", ""),
         ]),
     ]

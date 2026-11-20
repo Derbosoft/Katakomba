@@ -252,6 +252,23 @@ case "${1:-help}" in
         # status, ip, doctor et restart, pour l'hôte seul (CID 2).
         _need_root "$@"
         DROPIN=/etc/systemd/system/katakomba-vsock.socket.d
+        # « restart » par vsock (v4.14.0) : vsock ne dit pas quel compte de
+        # l'hôte appelle.  Réglage à root seul, hors de /etc/katakomba où le
+        # groupe katakomba pourrait l'effacer et rouvrir « restart ».
+        REGLAGE_RESTART=/var/lib/katakomba/vsock-restart
+        _mode_restart() {
+            if [ ! -e "$REGLAGE_RESTART" ] && [ ! -L "$REGLAGE_RESTART" ]; then
+                echo "ouvert à tout compte de l'hôte"
+            elif [ -L "$REGLAGE_RESTART" ] || [ "$(stat -c '%u %a' "$REGLAGE_RESTART")" != "0 600" ]; then
+                echo "refusé (réglage à root seul, en 600 : sudo katakomba vsock restart on|off|secret)"
+            else
+                case "$(awk 'NR==1 {print $1}' "$REGLAGE_RESTART")" in
+                    on)     echo "ouvert à tout compte de l'hôte" ;;
+                    secret) echo "réservé au secret (« restart <secret> »)" ;;
+                    *)      echo "désactivé" ;;
+                esac
+            fi
+        }
         case "${2:-status}" in
             on)
                 PORT="${3:-51875}"
@@ -270,6 +287,7 @@ case "${1:-help}" in
                 systemctl enable katakomba-vsock.socket 2>/dev/null || true
                 if systemctl restart katakomba-vsock.socket; then
                     echo "Écoute vsock active, port $PORT : status, ip, doctor, restart, pour l'hôte seul."
+                    echo "restart : $(_mode_restart)"
                     echo "Depuis l'hôte :  echo status | socat - VSOCK-CONNECT:<CID>:$PORT"
                 else
                     echo "Écoute vsock impossible : journalctl -u katakomba-vsock.socket" >&2
@@ -288,8 +306,38 @@ case "${1:-help}" in
                 else
                     echo "Écoute vsock : inactive"
                 fi
+                echo "restart       : $(_mode_restart)"
                 ;;
-            *) echo "Usage : sudo katakomba vsock on [PORT] | off | status" >&2; exit 2 ;;
+            restart)
+                # Écrit à côté puis renommé : jamais à moitié, jamais à travers
+                # un lien posé à la place.
+                ECRIRE=""
+                case "${3:-}" in
+                    on|off) ECRIRE="$3" ;;
+                    secret)
+                        SECRET="${4:-}"
+                        if [ -z "$SECRET" ]; then
+                            SECRET="$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')"
+                        elif ! [[ "$SECRET" =~ ^[A-Za-z0-9_-]{16,48}$ ]]; then
+                            echo "Secret : 16 à 48 caractères parmi A-Z a-z 0-9 _ -" >&2
+                            exit 2
+                        fi
+                        ECRIRE="secret $SECRET"
+                        ;;
+                    *) echo "Usage : sudo katakomba vsock restart on | off | secret [SECRET]" >&2; exit 2 ;;
+                esac
+                install -d -m 755 -o root -g root /var/lib/katakomba
+                TMP="$(mktemp /var/lib/katakomba/.vsock-restart.XXXXXX)"
+                printf '%s\n' "$ECRIRE" > "$TMP" && chmod 600 "$TMP" \
+                    && mv -fT "$TMP" "$REGLAGE_RESTART" || { rm -f "$TMP"; exit 1; }
+                echo "restart par vsock : $(_mode_restart)"
+                if [ "${3:-}" = secret ]; then
+                    echo "Secret : $SECRET"
+                    echo "Depuis l'hôte :  echo 'restart $SECRET' | socat - VSOCK-CONNECT:<CID>:<PORT>"
+                    echo "Gardez-le à root seul sur l'hôte aussi. Il passe en clair sur vsock, qui ne quitte pas la machine."
+                fi
+                ;;
+            *) echo "Usage : sudo katakomba vsock on [PORT] | off | status | restart on|off|secret [SECRET]" >&2; exit 2 ;;
         esac
         ;;
 

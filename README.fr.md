@@ -1,11 +1,11 @@
 <p align="center"><img src="assets/katakomba-banniere.png" alt="Katakomba — Svb terra liberi" width="720"></p>
 
-# Katakomba — v4.13.0
+# Katakomba — v4.14.0
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-orange?logo=linux)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
-![Version](https://img.shields.io/badge/Version-4.13.0-blue)
+![Version](https://img.shields.io/badge/Version-4.14.0-blue)
 [![Tests](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml/badge.svg)](https://github.com/Derbosoft/Katakomba/actions/workflows/tests.yml)
 [![Download](https://img.shields.io/github/v/release/Derbosoft/Katakomba?label=Download%20.deb&logo=debian)](https://github.com/Derbosoft/Katakomba/releases/latest)
 ![Systemd](https://img.shields.io/badge/Systemd-service-lightgrey?logo=linux)
@@ -287,7 +287,7 @@ En root, ou en membre du groupe `katakomba` (sans `sudo`, comme l'interface). Le
 | `compte liste\|ajouter\|retirer <fournisseur> …` | Comptes d'un fournisseur : `ajouter` demande les identifiants OpenVPN, ou ajoute des `.conf` donnés en argument ; `retirer <fournisseur> wg2` retire un fichier WireGuard |
 | `exclusion liste\|ajouter\|retirer <adresse\|réseau\|domaine>` | Exclusions du tunnel et domaines locaux, mêmes contrôles que l'interface |
 | `reglage` | Réglages actuels |
-| `reglage <réglage> <valeur>` | `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (adresse ou `aucun`), `circuit-check`, `circuit-min-kbs`, `circuit-retries`, `circuit-recheck-min` (minutes, `0` = une fois par démarrage), `primary-retry-min` (minutes, `0` = jamais) ; partage LAN *(v4.13.0)* : `lan-share`, `lan-dhcp` (`on`/`off`), `lan-iface` (carte, ou `aucun`), `lan-gateway` (adresse IPv4), `lan-subnet` (réseau IPv4) |
+| `reglage <réglage> <valeur> […]` | Plusieurs paires dans une même commande sont validées ensemble *(v4.14.0)*. `kill-switch`, `block-ipv6`, `auto-reconnect`, `random-account` (`on`/`off`), `transports` (`wireguard,openvpn`, `openvpn,wireguard`, `wireguard`, `openvpn`), `local-dns` (adresse ou `aucun`), `circuit-check`, `circuit-min-kbs`, `circuit-retries`, `circuit-recheck-min` (minutes, `0` = une fois par démarrage), `primary-retry-min` (minutes, `0` = jamais) ; partage LAN *(v4.13.0)* : `lan-share`, `lan-dhcp` (`on`/`off`), `lan-iface` (carte, ou `aucun`), `lan-gateway` (adresse IPv4), `lan-subnet` (réseau IPv4) |
 | `sauvegarde exporter\|restaurer <fichier.zip>` | Même format que la sauvegarde de l'interface ; l'export est en `600` (il contient les identifiants) |
 
 Messages et aide (`katakomba help`) suivent la langue du système. Les commandes existent aussi en anglais (`provider add`, `exclude remove`, `set`, `backup`, `start --trial`…), le nom sous lequel les présente l'aide.
@@ -320,14 +320,15 @@ sudo KATAKOMBA_PASSERELLE=1 apt install ./katakomba-headless_<version>_all.deb
 
 ```bash
 katakomba reglage lan-iface ens4          # carte vers les clients, PAS celle de la route par défaut
-katakomba reglage lan-gateway 10.0.0.1    # adresse que prend la passerelle sur cette carte
-katakomba reglage lan-subnet 10.0.0.0/24
+katakomba reglage lan-subnet 10.0.0.0/24 lan-gateway 10.0.0.1   # adresse que prend la passerelle sur cette carte
 katakomba reglage lan-dhcp off            # clients à adresse fixe
 katakomba reglage lan-share on
 sudo katakomba restart
 ```
 
 Il faut **deux cartes** : l'une porte la route par défaut (Tor sort par elle), l'autre mène aux clients. Le partage refuse la carte de la route par défaut, et retire les adresses de la carte de partage pour y poser `lan-gateway`. Un client à adresse fixe prend une adresse du sous-réseau, `lan-gateway` comme passerelle **et comme DNS**.
+
+La passerelle doit appartenir au sous-réseau. Pour changer de sous-réseau, changez les deux dans la même commande : `katakomba reglage lan-subnet 192.168.124.0/24 lan-gateway 192.168.124.1`. Chacun seul est refusé contre l'ancienne valeur de l'autre.
 
 ### Blocage permanent
 
@@ -341,11 +342,15 @@ Le blocage hors tunnel (sorties et routage) et le filtrage des clients du partag
 
 ```bash
 sudo katakomba vsock on [PORT]            # 51875 par défaut ; off, status
+sudo katakomba vsock restart secret       # v4.14.0 : restart réservé à un secret (affiché) ; off, on
 # depuis l'hôte :
 echo status | socat - VSOCK-CONNECT:<CID de la VM>:51875
+echo "restart $SECRET" | socat - VSOCK-CONNECT:<CID de la VM>:51875
 ```
 
 Quatre commandes, une ligne de JSON en réponse : `status` (le JSON du socket d'état), `ip` (adresse de sortie, demandée par le tunnel), `doctor` (comme `katakomba doctor --json`), `restart`. Rien d'autre : ni configuration, ni arrêt, ni levée du blocage. Seul l'hôte de la machine virtuelle est servi (CID 2) ; sur une machine qui héberge elle-même des machines virtuelles, leurs connexions sont refusées. Désactivé par défaut.
+
+vsock ne transmet pas le compte qui appelle : sur l'hôte, **tout compte** peut joindre l'écoute. Pour `restart` *(v4.14.0)* : `vsock restart off` le retire, `vsock restart secret [SECRET]` le réserve à `restart <secret>` (secret de 16 à 48 caractères `A-Z a-z 0-9 _ -`, tiré au hasard s'il n'est pas donné), `vsock restart on` le rouvre (le défaut, comme en 4.13). Gardez le secret à root seul sur l'hôte. Le réglage est dans `/var/lib/katakomba/vsock-restart`, à root seul en 600, et non dans `/etc/katakomba`, que le groupe katakomba peut modifier. S'il est abîmé, lisible par d'autres ou n'appartient pas à root, `restart` est refusé. Chaque refus est consigné (`journalctl -t katakomba-vsock`). `status`, `ip` et `doctor` restent ouverts : ils ne changent rien.
 
 ### Plusieurs passerelles, un même lot de comptes
 
@@ -891,6 +896,7 @@ katakomba ip               # IP publique actuelle
 # Passerelle (requiert root, v4.13.0)
 sudo katakomba blocage-permanent on|off|status   # posé dès le démarrage, jamais levé
 sudo katakomba vsock on [PORT]|off|status        # état lisible depuis l'hôte de la VM
+sudo katakomba vsock restart on|off|secret [S]   # restart par vsock : ouvert, retiré, réservé à un secret
 ```
 
 
