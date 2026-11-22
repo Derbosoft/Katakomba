@@ -276,6 +276,27 @@ class ProtectedRoutesTest(unittest.TestCase):
             self.assertTrue(r.ran("route del", f"{ip}/32"), f"{ip} non supprimée")
         self.assertFalse(self.routes_file.exists())
         self.assertEqual(d._protected_routes, set())
+        self.assertTrue(d.has_log("3 route(s) /32 Tor supprimée(s)", "INFO"))
+
+    def test_cleanup_ne_compte_que_les_routes_otees(self):
+        # Après un redémarrage, le fichier liste encore les relais mais le
+        # noyau n'a plus leurs routes : « ip route del » échoue.
+        d = self._daemon(self.routes_file)
+        self.routes_file.write_text("11.11.11.11\n22.22.22.22\n33.33.33.33\n")
+        r = Recorder({"route del 22.22.22.22": (0, b"")}, default=(2, b""))
+        with patched_run(r):
+            d._cleanup_tor_routes()
+        self.assertTrue(d.has_log("1 route(s) /32 Tor supprimée(s)", "INFO"))
+        self.assertFalse(self.routes_file.exists())
+
+    def test_cleanup_silencieux_si_rien_n_est_ote(self):
+        d = self._daemon(self.routes_file)
+        self.routes_file.write_text("11.11.11.11\n")
+        r = Recorder(default=(2, b""))
+        with patched_run(r):
+            d._cleanup_tor_routes()
+        self.assertFalse(any("supprimée" in m for _, m in d.logs))
+        self.assertFalse(self.routes_file.exists())
 
 
 class MontageTunnelTest(unittest.TestCase):

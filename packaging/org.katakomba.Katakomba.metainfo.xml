@@ -95,6 +95,11 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.14.1" date="2026-11-22">
+      <description>
+        <p>Fix: the startup log no longer reports Tor routes as removed when there were none left (for example after the computer was restarted).</p>
+      </description>
+    </release>
     <release version="4.14.0" date="2026-11-20">
       <description>
         <p>Gateway follow-up, after tests on a gateway virtual machine.</p>

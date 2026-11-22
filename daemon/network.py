@@ -593,9 +593,12 @@ class NetworkMixin:
                 )
             except Exception:
                 pass
-        for ip in routes:
-            _run("ip", "route", "del", f"{ip}/32")
+        # Compter les routes vraiment ôtées, pas les adresses du fichier :
+        # après un redémarrage de la machine, il ne reste plus aucune route
+        # et le message en annonçait pourtant autant que de lignes notées.
+        supprimees = sum(_run("ip", "route", "del", f"{ip}/32").returncode == 0
+                         for ip in routes)
         self._protected_routes.clear()
         TOR_ROUTES_FILE.unlink(missing_ok=True)
-        if routes:
-            self._log(f"[route] {len(routes)} route(s) /32 Tor supprimée(s).", "INFO")
+        if supprimees:
+            self._log(f"[route] {supprimees} route(s) /32 Tor supprimée(s).", "INFO")
