@@ -95,6 +95,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.15.0" date="2026-11-24">
+      <description>
+        <p>Fix: behind a LAN sharing gateway, HTTPS connections from clients could stall while DNS and small pages worked.</p>
+        <ul>
+          <li>The TCP segment size of sharing clients is reduced to what the tunnel carries, in both directions, from the tunnel's real MTU</li>
+          <li>Re-checked every 30 seconds and rewritten when the tunnel's name or MTU changes</li>
+          <li>katakomba doctor reports it when LAN sharing is active</li>
+        </ul>
+      </description>
+    </release>
     <release version="4.14.1" date="2026-11-22">
       <description>
         <p>Fix: the startup log no longer reports Tor routes as removed when there were none left (for example after the computer was restarted).</p>

@@ -57,6 +57,8 @@ class RepairCompletenessTest(unittest.TestCase):
     def test_chaine_lan_et_nat(self):
         self.assertIn("KATAKOMBA_LAN_FWD", REPAIR)
         self.assertIn("iptables -t nat -X KATAKOMBA_LAN_DNS", REPAIR)
+        self.assertIn("iptables -t mangle -D FORWARD -j KATAKOMBA_LAN_MSS", REPAIR)
+        self.assertIn("iptables -t mangle -X KATAKOMBA_LAN_MSS", REPAIR)
         self.assertIn("MASQUERADE", REPAIR,
                       "la règle NAT du partage LAN n'est pas nettoyée")
 
@@ -130,6 +132,8 @@ class InstallServiceUnitTest(unittest.TestCase):
         self.assertIn("-o tun0 -j MASQUERADE", cleanup)
         self.assertIn("-o tun1 -j MASQUERADE", cleanup)
         self.assertIn("iptables -t nat -X KATAKOMBA_LAN_DNS", cleanup)
+        self.assertIn("iptables -t mangle -D FORWARD -j KATAKOMBA_LAN_MSS", cleanup)
+        self.assertIn("iptables -t mangle -X KATAKOMBA_LAN_MSS", cleanup)
 
     def test_cleanup_leve_le_blocage_hors_tunnel(self):
         """Lancé après chaque arrêt du service : la connexion normale revient."""
@@ -556,6 +560,7 @@ class DoctorCommandTest(unittest.TestCase):
             ("incoming_return", "retour des connexions entrantes (SSH)"),
             ("wg_ports_closed", "ports WireGuard fermés au réseau"),
             ("tunnel_inbound_closed", "entrées par le tunnel refusées"),
+            ("lan_mss", "MSS des clients du partage réduit"),
             ('"rule", "show"', "règles de routage réellement posées"),
         ]:
             self.assertIn(sonde, bloc, f"doctor ne vérifie pas : {quoi}")
@@ -1067,6 +1072,36 @@ class DoctorEntreesTunnelTest(unittest.TestCase):
 
     def test_daemon_ancien_rien_a_dire(self):
         self.assertEqual(self._diagnostic({"kill_switch": True}), [])
+
+
+class DoctorMssPartageTest(unittest.TestCase):
+    """v4.15.0 : partage actif sans réduction du MSS = KO.  La panne ne se
+    voit ni au ping ni au DNS."""
+
+    BLOC = CLI[CLI.index("# Taille des segments TCP du partage"):]
+    BLOC = BLOC[:BLOC.index("# Ports d'écoute WireGuard")]
+
+    def _diagnostic(self, st):
+        notes = []
+        exec(self.BLOC, {"st": st, "note": lambda *a: notes.append(a),
+                         "_": lambda t: t, "OK": "OK", "KO": "KO"})
+        return notes
+
+    def test_reduit(self):
+        (niveau, titre, detail), = self._diagnostic({"lan_sharing": True, "lan_mss": 1280})
+        self.assertEqual((niveau, titre), ("OK", "Segments TCP du partage"))
+        self.assertIn("1280 octets", detail)
+
+    def test_non_reduit(self):
+        (niveau, _t, detail), = self._diagnostic({"lan_sharing": True, "lan_mss": 0})
+        self.assertEqual(niveau, "KO")
+        self.assertIn("HTTPS", detail)
+
+    def test_partage_inactif_rien_a_dire(self):
+        self.assertEqual(self._diagnostic({"lan_sharing": False, "lan_mss": 0}), [])
+
+    def test_daemon_ancien_rien_a_dire(self):
+        self.assertEqual(self._diagnostic({"lan_sharing": True}), [])
 
 
 class DoctorConnexionsTorTest(unittest.TestCase):

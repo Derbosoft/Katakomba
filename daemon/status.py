@@ -122,6 +122,9 @@ class StatusMixin:
             # routes /32 — exclusions de l'utilisateur comprises.
             "tor_guard_routes": sorted(self._protected_routes),
             "lan_sharing":    self._lan_active,
+            # MSS imposé aux connexions TCP des clients du partage (v4.15.0) ;
+            # 0 : aucun, et HTTPS se fige derrière la passerelle.
+            "lan_mss":        self._lan_mss,
             "ipv6_blocked":   self._ipv6_blocked,
             "kill_switch":    self._kill_active,
             # Ports d'écoute WireGuard fermés au réseau (v4.11.0) : sinon le

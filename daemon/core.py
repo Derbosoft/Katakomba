@@ -93,6 +93,9 @@ KS_LAN_CHAIN      = "KATAKOMBA_LAN_FWD"
 # Table nat, depuis PREROUTING : le DNS des clients du partage LAN, demandé à
 # la passerelle, redirigé vers celui du VPN.  Voir _poser_dns_lan.
 KS_LAN_DNS_CHAIN  = "KATAKOMBA_LAN_DNS"
+# Table mangle, depuis FORWARD : taille des segments TCP du partage LAN,
+# ramenée à la MTU du tunnel.  Voir _poser_lan_mss.
+KS_LAN_MSS_CHAIN  = "KATAKOMBA_LAN_MSS"
 # Blocage hors tunnel (kill switch) : (outil, chaîne parente, chaîne, IPv6,
 # FORWARD).  Voir FirewallMixin._kill_switch_rules.
 KILL_CHAINS = (
@@ -323,6 +326,7 @@ class DaemonCore:
         self._lan_adresse        = ""    # par le watchdog (_verifier_lan)
         self._lan_gw             = ""    # passerelle : le DNS donné aux clients
         self._lan_dns            = ""    # DNS du VPN vers lequel il est redirigé
+        self._lan_mss            = 0     # MSS imposé aux clients ; 0 : aucun
         self._dnsmasq_proc       = None
 
         self._current_provider_idx = 0
@@ -599,6 +603,10 @@ class DaemonCore:
             if _run("iptables", "-t", "nat", "-D", "PREROUTING",
                     "-j", KS_LAN_DNS_CHAIN).returncode != 0:
                 break
+        for _ in range(25):
+            if _run("iptables", "-t", "mangle", "-D", "FORWARD",
+                    "-j", KS_LAN_MSS_CHAIN).returncode != 0:
+                break
         # Pas les chaînes KATAKOMBA_KILL* : gardées exprès d'un lancement à
         # l'autre (sortie en échec, redémarrage), elles protègent jusqu'à ce
         # que _kill_switch_on les remplace, d'un seul tenant.
@@ -611,6 +619,8 @@ class DaemonCore:
                                     ("iptables", "-X", KS_LAN_CHAIN)]),
             ("iptables",  "-t", "nat", "-F", KS_LAN_DNS_CHAIN),
             ("iptables",  "-t", "nat", "-X", KS_LAN_DNS_CHAIN),
+            ("iptables",  "-t", "mangle", "-F", KS_LAN_MSS_CHAIN),
+            ("iptables",  "-t", "mangle", "-X", KS_LAN_MSS_CHAIN),
         ]:
             _run(*args)
 

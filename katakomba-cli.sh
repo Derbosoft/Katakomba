@@ -892,6 +892,17 @@ if st.get("gateway_mode"):
         note(KO, _("Partage LAN"),
              _("inactif en mode passerelle — cause dans le journal (katakomba logs), "
                "réglages : katakomba set"))
+# Taille des segments TCP du partage (v4.15.0) : sans elle, DNS et ping
+# passent, HTTPS se fige.  Absent d'un daemon plus ancien.
+if st.get("lan_sharing") and "lan_mss" in st:
+    if st["lan_mss"]:
+        note(OK, _("Segments TCP du partage"),
+             _("ramenés à {mss} octets, ce que le tunnel transporte").format(
+                 mss=st["lan_mss"]))
+    else:
+        note(KO, _("Segments TCP du partage"),
+             _("non réduits — les clients résolvent les noms mais leurs connexions "
+               "HTTPS se figent (cause dans le journal)"))
 # Ports d'écoute WireGuard : seul le pont (boucle locale) doit les joindre.
 # Absent d'un daemon plus ancien : rien à vérifier.
 if "wg_ports_closed" in st:

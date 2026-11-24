@@ -214,6 +214,12 @@ class CleanupStaleRulesTest(unittest.TestCase):
         self.assertTrue(r.ran("-t nat -F KATAKOMBA_LAN_DNS"))
         self.assertTrue(r.ran("-t nat -X KATAKOMBA_LAN_DNS"))
 
+    def test_supprime_la_reduction_du_mss_du_partage(self):
+        _, r = self._run()
+        self.assertTrue(r.ran("-t mangle -D FORWARD -j KATAKOMBA_LAN_MSS"))
+        self.assertTrue(r.ran("-t mangle -F KATAKOMBA_LAN_MSS"))
+        self.assertTrue(r.ran("-t mangle -X KATAKOMBA_LAN_MSS"))
+
     def test_blocage_hors_tunnel_garde(self):
         """v4.7.0 : les chaînes d'un lancement précédent (sortie en échec,
         redémarrage) protègent jusqu'à leur remplacement par _kill_switch_on.

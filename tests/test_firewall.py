@@ -13,6 +13,10 @@ LAN_CFG = {"lan_iface": "ens19", "lan_gateway": "10.0.0.1",
            "lan_subnet": "10.0.0.0/24", "lan_dhcp": False}
 
 
+MTU_1320 = ("7: tun-katakomba: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1320 qdisc fq_codel "
+            "state UNKNOWN mode DEFAULT group default qlen 500\\    link/none \n")
+
+
 def lan_rec(**extra):
     """Enregistreur réaliste : « iptables -C » renvoie 1 quand la règle est
     absente (sinon le code saute à raison le -A qui suit)."""
@@ -579,12 +583,18 @@ class VerifierPartageLanTest(unittest.TestCase):
 
     def setUp(self):
         self.d = FakeDaemon(config={"kill_switch": False}, _lan_active=True,
-                            _lan_iface="ens19", _lan_tun="tun-katakomba")
+                            _lan_iface="ens19", _lan_tun="tun-katakomba", _lan_mss=1280)
         regles = "".join(f"-A KATAKOMBA_LAN_FWD {' '.join(x)}\n"
                          for x in self.d._regles_lan_fwd("ens19", "tun-katakomba"))
+        mss = "".join(f"-A KATAKOMBA_LAN_MSS {' '.join(x)}\n"
+                      for x in self.d._regles_lan_mss("ens19", "tun-katakomba", 1280))
         self.intacte = {"iptables -S KATAKOMBA_LAN_FWD": (0, "-N KATAKOMBA_LAN_FWD\n" + regles),
                         "iptables -S FORWARD": (0, "-P FORWARD ACCEPT\n"
-                                                   "-A FORWARD -j KATAKOMBA_LAN_FWD\n")}
+                                                   "-A FORWARD -j KATAKOMBA_LAN_FWD\n"),
+                        "iptables -t mangle -S KATAKOMBA_LAN_MSS": (0, "-N KATAKOMBA_LAN_MSS\n" + mss),
+                        "iptables -t mangle -S FORWARD": (0, "-P FORWARD ACCEPT\n"
+                                                             "-A FORWARD -j KATAKOMBA_LAN_MSS\n"),
+                        "ip -o link show dev tun-katakomba": (0, MTU_1320)}
 
     def _rec(self, **defauts):
         rep = {**self.intacte, **defauts}
@@ -625,6 +635,187 @@ class VerifierPartageLanTest(unittest.TestCase):
         with patched_run(r):
             d._verifier_blocage()
         self.assertFalse(r.ran("LAN_FWD"))
+
+
+class PartageLanMssTest(unittest.TestCase):
+    """v4.15.0 : le MSS des connexions TCP des clients du partage est ramené
+    à la MTU du tunnel, dans les deux sens.  Sans cela, derrière une
+    passerelle WireGuard (MTU 1320), DNS et petites pages passaient, HTTPS
+    se figeait."""
+
+    def _daemon(self, **etat):
+        d = FakeDaemon(config={**LAN_CFG, "kill_switch": False},
+                       _tun_iface="tun-katakomba", **etat)
+        d._get_default_gateway = lambda: ("192.168.50.1", "eth0")
+        d._interface_existe = lambda nom: nom in ("ens19", "eth0")
+        return d
+
+    @staticmethod
+    def _rec(mtu=MTU_1320, **extra):
+        # Les réponses données passent devant la MTU par défaut.
+        return lan_rec(**extra, **{"ip -o link show dev tun-katakomba": (0, mtu)})
+
+    @staticmethod
+    def _regles(r):
+        return [c.split("-A KATAKOMBA_LAN_MSS ", 1)[1] for c in r.calls
+                if c.startswith("iptables -A KATAKOMBA_LAN_MSS ")]
+
+    def test_regles_exactes_dans_les_deux_sens(self):
+        d = self._daemon()
+        r = self._rec()
+        with patched_run(r):
+            self.assertTrue(d._setup_lan_sharing())
+        accord = ("-p tcp --tcp-flags SYN,RST SYN -m tcpmss --mss 1281:65535 "
+                  "-j TCPMSS --set-mss 1280")
+        self.assertEqual(self._regles(r), [f"-i ens19 -o tun-katakomba {accord}",
+                                           f"-i tun-katakomba -o ens19 {accord}"])
+        self.assertIn("iptables *mangle", r.calls)
+        self.assertTrue(r.ran("iptables -t mangle -I FORWARD 1 -j KATAKOMBA_LAN_MSS"))
+        self.assertEqual(d._lan_mss, 1280)
+        self.assertEqual(d._status_snapshot()["lan_mss"], 1280)
+        self.assertTrue(d.has_log("MSS des clients ramené à 1280 octets"))
+
+    def test_pose_avant_le_routage(self):
+        d = self._daemon()
+        r = self._rec()
+        with patched_run(r):
+            d._setup_lan_sharing()
+        branche = r.calls.index("iptables -t mangle -I FORWARD 1 -j KATAKOMBA_LAN_MSS")
+        routage = next(i for i, c in enumerate(r.calls) if "ip_forward=1" in c)
+        self.assertLess(branche, routage)
+
+    def test_suit_la_mtu_du_tunnel(self):
+        """OpenVPN à 1500 : 1460.  Rien de fixe."""
+        d = self._daemon()
+        r = self._rec(mtu="5: tun-katakomba: <UP> mtu 1500 qdisc noop\n")
+        with patched_run(r):
+            d._setup_lan_sharing()
+        self.assertTrue(r.ran("-A KATAKOMBA_LAN_MSS -i ens19", "--mss 1461:65535",
+                              "--set-mss 1460"), r.dump())
+        self.assertEqual(d._lan_mss, 1460)
+
+    def test_mtu_illisible_valeur_prudente(self):
+        d = self._daemon()
+        r = self._rec(**{"ip -o link show": (1, "")})
+        with patched_run(r):
+            d._setup_lan_sharing()
+        self.assertEqual(d._lan_mss, 1240)
+        self.assertTrue(r.ran("--set-mss 1240"))
+
+    def test_echec_le_partage_reste_et_le_dit(self):
+        d = self._daemon()
+        with patched_run(self._rec(**{"TCPMSS": (1, "")})):
+            self.assertTrue(d._setup_lan_sharing())
+        self.assertTrue(d._lan_active)
+        self.assertEqual(d._status_snapshot()["lan_mss"], 0)
+        self.assertTrue(d.has_log("réduction du MSS des clients impossible", "ERROR"))
+
+    def test_reconnexion_mtu_changee_reposee(self):
+        d = self._daemon()
+        with patched_run(self._rec()):
+            d._setup_lan_sharing()
+        r = self._rec(mtu="7: tun-katakomba: <UP> mtu 1400 qdisc noop\n")
+        with patched_run(r):
+            self.assertTrue(d._setup_lan_sharing())
+        self.assertTrue(r.ran("--set-mss 1360"), r.dump())
+        self.assertFalse(r.ran("KATAKOMBA_LAN_FWD"), "filtrage reconstruit sans raison")
+        self.assertEqual(d._lan_mss, 1360)
+
+    def test_reconnexion_meme_mtu_rien(self):
+        d = self._daemon()
+        with patched_run(self._rec()):
+            d._setup_lan_sharing()
+        r = self._rec()
+        with patched_run(r):
+            d._setup_lan_sharing()
+        self.assertFalse(r.ran("-restore"), r.dump())
+
+    def test_interface_changee_suit_le_nom(self):
+        d = self._daemon()
+        with patched_run(self._rec()):
+            d._setup_lan_sharing()
+        d._tun_iface = "tun1"
+        r = self._rec(**{"ip -o link show dev tun1": (0, "9: tun1: <UP> mtu 1500\n")})
+        with patched_run(r):
+            d._setup_lan_sharing()
+        self.assertEqual(len(self._regles(r)), 2, r.dump())
+        self.assertTrue(all("tun1" in x and "tun-katakomba" not in x for x in self._regles(r)))
+        self.assertEqual(d._lan_mss, 1460)
+
+    def test_demontage_retire_tout(self):
+        d = self._daemon()
+        with patched_run(self._rec()):
+            d._setup_lan_sharing()
+        r = self._rec()
+        with patched_run(r):
+            d._teardown_lan_sharing()
+        self.assertTrue(r.ran("iptables -t mangle -D FORWARD -j KATAKOMBA_LAN_MSS"))
+        self.assertTrue(r.ran("iptables -t mangle -F KATAKOMBA_LAN_MSS"))
+        self.assertTrue(r.ran("iptables -t mangle -X KATAKOMBA_LAN_MSS"))
+        self.assertEqual(d._lan_mss, 0)
+
+    # ── Revérifiée toutes les 30 s ──────────────────────────────────────────
+
+    def _verifier(self, d, motifs=None, **reponses):
+        base = VerifierPartageLanTest()
+        base.setUp()
+        rep = {**base.intacte, **reponses}
+
+        class Exact(Recorder):
+            def __call__(self, *cmd, **kwargs):
+                ligne = " ".join(cmd)
+                if ligne in rep:
+                    self.calls.append(ligne)
+                    from tests.helpers import Result
+                    return Result(*rep[ligne])
+                return super().__call__(*cmd, **kwargs)
+        r = Exact(motifs)
+        with patched_run(r):
+            repose = d._verifier_blocage()
+        return repose, r
+
+    def _actif(self, mss=1280):
+        return self._daemon(_lan_active=True, _lan_iface="ens19",
+                            _lan_tun="tun-katakomba", _lan_mss=mss)
+
+    def test_verif_intacte_rien(self):
+        d = self._actif()
+        repose, r = self._verifier(d)
+        self.assertFalse(repose, r.dump())
+        self.assertEqual(d.logs, [])
+
+    def test_verif_videe_reposee(self):
+        d = self._actif()
+        repose, r = self._verifier(d, **{"iptables -t mangle -S KATAKOMBA_LAN_MSS":
+                                         (0, "-N KATAKOMBA_LAN_MSS\n")})
+        self.assertTrue(repose)
+        self.assertTrue(r.ran("iptables -A KATAKOMBA_LAN_MSS -i ens19 -o tun-katakomba"))
+        self.assertTrue(d.has_log("réduction du MSS des clients modifiée ou retirée", "WARN"))
+
+    def test_verif_branchement_remis(self):
+        d = self._actif()
+        repose, r = self._verifier(d, **{"iptables -t mangle -S FORWARD":
+                                         (0, "-P FORWARD ACCEPT\n")})
+        self.assertTrue(repose)
+        self.assertTrue(r.ran("iptables -t mangle -I FORWARD 1 -j KATAKOMBA_LAN_MSS"))
+        self.assertFalse(r.ran("-restore"))
+
+    def test_verif_mtu_changee_reposee(self):
+        d = self._actif(mss=1460)
+        repose, r = self._verifier(d)
+        self.assertTrue(repose)
+        self.assertTrue(r.ran("--set-mss 1280"))
+        self.assertEqual(d._lan_mss, 1280)
+
+    def test_verif_pose_ratee_reessayee_sans_repeter(self):
+        d = self._actif(mss=0)
+        repose, r = self._verifier(d, motifs={"TCPMSS": (1, "")})
+        self.assertFalse(repose)
+        self.assertTrue(r.ran("TCPMSS"), "pas de nouvel essai")
+        self.assertFalse(d.has_log("impossible", "ERROR"), "erreur répétée toutes les 30 s")
+        repose, _r = self._verifier(d)
+        self.assertTrue(repose)
+        self.assertEqual(d._lan_mss, 1280)
 
 
 class Ipv6BlockTest(unittest.TestCase):
@@ -815,7 +1006,9 @@ class LanSharingTest(unittest.TestCase):
         r = lan_rec()
         with patched_run(r):
             self.assertTrue(d._setup_lan_sharing())
-        self.assertEqual(r.calls, [], "règles reconstruites sans raison")
+        # Seule la MTU du tunnel est relue (v4.15.0).
+        self.assertEqual([c for c in r.calls if not c.startswith("ip -o link show")], [],
+                         "règles reconstruites sans raison")
         self.assertEqual(d.logs[-1][1], "Partage LAN actif : ens19 (10.0.0.1/24) → tun0.")
 
     def test_changement_de_tunnel_reconstruit(self):

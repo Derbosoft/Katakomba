@@ -6,6 +6,7 @@ import functools
 import ipaddress
 import os
 import pwd
+import re
 import shutil
 import subprocess
 import threading
@@ -15,6 +16,7 @@ from validation import interface_lan_admissible, verifier_dns, verifier_exclusio
 from .core import (
     _run,
     KILL_CHAINS, KS6_CHAIN, KS6_FWD_CHAIN, KS_LAN_CHAIN, KS_LAN_DNS_CHAIN,
+    KS_LAN_MSS_CHAIN,
     LAN_DNSMASQ_PID, TOR_USER, TUN_CHAINS, TUN_IFACE, VPN_CHAINS, VPN_USER, WG_CHAINS,
     WG_PORT, WG_PORT_SONDE,
 )
@@ -316,6 +318,7 @@ class FirewallMixin:
                 repose = self._verifier_garde(nom) or repose
         if self._lan_active:
             repose = self._verifier_lan_fwd(self._lan_iface, self._lan_tun) or repose
+            repose = self._verifier_lan_mss(self._lan_iface, self._lan_tun) or repose
         elif self._blocage_permanent() and self._iface_lan_permanente():
             # Partage pas encore monté (tunnel absent) : le filtrage posé au
             # démarrage de la machine tient les clients en attendant.
@@ -564,6 +567,9 @@ class FirewallMixin:
                         self._log(f"Partage LAN : DNS du VPN changé ({ancien or '?'} "
                                   f"→ {self._lan_dns}) — redirection des clients "
                                   "mise à jour.")
+                # Et sa MTU : un autre serveur OpenVPN peut en pousser une autre.
+                if self._mss_lan_cible(self._lan_tun) != self._lan_mss:
+                    self._poser_lan_mss(self._lan_iface, self._lan_tun)
                 return True
             self._log(
                 f"Partage LAN : interface tunnel changée "
@@ -610,6 +616,11 @@ class FirewallMixin:
             # remplie.
             if not self._poser_lan_fwd(iface, tun):
                 return False
+            # Avant le routage, comme le filtrage : une connexion ouverte sans
+            # la réduction garderait ses gros segments.  Sans elle, le partage
+            # reste utile (DNS, petites pages) : l'erreur est au journal et
+            # dans « katakomba doctor ».
+            self._poser_lan_mss(iface, tun)
             # Jamais remis à 0 à l'arrêt, exprès : Docker, libvirt ou un
             # autre VPN démarrés entre-temps comptent dessus sans l'avoir
             # réécrit, et le leur retirer couperait leur réseau en silence.
@@ -655,6 +666,78 @@ class FirewallMixin:
                       f"{' (' + erreur + ')' if erreur else ''}.", "ERROR")
             return False
         return True
+
+    @staticmethod
+    def _regles_lan_mss(iface: str, tun: str, mss: int) -> list:
+        """Ramène le MSS annoncé à l'ouverture d'une connexion TCP à ce que
+        le tunnel transporte, dans les deux sens : le SYN du client et le
+        SYN-ACK du site.  Un MSS déjà plus petit est laissé tel quel."""
+        accord = ["-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-m", "tcpmss",
+                  "--mss", f"{mss + 1}:65535", "-j", "TCPMSS", "--set-mss", str(mss)]
+        return [["-i", iface, "-o", tun, *accord],
+                ["-i", tun, "-o", iface, *accord]]
+
+    @staticmethod
+    def _mtu_interface(nom: str) -> int:
+        """MTU de l'interface, 0 si elle est illisible.  Par « ip », pas par
+        /sys : /sys est celui de l'espace réseau qui l'a monté."""
+        r = _run("ip", "-o", "link", "show", "dev", nom)
+        m = re.search(r"\bmtu (\d+)", r.stdout.decode(errors="ignore")) \
+            if r.returncode == 0 else None
+        return int(m.group(1)) if m else 0
+
+    def _mss_lan_cible(self, tun: str) -> int:
+        """MSS des clients du partage : MTU du tunnel moins les en-têtes IPv4
+        et TCP (40 octets).  MTU illisible ou invraisemblable : celle d'un
+        tunnel prudent, 1280."""
+        mtu = self._mtu_interface(tun)
+        return (mtu if mtu >= 576 else 1280) - 40
+
+    def _poser_lan_mss(self, iface: str, tun: str, signaler: bool = True) -> bool:
+        """Les clients du partage sont à 1500 octets, le tunnel moins
+        (WireGuard : 1320).  Leur MSS de 1460 dit au site d'envoyer des
+        segments que le tunnel ne transporte pas ; l'ICMP « frag needed »
+        renvoyé par la passerelle se perd en route (serveur VPN, site), et
+        la connexion se fige dès la première réponse longue : DNS et petites
+        pages passent, HTTPS jamais (v4.15.0).  Vrai si la chaîne est posée."""
+        mss = self._mss_lan_cible(tun)
+        erreur = self._poser_chaines(
+            "iptables", {KS_LAN_MSS_CHAIN: self._regles_lan_mss(iface, tun, mss)}, "mangle")
+        if erreur or self._brancher("iptables", "FORWARD", KS_LAN_MSS_CHAIN, "mangle") is None:
+            self._lan_mss = 0
+            if signaler:
+                self._log(f"Partage LAN : réduction du MSS des clients impossible"
+                          f"{' (' + erreur + ')' if erreur else ''} — les connexions "
+                          "TCP aux réponses longues (HTTPS) peuvent se figer.", "ERROR")
+            return False
+        if mss != self._lan_mss:
+            self._log(f"Partage LAN : MSS des clients ramené à {mss} octets "
+                      f"(MTU de {tun} : {mss + 40}).")
+        self._lan_mss = mss
+        return True
+
+    def _verifier_lan_mss(self, iface: str, tun: str) -> bool:
+        """Toutes les 30 s, avec le filtrage des clients : chaîne retirée par
+        un pare-feu rechargé, débranchée, ou MTU du tunnel changée.  Vrai si
+        elle a été reposée."""
+        if (not self._lan_mss or self._mss_lan_cible(tun) != self._lan_mss
+                or not self._chaines_intactes([("iptables", "FORWARD", KS_LAN_MSS_CHAIN)],
+                                              {KS_LAN_MSS_CHAIN: 2}, "mangle")):
+            if self._lan_mss:
+                self._log("Partage LAN : réduction du MSS des clients modifiée ou "
+                          "retirée — reposée.", "WARN")
+            # Pose déjà ratée : nouvel essai sans répéter l'erreur.
+            return self._poser_lan_mss(iface, tun, signaler=bool(self._lan_mss))
+        return bool(self._brancher("iptables", "FORWARD", KS_LAN_MSS_CHAIN, "mangle"))
+
+    def _retirer_lan_mss(self):
+        for _ in range(25):
+            if _run("iptables", "-t", "mangle", "-D", "FORWARD",
+                    "-j", KS_LAN_MSS_CHAIN).returncode != 0:
+                break
+        _run("iptables", "-t", "mangle", "-F", KS_LAN_MSS_CHAIN)
+        _run("iptables", "-t", "mangle", "-X", KS_LAN_MSS_CHAIN)
+        self._lan_mss = 0
 
     def _iface_lan_permanente(self) -> str:
         """Carte du partage LAN dont le blocage permanent filtre les clients,
@@ -789,6 +872,7 @@ class FirewallMixin:
                 _run("iptables", "-F", KS_LAN_CHAIN)
                 _run("iptables", "-X", KS_LAN_CHAIN)
             self._retirer_dns_lan()
+            self._retirer_lan_mss()
             if net:
                 # Supprimer avec l'interface RÉELLEMENT utilisée à la création,
                 # pas avec _tun_iface : s'il a changé depuis, on effacerait une

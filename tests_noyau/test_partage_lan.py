@@ -268,3 +268,95 @@ class PartageLanPermanentTest(PartageLanEtancheTest):
         self.marque.write_text("")
         self.assertTrue(self.d._poser_lan_permanent(), self.d.log_dump())
         self.assertFalse(self._udp_du_client(port_source=40012))
+
+
+def _mss_de(p: bytes) -> int:
+    """MSS annoncé par un segment TCP (option 2), 0 s'il n'y en a pas."""
+    ihl = (p[0] & 0xF) * 4
+    fin = ihl + (p[ihl + 12] >> 4) * 4
+    i = ihl + 20
+    while i < fin:
+        if p[i] == 0:
+            break
+        if p[i] == 1:
+            i += 1
+            continue
+        if p[i] == 2:
+            return struct.unpack("!H", p[i + 2:i + 4])[0]
+        i += p[i + 1]
+    return 0
+
+
+class PartageLanMssTest(_BancLan):
+    """v4.15.0 : tunnel à 1320 (WireGuard), clients à 1500.  Le SYN du client
+    entre dans le tunnel avec un MSS de 1280, et le SYN-ACK du site, qui
+    annonce 1460, arrive au client ramené à 1280 : le client n'enverra pas
+    non plus de segments trop gros.  Sans la chaîne (témoin), 1460 des deux
+    côtés : la connexion se figeait dès la première réponse longue."""
+
+    INTERNET = "203.0.113.80"
+
+    def setUp(self):
+        super().setUp()
+        sh("ip link set dev tun-katakomba mtu 1320")
+        self.d._vpn_dns_ips = ["10.111.20.1"]
+        self.assertTrue(self.d._setup_lan_sharing(), self.d.log_dump())
+        self.addCleanup(self.d._teardown_lan_sharing)
+
+    def _syn(self, delai=3.0):
+        fin = time.monotonic() + delai
+        while time.monotonic() < fin:
+            if not select.select([self.tun.fd], [], [], 0.2)[0]:
+                continue
+            p = os.read(self.tun.fd, 2048)
+            ihl = (p[0] & 0xF) * 4
+            if p[0] >> 4 == 4 and p[9] == 6 and p[ihl + 13] & 0x12 == 0x02:
+                return p
+        return None
+
+    def _syn_ack(self, syn: bytes, mss: int):
+        """Réponse du site, écrite dans le tunnel comme par le serveur VPN."""
+        ihl = (syn[0] & 0xF) * 4
+        sport, dport, seq = struct.unpack("!HHI", syn[ihl:ihl + 8])
+        tcp = bytearray(struct.pack("!HHIIBBHHH", dport, sport, 1000, seq + 1, 6 << 4,
+                                    0x12, 65535, 0, 0) + struct.pack("!BBH", 2, 4, mss))
+        pseudo = syn[16:20] + syn[12:16] + struct.pack("!BBH", 0, 6, len(tcp))
+        tcp[16:18] = struct.pack("!H", _somme(pseudo + bytes(tcp)))
+        ip = bytearray(struct.pack("!BBHHHBBH4s4s", 0x45, 0, 20 + len(tcp), 0, 0, 64, 6, 0,
+                                   syn[16:20], syn[12:16]))
+        ip[10:12] = struct.pack("!H", _somme(bytes(ip)))
+        os.write(self.tun.fd, bytes(ip) + tcp)
+
+    def _connexion(self):
+        """(MSS du SYN vu dans le tunnel, MSS retenu par le client)."""
+        code = ("import socket,sys\n"
+                "s=socket.socket(); s.settimeout(4)\n"
+                f"s.connect(('{self.INTERNET}', 443))\n"
+                "sys.stdout.write(str(s.getsockopt(socket.IPPROTO_TCP, socket.TCP_MAXSEG)))\n")
+        client = subprocess.Popen(["nsenter", "-t", str(self.client.pid), "-n", "python3", "-c", code],
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        syn = self._syn()
+        self.assertIsNotNone(syn, "le SYN du client n'est pas entré dans le tunnel")
+        self._syn_ack(syn, 1460)
+        sortie, _ = client.communicate(timeout=6)
+        self.assertTrue(sortie.isdigit(), "le SYN-ACK n'est pas parvenu au client")
+        return _mss_de(syn), int(sortie)
+
+    def test_mss_ramene_dans_les_deux_sens(self):
+        self.assertEqual(self.d._lan_mss, 1280, self.d.log_dump())
+        self.assertEqual(self._connexion(), (1280, 1280))
+
+    def test_temoin_sans_la_chaine(self):
+        sh("iptables -t mangle -F KATAKOMBA_LAN_MSS")
+        self.assertEqual(self._connexion(), (1460, 1460),
+                         "banc faux : sans la chaîne, le MSS devrait rester 1460")
+
+    def test_sans_le_retour_le_client_garde_1460(self):
+        """Le SYN seul ne suffit pas : le client se fie au SYN-ACK du site,
+        dont la sortie est la carte de partage à 1500."""
+        sh("iptables -t mangle -D KATAKOMBA_LAN_MSS 2")
+        self.assertEqual(self._connexion(), (1280, 1460))
+
+    def test_demontage_ne_laisse_rien(self):
+        self.d._teardown_lan_sharing()
+        self.assertNotIn("KATAKOMBA_LAN_MSS", sh("iptables -t mangle -S"))
